@@ -21,10 +21,14 @@ export default function Page() {
             <CardTitle className="text-lg">Assigned Amps</CardTitle>
           </CardHeader>
           <CardContent>
-            {selectedProject.assigned_amps && selectedProject.assigned_amps.length > 0 ? (
+            {selectedProject.assigned_amps &&
+            selectedProject.assigned_amps.length > 0 ? (
               <ul className="space-y-2">
                 {selectedProject.assigned_amps.map((amp) => (
-                  <li key={amp.id} className="flex items-center justify-between">
+                  <li
+                    key={amp.id}
+                    className="flex items-center justify-between"
+                  >
                     <span className="text-sm text-gray-600">{amp.mac}</span>
                     <Badge variant="secondary">{amp.id}</Badge>
                   </li>

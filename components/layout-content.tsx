@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect } from "react";
 import { Header } from "@/components/header";
-import { useProjectStore } from "@/lib/store";
+import { useProjectStore } from "@/stores/ProjectStore";
 
 export function LayoutContent({ children }: { children: ReactNode }) {
   const { projects, loading, setProjects, setLoading, setSelectedProject } =

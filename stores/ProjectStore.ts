@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useAmpStore } from "./AmpStore";
 
 export interface Project {
   id: string;
@@ -27,13 +28,27 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   loading: true,
 
   setProjects: (projects) => set({ projects }),
-  setSelectedProject: (project) => set({ selectedProject: project }),
+
+  setSelectedProject: (project) => {
+    set({ selectedProject: project });
+    // Populate AmpStore with assigned amps from the selected project
+    if (project) {
+      const amps = project.assigned_amps.map((amp) => ({
+        mac: amp.mac,
+        id: amp.id,
+      }));
+      useAmpStore.getState().setAmps(amps);
+    } else {
+      useAmpStore.getState().clearAmps();
+    }
+  },
+
   setLoading: (loading) => set({ loading }),
 
   selectProjectById: (id) => {
     const project = get().projects.find((p) => p.id === id);
     if (project) {
-      set({ selectedProject: project });
+      get().setSelectedProject(project);
     }
   },
 }));

@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Menu } from "lucide-react";
-import { useProjectStore, type Project } from "@/lib/store";
+import { useProjectStore, type Project } from "@/stores/ProjectStore";
 
 interface HeaderProps {
   projects?: Project[];
@@ -46,7 +46,6 @@ export function Header({ projects = [], loading = false }: HeaderProps) {
                 <Link href="/scanner">Device Scanner</Link>
               </DropdownMenuItem>
               <DropdownMenuItem>New Project</DropdownMenuItem>
-              <DropdownMenuItem>Open Project</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 

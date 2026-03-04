@@ -8,9 +8,24 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Menu } from "lucide-react";
+import { useProjectStore, type Project } from "@/lib/store";
 
-export function Header() {
+interface HeaderProps {
+  projects?: Project[];
+  loading?: boolean;
+}
+
+export function Header({ projects = [], loading = false }: HeaderProps) {
+  const { selectedProject, selectProjectById } = useProjectStore();
   return (
     <header className="border-b">
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -23,6 +38,10 @@ export function Header() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuItem asChild>
+                <Link href="/">Home</Link>
+              </DropdownMenuItem>
+              <Separator />
+              <DropdownMenuItem asChild>
                 <Link href="/scanner">Device Scanner</Link>
               </DropdownMenuItem>
               <DropdownMenuItem>New Project</DropdownMenuItem>
@@ -34,6 +53,25 @@ export function Header() {
             CVR AMP Controller
           </Link>
         </div>
+
+        <Select
+          value={selectedProject?.id || ""}
+          onValueChange={selectProjectById}
+          disabled={loading || projects.length === 0}
+        >
+          <SelectTrigger className="w-40">
+            <SelectValue
+              placeholder={loading ? "Loading..." : "Select Project"}
+            />
+          </SelectTrigger>
+          <SelectContent align="end">
+            {projects.map((project) => (
+              <SelectItem key={project.id} value={project.id}>
+                {project.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </header>
   );

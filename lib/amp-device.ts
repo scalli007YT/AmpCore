@@ -209,8 +209,8 @@ export class CvrAmpDevice {
           this.socket.close();
           this.socket = null;
         }
-        reject(new Error("Response timeout (150ms)"));
-      }, 150);
+        reject(new Error("Response timeout (75ms)"));
+      }, 75);
 
       const messageHandler = (msg: Buffer, rinfo: dgram.RemoteInfo) => {
         if (!responded && rinfo.address === this.ampIp) {

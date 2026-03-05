@@ -366,6 +366,29 @@ export class CvrAmpDevice {
     };
   }
 
+  async queryHeartbeat(): Promise<Buffer> {
+    /**
+     * Lightweight HEARTBEAT query (FC=6)
+     * Matches original C# app's queryT_V_A() method
+     * Returns real-time device status (~115 bytes)
+     * Much faster and more efficient than BASIC_INFO + SN_TABLE
+     */
+    const header: StructHeader = {
+      head: 0x55,
+      functionCode: FuncCode.HEARTBEAT,
+      statusCode: 2, // Request status
+      chx: 0,
+      link: 0,
+      inOutFlag: 0,
+      segment: 0,
+      r1: 0,
+      r2: 0,
+      r3: 0,
+    };
+
+    return this.sendRaw(header);
+  }
+
   private parseDeviceName(response: Buffer): string {
     // Device name - scan for a readable ASCII string containing spaces (characteristic of device names)
     // Usually comes after device version

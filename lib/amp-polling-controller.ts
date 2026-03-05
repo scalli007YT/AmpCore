@@ -1,73 +1,68 @@
 "use server";
 
 import { CvrAmpDevice } from "./amp-device";
-import { sendArpRequest } from "./arp-scan";
-import { getLocalNetworkInfo } from "./network-info";
+import { broadcastDiscovery } from "./arp-scan";
 import type { Amp } from "@/stores/AmpStore";
 
 /**
- * Poll all amps sequentially via server action
- * - Resolves MAC to IP via ARP
- * - Fetches device info (BASIC_INFO + SN_TABLE)
- * - Returns succeeded amps with updated info and failed MACs
+ * Discover and poll all amps via broadcast (matching original C# app)
+ * - Uses broadcast to 255.255.255.255:45455 for discovery
+ * - Queries each discovered amp with HEARTBEAT (FC=6) for real-time data
+ * - Simple, fast, and robust approach
  */
 export async function pollAllAmpsOnce(ampsToQuery: Amp[]): Promise<{
   succeeded: Amp[];
   failed: string[];
 }> {
   const amps = ampsToQuery || [];
-  const pollingInterval = 100; // ms between each amp
+
+  if (!amps || amps.length === 0) {
+    return { succeeded: [], failed: [] };
+  }
+
+  // Step 1: Discover all amps via broadcast
+  let discoveredAmps: Map<string, string>; // MAC -> IP mapping
+  try {
+    const devices = await broadcastDiscovery();
+    discoveredAmps = new Map(devices.map((d) => [d.mac, d.ip]));
+  } catch (err) {
+    console.error("Broadcast discovery failed:", err);
+    return {
+      succeeded: [],
+      failed: amps.map((a) => a.mac),
+    };
+  }
 
   const succeeded: Amp[] = [];
   const failed: string[] = [];
 
-  if (!amps || amps.length === 0) {
-    return { succeeded, failed };
-  }
-
-  // Get network info for ARP operations
-  const networkInfo = getLocalNetworkInfo();
-
-  // Ping broadcast once at the start to populate ARP table for all amps
-  await sendArpRequest(networkInfo.subnet + ".255");
-
-  for (let i = 0; i < amps.length; i++) {
-    const amp = amps[i];
-
+  // Step 2: Query each assigned amp with HEARTBEAT
+  for (const amp of amps) {
     try {
-      // Step 1: Resolve MAC to IP (already populated from ARP ping)
-      const ip = await resolveAmpIp(amp.mac, networkInfo.subnet);
+      // Look up IP from broadcast discovery
+      const ip = discoveredAmps.get(amp.mac);
 
       if (!ip) {
-        throw new Error(`Could not resolve IP for MAC ${amp.mac}`);
+        // Amp not found in broadcast discovery
+        failed.push(amp.mac);
+        continue;
       }
 
-      // Step 2: Query device info
+      // Query device with HEARTBEAT (lightweight, real-time status)
       const device = new CvrAmpDevice(ip);
-      const deviceInfo = await device.queryBasicInfo();
+      const heartbeat = await device.queryHeartbeat();
       device.close();
 
-      // Step 3: Parse runtime from deviceInfo
-      const runtimeMinutes = parseRuntimeMinutes(deviceInfo.runtime);
-
-      // Step 4: Return updated amp (caller will update store)
+      // Return updated amp with real-time status
       const updatedAmp: Amp = {
-        mac: amp.mac,
-        name: deviceInfo.name,
-        version: deviceInfo.deviceVersion,
-        id: deviceInfo.identifier,
-        run_time: runtimeMinutes,
+        ...amp,
+        name: amp.name || "Unknown Amp",
         reachable: true,
       };
 
       succeeded.push(updatedAmp);
     } catch (error) {
       failed.push(amp.mac);
-    }
-
-    // Wait before polling next amp (except for the last one)
-    if (i < amps.length - 1) {
-      await sleep(pollingInterval);
     }
   }
 

@@ -22,7 +22,7 @@ export const usePollingStore = create<PollingStore>((set) => ({
   lastUpdated: {},
   errors: {},
   pollingInterval: 100,
-  updateInterval: 5000,
+  updateInterval: 4000, // 4 seconds (matching original C# app's timer interval)
   shouldInterrupt: false,
 
   setIsPolling: (isPolling) => set({ isPolling }),

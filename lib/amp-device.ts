@@ -237,6 +237,13 @@ export class CvrAmpDevice {
           clearTimeout(timeout);
           sock.removeListener("message", messageHandler);
           sock.removeListener("error", errorHandler);
+          console.log(
+            `[AmpDevice] Payload received from ${rinfo.address} — length: ${msg.length} bytes — data: [${Array.from(
+              msg,
+            )
+              .map((b) => `0x${b.toString(16).padStart(2, "0")}`)
+              .join(", ")}]`,
+          );
           resolve(msg);
         }
       };
@@ -366,6 +373,19 @@ export class CvrAmpDevice {
     };
   }
 
+  async queryRuntime(): Promise<number | undefined> {
+    // Fetch SN_TABLE (FC=71) and parse runtime minutes from offset 94
+    try {
+      const snResponse = await this.querySNTable();
+      if (snResponse.length >= 98) {
+        return snResponse.readUInt32LE(94);
+      }
+    } catch {
+      // Silent fail
+    }
+    return undefined;
+  }
+
   async queryHeartbeat(): Promise<Buffer> {
     /**
      * Lightweight HEARTBEAT query (FC=6)
@@ -390,35 +410,18 @@ export class CvrAmpDevice {
   }
 
   private parseDeviceName(response: Buffer): string {
-    // Device name - scan for a readable ASCII string containing spaces (characteristic of device names)
-    // Usually comes after device version
+    // Device name: fixed offset 52, max 24 bytes, null-terminated ASCII
+    // e.g. "PASCAL ROSE DSP-2004"
     try {
-      if (response.length > 40) {
-        let candidate = "";
-        let inString = false;
-
-        for (let i = 40; i < Math.min(response.length, 100); i++) {
-          const byte = response[i];
-
-          if (byte >= 32 && byte <= 126) {
-            // Printable ASCII
-            candidate += String.fromCharCode(byte);
-            inString = true;
-          } else if (inString) {
-            // End of ASCII string
-            if (candidate.includes(" ") && candidate.length > 5) {
-              // Found a multi-word string - likely the device name
-              return candidate.trim();
-            }
-            candidate = "";
-            inString = false;
-          }
-        }
-
-        // Check final candidate
-        if (candidate.includes(" ") && candidate.length > 5) {
-          return candidate.trim();
-        }
+      if (response.length >= 53) {
+        const end = Math.min(52 + 24, response.length);
+        const slice = response.slice(52, end);
+        const nullIdx = slice.indexOf(0);
+        const name = slice
+          .slice(0, nullIdx === -1 ? slice.length : nullIdx)
+          .toString("ascii")
+          .trim();
+        if (name.length > 0) return name;
       }
     } catch (err) {
       // Silent fail
@@ -427,7 +430,16 @@ export class CvrAmpDevice {
   }
 
   private parseMacAddress(response: Buffer): string {
-    // MAC address is 6 bytes at offset 84
+    // BASIC_INFO response layout (102 bytes):
+    //   [0–9]   NetworkData header
+    //   [10–19] StructHeader
+    //   [20–43] Version string, null-terminated (24 bytes)
+    //   [44–51] padding
+    //   [52–75] Device name, null-terminated (24 bytes)
+    //   [76–83] padding/reserved
+    //   [84–89] MAC address (6 bytes)  ← here
+    //   [90–98] reserved
+    //   [99–101] checksum
     try {
       if (response.length > 90) {
         // MAC is at fixed offset 84
@@ -449,34 +461,18 @@ export class CvrAmpDevice {
   }
 
   private parseDeviceVersion(response: Buffer): string {
-    // Device version - scan from offset 20 looking for hex/alphanumeric string with hyphens
+    // Device version: fixed offset 20, max 24 bytes, null-terminated ASCII
+    // e.g. "424 0B06-006118-DSP-2004"
     try {
-      if (response.length > 20) {
-        let version = "";
-        // Start from offset 20 and collect hex digits, letters, and hyphens
-        for (let i = 20; i < Math.min(response.length, 120); i++) {
-          const byte = response[i];
-          // Collect hex digits (0-9, A-F, a-f), letters (A-Z, a-z), and hyphens
-          if (
-            (byte >= 48 && byte <= 57) || // 0-9
-            (byte >= 65 && byte <= 90) || // A-Z
-            (byte >= 97 && byte <= 122) || // a-z
-            byte === 45 // hyphen
-          ) {
-            version += String.fromCharCode(byte);
-          } else if (version.length > 0 && version.includes("-")) {
-            // We've found a version string with hyphens, stop here
-            return version;
-          } else if (byte > 0 && byte < 32) {
-            // Hit non-printable, reset
-            version = "";
-          }
-        }
-
-        // Check if we collected a valid version at the end
-        if (version.length > 10 && version.includes("-")) {
-          return version;
-        }
+      if (response.length >= 21) {
+        const end = Math.min(20 + 24, response.length);
+        const slice = response.slice(20, end);
+        const nullIdx = slice.indexOf(0);
+        const version = slice
+          .slice(0, nullIdx === -1 ? slice.length : nullIdx)
+          .toString("ascii")
+          .trim();
+        if (version.length > 0) return version;
       }
     } catch (err) {
       // Silent fail

@@ -14,6 +14,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Trash2, Plus, Wifi } from "lucide-react";
@@ -43,11 +48,6 @@ export function AssignAmpsDialog() {
 
   const currentProject = projects.find((p) => p.id === selectedProject.id);
   if (!currentProject) return null;
-
-  // Helper function to get amp info from AmpStore
-  const getAmpInfo = (mac: string) => {
-    return amps.find((a) => a.mac === mac);
-  };
 
   const handleAddAmp = async () => {
     if (!macInput.trim()) {
@@ -136,11 +136,30 @@ export function AssignAmpsDialog() {
     setOpen(false);
   };
 
+  const totalAmps = currentProject.assigned_amps.length;
+  const reachableAmps = currentProject.assigned_amps.filter(
+    (a) => amps.find((s) => s.mac === a.mac)?.reachable === true,
+  ).length;
+  const statusColor =
+    totalAmps === 0
+      ? "bg-gray-400"
+      : reachableAmps === totalAmps
+        ? "bg-green-500"
+        : reachableAmps === 0
+          ? "bg-red-500"
+          : "bg-orange-400";
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" className="gap-2">
           Manage Amps
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {reachableAmps}/{totalAmps}
+            <span
+              className={`inline-block w-2 h-2 rounded-full ${statusColor}`}
+            />
+          </span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
@@ -158,32 +177,56 @@ export function AssignAmpsDialog() {
             {currentProject.assigned_amps.length > 0 ? (
               <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
                 {currentProject.assigned_amps.map((amp) => {
-                  const ampInfo = getAmpInfo(amp.mac);
+                  const ampInfo = amps.find((a) => a.mac === amp.mac);
                   return (
                     <div
                       key={amp.mac}
                       className="flex items-center justify-between p-3 hover:bg-gray-50 gap-3"
                     >
-                      {/* Reachability indicator */}
-                      <div className="flex-shrink-0">
-                        <div
-                          className={`h-3 w-3 rounded-full ${
-                            ampInfo?.reachable
-                              ? "bg-green-500"
-                              : "bg-red-500"
-                          }`}
-                        />
-                      </div>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-3 flex-1 min-w-0 cursor-default">
+                            {/* Reachability indicator */}
+                            <div className="flex-shrink-0">
+                              <div
+                                className={`h-3 w-3 rounded-full ${
+                                  ampInfo?.reachable
+                                    ? "bg-green-500"
+                                    : "bg-red-500"
+                                }`}
+                              />
+                            </div>
 
-                      {/* Amp info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold">
-                          {ampInfo ? getDisplayName(ampInfo) : "Unknown Amp"}
-                        </p>
-                        <p className="text-xs text-gray-500 font-mono">
-                          {amp.mac}
-                        </p>
-                      </div>
+                            {/* Amp info */}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold">
+                                {ampInfo
+                                  ? getDisplayName(ampInfo)
+                                  : "Unknown Amp"}
+                              </p>
+                              <p className="text-xs text-gray-500 font-mono">
+                                {amp.mac}
+                              </p>
+                            </div>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="left">
+                          <p>
+                            Status:{" "}
+                            {ampInfo?.reachable ? "Reachable" : "Unreachable"}
+                          </p>
+                          <p>MAC: {amp.mac}</p>
+                          <p>Name: {ampInfo ? getDisplayName(ampInfo) : "—"}</p>
+                          <p>Version: {ampInfo?.version ?? "—"}</p>
+                          <p>ID: {ampInfo?.id ?? "—"}</p>
+                          <p>
+                            Runtime:{" "}
+                            {ampInfo?.run_time !== undefined
+                              ? `${Math.floor(ampInfo.run_time / 60)}h ${ampInfo.run_time % 60}min`
+                              : "—"}
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
 
                       {/* Delete button */}
                       <Button
@@ -277,11 +320,14 @@ export function AssignAmpsDialog() {
                 </Button>
 
                 <p className="text-xs text-gray-500 text-center italic">
-                  Note: Other devices may become unreachable for a few seconds during scanning.
+                  Note: Other devices may become unreachable for a few seconds
+                  during scanning.
                 </p>
 
                 {scanError && (
-                  <p className="text-xs text-red-600 text-center">{scanError}</p>
+                  <p className="text-xs text-red-600 text-center">
+                    {scanError}
+                  </p>
                 )}
 
                 {scannedDevices.length > 0 && (

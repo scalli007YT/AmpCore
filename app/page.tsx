@@ -2,7 +2,7 @@
 
 import { useProjectStore } from "@/stores/ProjectStore";
 import { AssignAmpsDialog } from "@/components/assign-amps-dialog";
-import { AmpsPollongWindow } from "@/components/amps-polling-window";
+import { AmpTabs } from "@/components/amp-tabs";
 
 export default function Page() {
   const { selectedProject } = useProjectStore();
@@ -18,7 +18,7 @@ export default function Page() {
         {selectedProject && <AssignAmpsDialog />}
       </div>
 
-      {selectedProject && <AmpsPollongWindow />}
+      {selectedProject && <AmpTabs />}
     </div>
   );
 }

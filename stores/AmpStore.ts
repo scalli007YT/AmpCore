@@ -16,7 +16,7 @@ interface AmpStore {
   addAmp: (amp: Amp) => void;
   updateAmp: (mac: string, updates: Partial<Amp>) => void;
   clearAmps: () => void;
-  getDisplayName: (amp: Amp) => string; // Helper to get name or lastKnownName
+  getDisplayName: (amp: Amp) => string;
 }
 
 export const useAmpStore = create<AmpStore>((set) => ({

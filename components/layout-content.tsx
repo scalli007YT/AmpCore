@@ -3,10 +3,14 @@
 import { ReactNode, useEffect } from "react";
 import { Header } from "@/components/header";
 import { useProjectStore } from "@/stores/ProjectStore";
+import { useAmpPoller } from "@/hooks/useAmpPoller";
 
 export function LayoutContent({ children }: { children: ReactNode }) {
   const { projects, loading, setProjects, setLoading, setSelectedProject } =
     useProjectStore();
+
+  // Start polling globally on layout mount — runs regardless of which page is active
+  useAmpPoller();
 
   useEffect(() => {
     const fetchProjects = async () => {

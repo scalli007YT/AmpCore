@@ -3,17 +3,21 @@ import { FuncCode } from "./amp-device";
 
 const BROADCAST_ADDR = "255.255.255.255";
 const AMP_PORT = 45455;
-const DISCOVERY_TIMEOUT = 1000; // 1 second timeout for broadcast discovery
+const DISCOVERY_TIMEOUT = 200; // 200ms — amps respond in <50ms on LAN/WiFi
 
 /**
  * Broadcast-based discovery for AMP devices (matching original C# app)
- * Sends BASIC_INFO query to 255.255.255.255:45455 and collects responses
- * Much faster and simpler than ARP table lookup
+ * Sends BASIC_INFO query to 255.255.255.255:45455 and collects responses.
+ * Each BASIC_INFO response contains the full device identity — no follow-up
+ * unicast queries needed.
  */
 export async function broadcastDiscovery(): Promise<
-  Array<{ ip: string; mac: string }>
+  Array<{ ip: string; mac: string; name: string; version: string }>
 > {
-  const devices: Map<string, string> = new Map(); // MAC -> IP mapping
+  const devices: Map<
+    string,
+    { ip: string; mac: string; name: string; version: string }
+  > = new Map();
   const PC_RECV_PORT = 45454; // Port to listen for AMP responses
 
   return new Promise((resolve) => {
@@ -24,42 +28,51 @@ export async function broadcastDiscovery(): Promise<
         try {
           socket.close();
         } catch {}
-        // Return collected devices
-        const result = Array.from(devices.entries()).map(([mac, ip]) => ({
-          ip,
-          mac,
-        }));
-        resolve(result);
+        resolve(Array.from(devices.values()));
       }, DISCOVERY_TIMEOUT);
 
       socket.on("message", (msg: Buffer, rinfo) => {
         try {
-          // Parse UDP response frame
-          // Structure: [NetworkData 10] [StructHeader 10] [Body] [Checksum 3]
-          if (msg.length < 20) return;
+          // BASIC_INFO response layout (102 bytes):
+          //   [0–9]   NetworkData header
+          //   [10–19] StructHeader (head=0x55, FC=0)
+          //   [20–43] Version string, null-terminated ASCII (24 bytes)
+          //   [44–51] padding
+          //   [52–75] Device name, null-terminated ASCII (24 bytes)
+          //   [76–83] padding
+          //   [84–89] MAC address (6 bytes)
+          //   [90–98] reserved
+          //   [99–101] checksum
+          if (msg.length < 90) return;
+          if (msg[10] !== 0x55) return;
+          if (msg[11] !== FuncCode.BASIC_INFO) return;
 
-          const head = msg[10]; // StructHeader head
-          if (head !== 0x55) return;
+          // Parse MAC
+          const macBytes = msg.slice(84, 90);
+          if (macBytes.reduce((a, b) => a + b, 0) === 0) return;
+          const mac = Array.from(macBytes)
+            .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
+            .join(":");
 
-          const funcCode = msg[11]; // Function code
-          if (funcCode !== FuncCode.BASIC_INFO) return;
+          if (devices.has(mac)) return; // already seen
 
-          // Extract MAC address (at offset 84, 6 bytes)
-          if (msg.length > 90) {
-            const macBytes = msg.slice(84, 90);
-            const sum = macBytes.reduce((a, b) => a + b, 0);
-            if (sum > 0) {
-              // Valid MAC (not all zeros)
-              const mac = Array.from(macBytes)
-                .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
-                .join(":");
+          // Parse version (offset 20, 24 bytes, null-terminated)
+          const verSlice = msg.slice(20, 44);
+          const verNull = verSlice.indexOf(0);
+          const version = verSlice
+            .slice(0, verNull === -1 ? verSlice.length : verNull)
+            .toString("ascii")
+            .trim();
 
-              // Track first occurrence of this MAC
-              if (!devices.has(mac)) {
-                devices.set(mac, rinfo.address);
-              }
-            }
-          }
+          // Parse name (offset 52, 24 bytes, null-terminated)
+          const nameSlice = msg.slice(52, 76);
+          const nameNull = nameSlice.indexOf(0);
+          const name = nameSlice
+            .slice(0, nameNull === -1 ? nameSlice.length : nameNull)
+            .toString("ascii")
+            .trim();
+
+          devices.set(mac, { ip: rinfo.address, mac, name, version });
         } catch (err) {
           console.error("[DISCOVERY] Error parsing message:", err);
         }
@@ -71,11 +84,7 @@ export async function broadcastDiscovery(): Promise<
         try {
           socket.close();
         } catch {}
-        const result = Array.from(devices.entries()).map(([mac, ip]) => ({
-          ip,
-          mac,
-        }));
-        resolve(result);
+        resolve(Array.from(devices.values()));
       });
 
       // Bind socket to receive port BEFORE sending

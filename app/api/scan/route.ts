@@ -1,5 +1,5 @@
 ﻿import { CvrAmpDevice } from "@/lib/amp-device";
-import { broadcastDiscovery } from "@/lib/arp-scan";
+import { broadcastDiscovery } from "@/lib/amp-scan";
 import { NextResponse } from "next/server";
 
 export async function GET() {

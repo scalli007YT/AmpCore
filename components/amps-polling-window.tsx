@@ -15,7 +15,7 @@ function formatRuntime(minutes: number): string {
   return `${hours}:${mins.toString().padStart(2, "0")} Hrs`;
 }
 
-export function AmpsPollongWindow() {
+export function AmpsPollingWindow() {
   const { amps, getDisplayName } = useAmpStore();
   const { isPolling } = useAmpPoller();
   const { setChannelMute, isLoading } = useAmpControl();

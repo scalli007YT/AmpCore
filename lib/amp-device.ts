@@ -666,61 +666,6 @@ export class CvrAmpDevice {
     return "Unknown";
   }
 
-  async setMute(
-    channel: string,
-    muted: boolean,
-    retries: number = 3,
-  ): Promise<void> {
-    const channelIndex = this.parseChannel(channel);
-
-    const header: StructHeader = {
-      head: 0x55,
-      functionCode: FuncCode.MUTE,
-      statusCode: 1,
-      chx: channelIndex,
-      link: 0,
-      inOutFlag: 0,
-      segment: 0,
-      r1: 0,
-      r2: 0,
-      r3: 1,
-    };
-
-    const body = Buffer.from([muted ? 0x00 : 0x01]);
-
-    let lastError: Error | null = null;
-    for (let attempt = 0; attempt < retries; attempt++) {
-      try {
-        await this.sendRaw(header, body);
-        return; // Success
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        // If this is the last attempt, throw the error
-        if (attempt === retries - 1) {
-          throw lastError;
-        }
-        // Wait before retrying
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    }
-  }
-
-  private parseChannel(ch: string): number {
-    const s = ch.trim().toUpperCase();
-    const mapping: { [key: string]: number } = {
-      A: 0,
-      B: 1,
-      C: 2,
-      D: 3,
-    };
-
-    const index = mapping[s];
-    if (index === undefined) {
-      throw new Error(`Invalid channel '${ch}'. Expected one of: A, B, C, D.`);
-    }
-    return index;
-  }
-
   close(): void {
     if (this.socket) {
       try {

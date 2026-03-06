@@ -33,8 +33,8 @@ export function AmpTabs() {
     ) {
       void fetchPresets(selectedAmp.mac);
     }
-  // fetchPresets identity is stable (useCallback); fetching guards against double-fire
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // fetchPresets identity is stable (useCallback); fetching guards against double-fire
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, selectedMac]);
 
   if (!amps || amps.length === 0) {
@@ -158,7 +158,9 @@ export function AmpTabs() {
                 </div>
 
                 {presetsError && (
-                  <p className="text-xs text-destructive mb-2">{presetsError}</p>
+                  <p className="text-xs text-destructive mb-2">
+                    {presetsError}
+                  </p>
                 )}
 
                 {!fetching && !selectedAmp.presets && !presetsError && (

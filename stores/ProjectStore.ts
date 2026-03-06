@@ -34,14 +34,13 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   setSelectedProject: (project) => {
     set({ selectedProject: project });
-    // Populate AmpStore with assigned amps from the selected project
+    // Seed AmpStore with config-only entries from the selected project
     if (project) {
-      const amps = project.assigned_amps.map((amp) => ({
+      const configs = project.assigned_amps.map((amp) => ({
         mac: amp.mac,
         id: amp.id,
-        reachable: false, // Default to unreachable until polling updates it
       }));
-      useAmpStore.getState().setAmps(amps);
+      useAmpStore.getState().seedAmps(configs);
     } else {
       useAmpStore.getState().clearAmps();
     }
@@ -94,13 +93,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     // Update selected project if it's the one being modified
     if (selectedProject?.id === projectId) {
       set({ selectedProject: updatedProject });
-      // Sync with AmpStore
-      const amps = updatedProject.assigned_amps.map((amp) => ({
+      // Sync with AmpStore — seed new config, preserving live status of existing amps
+      const configs = updatedProject.assigned_amps.map((amp) => ({
         mac: amp.mac,
         id: amp.id,
-        reachable: false,
       }));
-      useAmpStore.getState().setAmps(amps);
+      useAmpStore.getState().seedAmps(configs);
     }
 
     // Persist to API
@@ -134,13 +132,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     // Update selected project if it's the one being modified
     if (selectedProject?.id === projectId) {
       set({ selectedProject: updatedProject });
-      // Sync with AmpStore
-      const amps = updatedProject.assigned_amps.map((amp) => ({
+      // Sync with AmpStore — seed new config (removed amp is excluded)
+      const configs = updatedProject.assigned_amps.map((amp) => ({
         mac: amp.mac,
         id: amp.id,
-        reachable: false,
       }));
-      useAmpStore.getState().setAmps(amps);
+      useAmpStore.getState().seedAmps(configs);
     }
 
     // Persist to API

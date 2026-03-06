@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { CvrAmpDevice } from "./amp-device";
 import { broadcastDiscovery } from "./amp-scan";
@@ -57,6 +57,7 @@ export async function pollAllAmpsOnce(ampsToQuery: Amp[]): Promise<{
 
     succeeded.push({
       ...amp,
+      ip: device.ip,
       name: device.name || amp.name,
       version: device.version || amp.version,
       run_time,

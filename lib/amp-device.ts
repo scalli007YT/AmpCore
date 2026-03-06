@@ -386,6 +386,160 @@ export class CvrAmpDevice {
     return undefined;
   }
 
+  /**
+   * Request the device's preset/profile names list (Save/Recall, FC=59, mode=0).
+   *
+   * Protocol (from C# source analysis):
+   *   - Send: StructHeader { FC=59, statusCode=2 (Request), chx=0, inOutFlag=0 }
+   *           + body: Save_Recall_data { mode=0, ch_x=0, buffers=[0×32] } = 34 zero bytes
+   *   - Response body is N×32 bytes where N ∈ {16, 24, 40}:
+   *       16 slots = 512 bytes  (Save_Recall_NameS)
+   *       24 slots = 768 bytes  (Save_Recall_NameS_24)
+   *       40 slots = 1280 bytes (Save_Recall_NameS_40)
+   *   - Each 32-byte slot = null-terminated ASCII preset name, null-padded.
+   *   - Offset 10 = start of StructHeader in response → body starts at offset 20.
+   *
+   * Returns an array of { slot: number; name: string } for non-empty slots.
+   */
+  async queryPresets(): Promise<{ slot: number; name: string }[]> {
+    const header: StructHeader = {
+      head: 0x55,
+      functionCode: FuncCode.SAVE_RECALL, // 59
+      statusCode: 2, // Request
+      chx: 0,
+      link: 0,
+      inOutFlag: 0,
+      segment: 0,
+      r1: 0,
+      r2: 0,
+      r3: 0,
+    };
+
+    // Save_Recall_data struct: mode(1) + ch_x(1) + buffers(32) = 34 bytes, all zero for mode=0
+    const body = Buffer.alloc(34, 0);
+
+    const sock = await this.ensureSocket();
+    const inner = Buffer.concat([structHeaderToBytes(header), body]);
+    const frame = Buffer.concat([inner, getCheckCode(inner)]);
+    const nd: NetworkData = {
+      dataFlag: NETWORK_DATA_FLAG,
+      packetsCount: 1,
+      packetsLastlen: frame.length,
+      packetsStep: 1,
+      dataState: 0,
+      machineMode: 0,
+    };
+    const packet = Buffer.concat([networkDataToBytes(nd), frame]);
+
+    // Device may send multiple packets — collect for 400ms and pick the largest response
+    return new Promise((resolve) => {
+      const collected: Buffer[] = [];
+
+      const collector = (msg: Buffer, rinfo: dgram.RemoteInfo) => {
+        if (rinfo.address === this.ampIp) {
+          collected.push(Buffer.from(msg));
+        }
+      };
+
+      sock.on("message", collector);
+      sock.send(packet, 0, packet.length, AMP_SEND_PORT, this.ampIp, (err) => {
+        if (err) {
+          sock.removeListener("message", collector);
+          resolve([]);
+        }
+      });
+
+      setTimeout(() => {
+        sock.removeListener("message", collector);
+
+        if (collected.length === 0) {
+          resolve([]);
+          return;
+        }
+
+        // The device may split a large response across multiple UDP fragments.
+        // NetworkData layout (10 bytes):
+        //   [0-3]  dataFlag (LE uint32)
+        //   [4]    packetsCount  — total number of fragments in this response
+        //   [5-6]  packetsLastlen (LE uint16) — byte length of the final fragment's frame
+        //   [7]    packetsStep   — 1-based fragment index (1 = first, packetsCount = last)
+        //   [8]    dataState
+        //   [9]    machineMode
+        //
+        // Fragment reassembly:
+        //   - Fragment 1 carries: StructHeader (10 bytes) + first chunk of body + (no checksum yet)
+        //   - Fragments 2..N-1 carry: raw body continuation
+        //   - Fragment N carries:  last body chunk + 3-byte checksum
+        //   Strip the 10-byte NetworkData from each, then concatenate.
+        //   Then strip the leading StructHeader (10 bytes) from the assembled frame
+        //   and the trailing 3-byte checksum to get the pure body.
+
+        // Filter out the 10-byte ACK packet (no StructHeader, just NetworkData)
+        const fragments = collected.filter((p) => p.length > 10);
+
+        if (fragments.length === 0) {
+          resolve([]);
+          return;
+        }
+
+        // Sort by packetsStep (byte 7 of NetworkData) so we reassemble in order
+        fragments.sort((a, b) => a[7] - b[7]);
+
+        // Concatenate frames (strip the 10-byte NetworkData prefix from each)
+        const assembledFrame = Buffer.concat(fragments.map((p) => p.slice(10)));
+
+        // assembledFrame = StructHeader(10) + body + checksum(3)
+        if (assembledFrame.length < 13) {
+          resolve([]);
+          return;
+        }
+
+        const responseBody = assembledFrame.slice(
+          10,
+          assembledFrame.length - 3,
+        );
+
+        console.log(
+          `[queryPresets] Reassembled ${fragments.length} fragment(s) → frame ${assembledFrame.length} bytes, body ${responseBody.length} bytes`,
+        );
+
+        const SLOT_SIZE = 32;
+
+        if (
+          responseBody.length === 0 ||
+          responseBody.length % SLOT_SIZE !== 0
+        ) {
+          console.warn(
+            `[queryPresets] Body (${responseBody.length} bytes) is not a multiple of 32`,
+          );
+          resolve([]);
+          return;
+        }
+
+        const slotCount = Math.min(responseBody.length / SLOT_SIZE, 40);
+        const presets: { slot: number; name: string }[] = [];
+
+        for (let i = 0; i < slotCount; i++) {
+          const slotBuf = responseBody.slice(
+            i * SLOT_SIZE,
+            (i + 1) * SLOT_SIZE,
+          );
+          const nullIdx = slotBuf.indexOf(0);
+          const name = slotBuf
+            .slice(0, nullIdx === -1 ? SLOT_SIZE : nullIdx)
+            .toString("ascii")
+            .trim();
+          // Skip empty slots and device placeholder "Null" entries
+          if (name.length > 0 && name.toLowerCase() !== "null") {
+            presets.push({ slot: i + 1, name });
+          }
+        }
+
+        resolve(presets);
+      }, 400);
+    });
+  }
+
   async queryHeartbeat(): Promise<Buffer> {
     /**
      * Lightweight HEARTBEAT query (FC=6)

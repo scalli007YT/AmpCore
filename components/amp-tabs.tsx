@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAmpStore } from "@/stores/AmpStore";
+import { useAmpPresets } from "@/hooks/useAmpPresets";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   LayoutDashboardIcon,
@@ -11,16 +12,30 @@ import {
 
 type AmpSection = "main" | "matrix" | "preferences";
 
-interface AmpTabsProps {
-  children?: React.ReactNode;
-}
-
-export function AmpTabs({ children }: AmpTabsProps) {
+export function AmpTabs() {
   const { amps, getDisplayName } = useAmpStore();
+  const { fetchPresets, fetching, error: presetsError } = useAmpPresets();
   const [selectedMac, setSelectedMac] = useState<string | null>(
     amps.length > 0 ? amps[0].mac : null,
   );
   const [activeSection, setActiveSection] = useState<AmpSection>("main");
+
+  const selectedAmp = amps.find((a) => a.mac === selectedMac);
+
+  // Auto-fetch presets when the preferences tab is opened for a reachable amp
+  // that doesn't have presets loaded yet.
+  useEffect(() => {
+    if (
+      activeSection === "preferences" &&
+      selectedAmp?.reachable &&
+      selectedAmp.presets === undefined &&
+      !fetching
+    ) {
+      void fetchPresets(selectedAmp.mac);
+    }
+  // fetchPresets identity is stable (useCallback); fetching guards against double-fire
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, selectedMac]);
 
   if (!amps || amps.length === 0) {
     return (
@@ -29,8 +44,6 @@ export function AmpTabs({ children }: AmpTabsProps) {
       </div>
     );
   }
-
-  const selectedAmp = amps.find((a) => a.mac === selectedMac);
 
   return (
     <div className="flex gap-4 w-full">
@@ -94,7 +107,8 @@ export function AmpTabs({ children }: AmpTabsProps) {
             </TabsContent>
 
             <TabsContent value="preferences" className="p-4 mt-0">
-              <div className="flex items-center gap-2 mb-3">
+              {/* Device identity */}
+              <div className="flex items-center gap-2 mb-4">
                 <div
                   className={`w-3 h-3 rounded-full ${
                     selectedAmp.reachable ? "bg-green-500" : "bg-red-500"
@@ -104,30 +118,79 @@ export function AmpTabs({ children }: AmpTabsProps) {
                   {getDisplayName(selectedAmp)}
                 </h2>
               </div>
-              <dl className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+              <dl className="grid grid-cols-2 gap-2 text-xs text-muted-foreground mb-6">
                 <div>
                   <dt className="font-semibold">MAC:</dt>
                   <dd className="font-mono">{selectedAmp.mac}</dd>
                 </div>
                 <div>
                   <dt className="font-semibold">Version:</dt>
-                  <dd>{selectedAmp.version || "—"}</dd>
+                  <dd>{selectedAmp.version || "---"}</dd>
                 </div>
                 <div>
                   <dt className="font-semibold">ID:</dt>
-                  <dd>{selectedAmp.id || "—"}</dd>
+                  <dd>{selectedAmp.id || "---"}</dd>
                 </div>
                 <div>
                   <dt className="font-semibold">Runtime:</dt>
                   <dd>
                     {selectedAmp.run_time !== undefined
-                      ? `${Math.floor(selectedAmp.run_time / 60)}h ${
-                          selectedAmp.run_time % 60
-                        }min`
-                      : "—"}
+                      ? `${Math.floor(selectedAmp.run_time / 60)}h ${selectedAmp.run_time % 60}min`
+                      : "---"}
                   </dd>
                 </div>
               </dl>
+
+              {/* Presets section */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="text-sm font-semibold">Presets</h3>
+                  {fetching && (
+                    <span className="text-xs text-muted-foreground animate-pulse">
+                      Loading...
+                    </span>
+                  )}
+                  {!fetching && selectedAmp.presets !== undefined && (
+                    <span className="text-xs text-muted-foreground">
+                      {selectedAmp.presets.length} used
+                    </span>
+                  )}
+                </div>
+
+                {presetsError && (
+                  <p className="text-xs text-destructive mb-2">{presetsError}</p>
+                )}
+
+                {!fetching && !selectedAmp.presets && !presetsError && (
+                  <p className="text-xs text-muted-foreground">
+                    {selectedAmp.reachable
+                      ? "Loading presets..."
+                      : "Amp is unreachable — presets unavailable."}
+                  </p>
+                )}
+
+                {selectedAmp.presets?.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No presets saved on this device.
+                  </p>
+                )}
+
+                {selectedAmp.presets && selectedAmp.presets.length > 0 && (
+                  <ul className="space-y-1">
+                    {selectedAmp.presets.map((preset) => (
+                      <li
+                        key={preset.slot}
+                        className="flex items-center gap-3 rounded-md border px-3 py-1.5 text-sm"
+                      >
+                        <span className="w-6 text-center text-xs font-mono text-muted-foreground">
+                          {preset.slot}
+                        </span>
+                        <span className="font-medium">{preset.name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </TabsContent>
           </Tabs>
         </div>

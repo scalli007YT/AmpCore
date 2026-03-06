@@ -29,26 +29,32 @@ export function useAmpPoller(): UseAmpPollerReturn {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const interruptTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Stable ref — always holds the latest amps without being an effect dep.
+  // Assigned synchronously on every render so pollFunction always sees fresh data.
+  const ampsRef = useRef(ampStore.amps);
+  ampsRef.current = ampStore.amps;
+
   useEffect(() => {
-    // Don't start polling if no amps
-    if (!ampStore.amps || ampStore.amps.length === 0) {
-      pollingStore.setIsPolling(false);
-      return;
-    }
-
-    // Start polling
-    pollingStore.setIsPolling(true);
-
     const pollFunction = async () => {
+      const currentAmps = ampsRef.current;
+
+      // Don't poll if no amps
+      if (!currentAmps || currentAmps.length === 0) {
+        usePollingStore.getState().setIsPolling(false);
+        return;
+      }
+
+      usePollingStore.getState().setIsPolling(true);
+
       try {
         // Call server action to poll amps
-        const { succeeded, failed } = await pollAllAmpsOnce(ampStore.amps);
+        const { succeeded, failed } = await pollAllAmpsOnce(currentAmps);
 
         let reachabilityChanged = false;
 
         // Update AmpStore with succeeded results only if values changed
         succeeded.forEach((amp) => {
-          const existing = ampStore.amps.find((a) => a.mac === amp.mac);
+          const existing = ampsRef.current.find((a) => a.mac === amp.mac);
 
           // Check if reachability changed
           const wasUnreachable = existing?.reachable === false;
@@ -62,14 +68,14 @@ export function useAmpPoller(): UseAmpPollerReturn {
             existing.run_time !== amp.run_time ||
             existing.reachable !== amp.reachable
           ) {
-            ampStore.updateAmp(amp.mac, {
+            useAmpStore.getState().updateAmpStatus(amp.mac, {
+              ip: amp.ip,
               name: amp.name,
               version: amp.version,
-              id: amp.id,
               run_time: amp.run_time,
               reachable: true,
             });
-            pollingStore.setLastUpdated(amp.mac, Date.now());
+            usePollingStore.getState().setLastUpdated(amp.mac, Date.now());
 
             // Notify if reachability changed
             if (wasUnreachable && isNowReachable) {
@@ -77,37 +83,37 @@ export function useAmpPoller(): UseAmpPollerReturn {
               reachabilityChanged = true;
             }
           }
-          pollingStore.setError(amp.mac, null);
+          usePollingStore.getState().setError(amp.mac, null);
         });
 
         // Mark failed amps as unreachable only if not already marked
         failed.forEach((mac) => {
-          const existing = ampStore.amps.find((a) => a.mac === mac);
+          const existing = ampsRef.current.find((a) => a.mac === mac);
           if (existing && existing.reachable !== false) {
-            ampStore.updateAmp(mac, { reachable: false });
+            useAmpStore.getState().updateAmpStatus(mac, { reachable: false });
 
             // Notify that amp became unreachable
             toast.error(`${existing.name || mac} is now unreachable`);
             reachabilityChanged = true;
           }
-          pollingStore.setError(mac, "Failed to poll");
+          usePollingStore.getState().setError(mac, "Failed to poll");
         });
 
         // Trigger interrupt if reachability changed (quick re-poll in 50ms)
         if (reachabilityChanged) {
-          pollingStore.triggerInterrupt();
+          usePollingStore.getState().triggerInterrupt();
           if (interruptTimeoutRef.current) {
             clearTimeout(interruptTimeoutRef.current);
           }
           interruptTimeoutRef.current = setTimeout(() => {
-            pollFunction();
-            pollingStore.clearInterrupt();
+            void pollFunction();
+            usePollingStore.getState().clearInterrupt();
           }, 50);
         }
-      } catch (error) {
+      } catch {
         // Silent fail - don't log errors to console
-        ampStore.amps.forEach((amp) => {
-          pollingStore.setError(amp.mac, "Polling failed");
+        ampsRef.current.forEach((amp) => {
+          usePollingStore.getState().setError(amp.mac, "Polling failed");
         });
       }
     };
@@ -121,7 +127,7 @@ export function useAmpPoller(): UseAmpPollerReturn {
       pollingStore.updateInterval,
     );
 
-    // Cleanup on unmount or when deps change
+    // Cleanup on unmount or when interval duration changes
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -131,9 +137,10 @@ export function useAmpPoller(): UseAmpPollerReturn {
         clearTimeout(interruptTimeoutRef.current);
         interruptTimeoutRef.current = null;
       }
-      pollingStore.setIsPolling(false);
+      usePollingStore.getState().setIsPolling(false);
     };
-  }, [ampStore.amps, pollingStore.updateInterval]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pollingStore.updateInterval]);
 
   return {
     isPolling: pollingStore.isPolling,

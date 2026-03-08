@@ -10,6 +10,8 @@ export interface Project {
   assigned_amps: Array<{
     id: string;
     mac: string;
+    /** Nominal load impedance in Ω (default: 8). */
+    loadOhm?: number;
   }>;
 }
 
@@ -39,6 +41,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const configs = project.assigned_amps.map((amp) => ({
         mac: amp.mac,
         id: amp.id,
+        loadOhm: amp.loadOhm,
       }));
       useAmpStore.getState().seedAmps(configs);
     } else {
@@ -97,6 +100,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const configs = updatedProject.assigned_amps.map((amp) => ({
         mac: amp.mac,
         id: amp.id,
+        loadOhm: amp.loadOhm,
       }));
       useAmpStore.getState().seedAmps(configs);
     }
@@ -136,6 +140,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const configs = updatedProject.assigned_amps.map((amp) => ({
         mac: amp.mac,
         id: amp.id,
+        loadOhm: amp.loadOhm,
       }));
       useAmpStore.getState().seedAmps(configs);
     }

@@ -4,8 +4,10 @@ import { useState, useEffect } from "react";
 import { useAmpStore } from "@/stores/AmpStore";
 import type { HeartbeatData, ChannelParams } from "@/stores/AmpStore";
 import { useAmpPresets } from "@/hooks/useAmpPresets";
+import { useAmpActions } from "@/hooks/useAmpActions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useVuMeters } from "@/hooks/useVuMeters";
+import { thresholdVToDbu, formatRuntime, formatDbfs } from "@/lib/generic";
 import {
   LayoutDashboardIcon,
   GridIcon,
@@ -166,6 +168,7 @@ function MeterBar({
   clip,
   width = 24,
   height = 220,
+  thresholdLines,
 }: {
   value: number | null;
   dbTop: number;
@@ -173,11 +176,15 @@ function MeterBar({
   clip?: boolean;
   width?: number;
   height?: number;
+  /** Horizontal threshold lines rendered over the bar fill. */
+  thresholdLines?: { dbu: number; color: string; label?: string }[];
 }) {
   const fill =
     value === null || value < dbBottom
       ? 0
       : Math.min(1, (value - dbBottom) / (dbTop - dbBottom));
+
+  const dbRange = dbTop - dbBottom;
 
   return (
     <div
@@ -188,6 +195,24 @@ function MeterBar({
         className={`absolute bottom-0 left-0 right-0 ${clip ? "bg-red-500" : "bg-green-500"}`}
         style={{ height: `${fill * 100}%` }}
       />
+      {thresholdLines?.map(({ dbu, color, label }, idx) => {
+        const pct = Math.min(1, Math.max(0, (dbu - dbBottom) / dbRange));
+        // Skip lines that would be outside the visible range
+        if (dbu < dbBottom || dbu > dbTop) return null;
+        return (
+          <div
+            key={idx}
+            title={label}
+            className="absolute left-0 right-0 pointer-events-none"
+            style={{
+              bottom: `calc(${pct * 100}% - 1px)`,
+              height: 2,
+              backgroundColor: color,
+              opacity: 0.85,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -232,11 +257,10 @@ function HeartbeatDashboard({
 }) {
   const f1 = (n: number) => n.toFixed(1);
   const f0 = (n: number) => n.toFixed(0);
-  const fDbfs = (v: number | null) =>
-    v === null || v <= -100 ? "---" : v.toFixed(0);
 
   // 60fps animated VU values — falls back to hb values until first rAF tick
   const vu = useVuMeters(mac);
+  const { muteIn, muteOut } = useAmpActions();
   const vuOutputDbu = vu?.outputDbu ?? hb.outputDbu.map(() => null);
   const vuInputDbfs = vu?.inputDbfs ?? hb.inputDbfs;
 
@@ -319,7 +343,7 @@ function HeartbeatDashboard({
                       }`}
                     >
                       <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                        {fDbfs(dbfsVal)}
+                        {formatDbfs(dbfsVal)}
                       </span>
                       <span className="text-[9px] text-muted-foreground mt-0.5">
                         dBFS
@@ -346,18 +370,26 @@ function HeartbeatDashboard({
                     {/* Mute In */}
                     {(() => {
                       const muted = channelParams?.channels[i]?.muteIn;
+                      const canClick = muted !== undefined;
                       return (
-                        <div
+                        <button
+                          disabled={!canClick}
+                          onClick={() =>
+                            canClick &&
+                            void muteIn(mac, i as 0 | 1 | 2 | 3, !muted)
+                          }
                           className={`rounded border px-1.5 py-1 text-center text-[11px] font-semibold w-full transition-colors ${
+                            canClick ? "cursor-pointer" : "cursor-default"
+                          } ${
                             muted === true
-                              ? "border-orange-500/60 bg-orange-500/20 text-orange-400"
+                              ? "border-orange-500/60 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30"
                               : muted === false
-                                ? "border-border/40 bg-muted/20 text-muted-foreground/50"
+                                ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-orange-500/40 hover:text-orange-400/70"
                                 : "border-border/30 bg-muted/10 text-muted-foreground/30"
                           }`}
                         >
                           {muted === true ? "MUTED" : "Mute In"}
-                        </div>
+                        </button>
                       );
                     })()}
                   </div>
@@ -406,6 +438,38 @@ function HeartbeatDashboard({
                 ? null
                 : Math.min(dbu, OUT_DB_TOP);
 
+            // Threshold lines — RMS (yellow) and Peak (orange)
+            const chParam = channelParams?.channels[i];
+            const thresholdLines: {
+              dbu: number;
+              color: string;
+              label: string;
+            }[] = [];
+            if (chParam?.rmsLimiter.enabled) {
+              const d = thresholdVToDbu(
+                chParam.rmsLimiter.thresholdVrms,
+                ratedRmsV,
+              );
+              if (d !== null)
+                thresholdLines.push({
+                  dbu: d,
+                  color: "#facc15",
+                  label: `RMS ${d.toFixed(1)} dBu`,
+                });
+            }
+            if (chParam?.peakLimiter.enabled) {
+              const d = thresholdVToDbu(
+                chParam.peakLimiter.thresholdVp / Math.SQRT2,
+                ratedRmsV,
+              );
+              if (d !== null)
+                thresholdLines.push({
+                  dbu: d,
+                  color: "#f97316",
+                  label: `Peak ${d.toFixed(1)} dBu`,
+                });
+            }
+
             return (
               <div
                 key={i}
@@ -431,6 +495,7 @@ function HeartbeatDashboard({
                   clip={isClip}
                   width={BAR_W}
                   height={METER_H}
+                  thresholdLines={thresholdLines}
                 />
                 {/* Clip indicator */}
                 <div
@@ -491,18 +556,26 @@ function HeartbeatDashboard({
                   {/* Mute Out */}
                   {(() => {
                     const muted = channelParams?.channels[i]?.muteOut;
+                    const canClick = muted !== undefined;
                     return (
-                      <div
+                      <button
+                        disabled={!canClick}
+                        onClick={() =>
+                          canClick &&
+                          void muteOut(mac, i as 0 | 1 | 2 | 3, !muted)
+                        }
                         className={`rounded border px-1.5 py-1 text-center text-[11px] font-semibold w-full transition-colors ${
+                          canClick ? "cursor-pointer" : "cursor-default"
+                        } ${
                           muted === true
-                            ? "border-orange-500/60 bg-orange-500/20 text-orange-400"
+                            ? "border-orange-500/60 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30"
                             : muted === false
-                              ? "border-border/40 bg-muted/20 text-muted-foreground/50"
+                              ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-orange-500/40 hover:text-orange-400/70"
                               : "border-border/30 bg-muted/10 text-muted-foreground/30"
                         }`}
                       >
                         {muted === true ? "MUTED" : "Mute Out"}
-                      </div>
+                      </button>
                     );
                   })()}
                   {/* Noise Gate */}
@@ -593,7 +666,7 @@ function LimiterBlock({
       <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-3">
         {channels.map((ch, i) => {
           const isRms = label.startsWith("RMS");
           const lim = isRms ? ch.rmsLimiter : ch.peakLimiter;
@@ -603,52 +676,65 @@ function LimiterBlock({
           return (
             <div
               key={i}
-              className={`flex flex-col rounded-lg border px-3 py-2 gap-2 transition-colors ${
+              className={`flex items-center gap-4 rounded-lg border px-3 py-2 transition-colors ${
                 enabled
                   ? "border-border bg-card"
                   : "border-border/30 bg-muted/20 opacity-50"
               }`}
-              style={{ minWidth: 108 }}
             >
-              {/* Header row: channel label + bypass pill + GR bar */}
-              <div className="flex items-center gap-2 justify-between">
-                <span className="text-[11px] font-bold text-foreground">
+              {/* Channel label + ON/BYP pill + GR bar */}
+              <div className="flex items-center gap-2 w-24 flex-shrink-0">
+                <span className="text-[13px] font-bold text-foreground w-10">
                   Out{CH_LABELS[i]}
                 </span>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={`text-[9px] font-semibold rounded px-1.5 py-0.5 ${
-                      enabled
-                        ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                        : "bg-muted/40 text-muted-foreground border border-border/40"
-                    }`}
-                  >
-                    {enabled ? "ON" : "BYP"}
+                <span
+                  className={`text-[9px] font-semibold rounded px-1.5 py-0.5 ${
+                    enabled
+                      ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                      : "bg-muted/40 text-muted-foreground border border-border/40"
+                  }`}
+                >
+                  {enabled ? "ON" : "BYP"}
+                </span>
+                <LimiterGrBar gainReduction={gr} height={28} />
+              </div>
+
+              <div className="w-px self-stretch bg-border/40 flex-shrink-0" />
+
+              {/* Threshold + Power */}
+              <div className="flex gap-4 flex-shrink-0">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
+                    Threshold
                   </span>
-                  <LimiterGrBar gainReduction={gr} height={16} />
+                  <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                    {"thresholdVrms" in lim
+                      ? `${lim.thresholdVrms.toFixed(2)} V`
+                      : `${(lim as typeof ch.peakLimiter).thresholdVp.toFixed(2)} V`}
+                  </span>
+                  <span className="text-[9px] text-muted-foreground">
+                    {"thresholdVrms" in lim ? "Vrms" : "Vpeak"}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
+                    {"thresholdVrms" in lim ? "Prms" : "Ppeak"}
+                  </span>
+                  <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                    {"thresholdVrms" in lim
+                      ? `${ch.rmsLimiter.prmsW} W`
+                      : `${ch.peakLimiter.ppeakW} W`}
+                  </span>
                 </div>
               </div>
 
-              {/* Threshold */}
-              <div className="flex flex-col items-start gap-0.5">
-                <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
-                  Threshold
-                </span>
-                <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                  {"thresholdVrms" in lim
-                    ? `${lim.thresholdVrms.toFixed(2)} V`
-                    : `${(lim as typeof ch.peakLimiter).thresholdVp.toFixed(2)} V`}
-                </span>
-                <span className="text-[9px] text-muted-foreground">
-                  {"thresholdVrms" in lim ? "Vrms" : "Vpeak"}
-                </span>
-              </div>
+              <div className="w-px self-stretch bg-border/40 flex-shrink-0" />
 
               {/* Timing fields */}
-              <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+              <div className="flex gap-4">
                 {"attackMs" in lim ? (
                   <>
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-0.5">
                       <span className="text-[9px] text-muted-foreground">
                         Atk
                       </span>
@@ -656,7 +742,7 @@ function LimiterBlock({
                         {lim.attackMs} ms
                       </span>
                     </div>
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-0.5">
                       <span className="text-[9px] text-muted-foreground">
                         Rel
                       </span>
@@ -667,7 +753,7 @@ function LimiterBlock({
                   </>
                 ) : (
                   <>
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-0.5">
                       <span className="text-[9px] text-muted-foreground">
                         Hold
                       </span>
@@ -675,7 +761,7 @@ function LimiterBlock({
                         {(lim as typeof ch.peakLimiter).holdMs} ms
                       </span>
                     </div>
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-0.5">
                       <span className="text-[9px] text-muted-foreground">
                         Rel
                       </span>
@@ -870,22 +956,23 @@ export function AmpTabs() {
                   Waiting for data…
                 </p>
               ) : (
-                <div className="flex flex-col gap-6">
+                <div className="flex gap-6 items-start">
                   {/* Matrix */}
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 flex-shrink-0">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Crosspoint Matrix
                     </span>
                     <MatrixGrid channels={selectedAmp.channelParams.channels} />
                   </div>
 
-                  {/* Limiters */}
-                  <div className="border-t border-border/40 pt-6 flex flex-col gap-5">
+                  {/* Limiters — side by side */}
+                  <div className="flex gap-6 border-l border-border/40 pl-6">
                     <LimiterBlock
                       label="RMS Limiter"
                       channels={selectedAmp.channelParams.channels}
                       limiters={selectedAmp.heartbeat?.limiters ?? [0, 0, 0, 0]}
                     />
+                    <div className="border-l border-border/40" />
                     <LimiterBlock
                       label="Peak Limiter"
                       channels={selectedAmp.channelParams.channels}
@@ -925,7 +1012,7 @@ export function AmpTabs() {
                   <dt className="font-semibold">Runtime:</dt>
                   <dd>
                     {selectedAmp.run_time !== undefined
-                      ? `${Math.floor(selectedAmp.run_time / 60)}h ${selectedAmp.run_time % 60}min`
+                      ? formatRuntime(selectedAmp.run_time)
                       : "---"}
                   </dd>
                 </div>

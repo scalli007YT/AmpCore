@@ -66,7 +66,7 @@ export interface ChannelData {
   outputName: string; // e.g., "OutA" – "OutD"
   gainIn: number; // dB  (int8)
   volumeIn: number; // dB  (float32)
-  muteIn: boolean; // true = muted  (uint8 @ 261)
+  muteIn: boolean; // true = muted  (wire: 0=muted, 1=unmuted — inverted)
   delayIn: number; // ms  (float32 @ 86)
   trimOut: number; // dB  (float32 @ 80) — output trim
   muteOut: boolean; // true = muted  (wire: 0=muted, 1=unmuted @ 84)
@@ -118,7 +118,6 @@ const BYTES_PER_CHANNEL = 515;
  */
 const CHANNEL_FIELDS = [
   { field: "gainIn", type: "int8", offset: 117 },
-  { field: "muteIn", type: "uint8", offset: 261 },
   { field: "delayIn", type: "float32", offset: 86 },
   { field: "trimOut", type: "float32", offset: 80 },
   { field: "muteOut", type: "uint8", offset: 84 }, // 0 = muted, 1 = unmuted
@@ -129,6 +128,27 @@ const CHANNEL_FIELDS = [
   { field: "inputName", type: "ascii", offset: 413, length: 16 },
   { field: "outputName", type: "ascii", offset: 430, length: 16 },
 ] as const;
+
+/**
+ * muteIn lives in the 172-byte trailer that follows the 4 × 515-byte channel bodies.
+ * Empirically confirmed by diffing live snapshots with known mute states.
+ *
+ * Trailer byte layout (relative to trailer start = 4 × 515 = 2060):
+ *   rel 132 = ch0 (A)
+ *   rel 133 = ch1 (B)
+ *   rel 134 = ch2 (C)
+ *   rel 135 = ch3 (D)
+ *
+ * Wire encoding: 0 = muted, 1 = unmuted (active-low / inverted).
+ */
+const TRAILER_MUTE_IN_OFFSET = 4 * BYTES_PER_CHANNEL + 132; // abs 2192
+// Maps channel index → absolute byte offset of its muteIn flag in the trailer
+const MUTE_IN_ABS: Record<number, number> = {
+  0: TRAILER_MUTE_IN_OFFSET + 0, // ch0 (A) at rel 132
+  1: TRAILER_MUTE_IN_OFFSET + 1, // ch1 (B) at rel 133
+  2: TRAILER_MUTE_IN_OFFSET + 2, // ch2 (C) at rel 134
+  3: TRAILER_MUTE_IN_OFFSET + 3, // ch3 (D) at rel 135
+};
 
 // ---------------------------------------------------------------------------
 // Parser
@@ -151,10 +171,16 @@ export function parseFC27Channels(hexData: string): ChannelData[] {
     const channels: ChannelData[] = [];
 
     for (let ch = 0; ch < 4; ch++) {
+      // Read muteIn from the trailer (not from the per-channel body)
+      const muteInAbs = MUTE_IN_ABS[ch];
+      const muteIn =
+        muteInAbs < buffer.length ? buffer.readUInt8(muteInAbs) === 0 : true;
+
       const channelData = parseChannelFromBuffer(
         ch,
         buffer,
         ch * BYTES_PER_CHANNEL,
+        muteIn,
       );
       if (channelData) channels.push(channelData);
     }
@@ -170,6 +196,7 @@ function parseChannelFromBuffer(
   channelNum: number,
   buffer: Buffer,
   base: number,
+  muteIn: boolean,
 ): ChannelData | null {
   try {
     // Accumulate raw values by reading each field definition
@@ -262,7 +289,7 @@ function parseChannelFromBuffer(
       outputName: raw.outputName as string,
       gainIn: raw.gainIn as number,
       volumeIn: raw.volumeIn as number,
-      muteIn: (raw.muteIn as number) !== 0,
+      muteIn,
       delayIn: round2(raw.delayIn as number),
       trimOut: raw.trimOut as number,
       muteOut: (raw.muteOut as number) === 0,

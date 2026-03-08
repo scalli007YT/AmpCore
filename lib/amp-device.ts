@@ -6,7 +6,11 @@ const AMP_SEND_PORT = 45455;
 // so it never conflicts with the AmpController's persistent bind on 45454.
 // Amps reply to the source port of the incoming request, so this works fine.
 const PC_RECV_PORT = 0;
-const NETWORK_DATA_FLAG = 0x0194d903; // protocol identifier (bytes: 03 d9 94 01)
+// Two distinct flags observed in real captures:
+//   READ  packets (queries/heartbeat): 0x0194d903  (bytes: 03 d9 94 01)
+//   WRITE packets (control commands):  0x0000d903  (bytes: 03 d9 00 00)
+const NETWORK_DATA_FLAG = 0x0194d903; // for queries / heartbeat
+const NETWORK_DATA_FLAG_WRITE = 0x0000d903; // for control commands (statusCode=1)
 
 export interface NetworkData {
   dataFlag: number;
@@ -22,12 +26,18 @@ export interface StructHeader {
   functionCode: number;
   statusCode: number;
   chx: number;
-  link: number;
-  inOutFlag: number;
+  /** Segment byte (offset 4 in header) */
   segment: number;
-  r1: number;
-  r2: number;
-  r3: number;
+  /** Link number as 32-bit LE integer (offsets 5-8 in header) */
+  link: number;
+  /**
+   * in_out_flag (offset 9 in header) — from C# enum:
+   *   0 = input
+   *   1 = Output
+   *   2 = factory_mode
+   *   3 = user_mode
+   */
+  inOutFlag: number;
 }
 
 export interface AmpDeviceInfo {
@@ -105,12 +115,9 @@ function structHeaderToBytes(sh: StructHeader): Buffer {
   buf[1] = sh.functionCode;
   buf[2] = sh.statusCode;
   buf[3] = sh.chx;
-  buf[4] = sh.link;
-  buf[5] = sh.inOutFlag;
-  buf[6] = sh.segment;
-  buf[7] = sh.r1;
-  buf[8] = sh.r2;
-  buf[9] = sh.r3;
+  buf[4] = sh.segment; // Segment (1 byte)
+  buf.writeInt32LE(sh.link, 5); // Link (4-byte LE int, offsets 5-8)
+  buf[9] = sh.inOutFlag; // in_out_flag (0=input, 1=Output)
   return buf;
 }
 
@@ -291,9 +298,6 @@ export class CvrAmpDevice {
       link: 0,
       inOutFlag: 0,
       segment: 0,
-      r1: 0,
-      r2: 0,
-      r3: 0,
     };
 
     const sock = await this.ensureSocket();
@@ -356,9 +360,6 @@ export class CvrAmpDevice {
       link: 0,
       inOutFlag: 0,
       segment: 0,
-      r1: 0,
-      r2: 0,
-      r3: 0,
     };
 
     // Run sequentially — both share the same socket, parallel use causes interference
@@ -412,9 +413,6 @@ export class CvrAmpDevice {
       link: 0,
       inOutFlag: 0,
       segment: 0,
-      r1: 0,
-      r2: 0,
-      r3: 0,
     };
 
     // Save_Recall_data struct: mode(1) + ch_x(1) + buffers(32) = 34 bytes, all zero for mode=0
@@ -553,12 +551,89 @@ export class CvrAmpDevice {
       link: 0,
       inOutFlag: 0,
       segment: 0,
-      r1: 0,
-      r2: 0,
-      r3: 0,
     };
 
     return this.sendRaw(header);
+  }
+
+  /**
+   * Send a fire-and-forget control command via an ephemeral UDP socket.
+   *
+   * Wire format derived from real packet captures (Python reverse-engineering)
+   * and confirmed by reading the original C# source:
+   *   - NetworkData flag: 0x0000d903  (write packets, NOT the 0x0194d903 read flag)
+   *   - statusCode: 1  (all write/control commands)
+   *   - inOutFlag (byte 9 of StructHeader): 0=input, 1=Output  (C# enum in_out_flag)
+   *
+   * An ephemeral socket (port 0) is used so the command originates from a
+   * different source port than the persistent monitor socket — matching the
+   * CVR Windows software behaviour.
+   *
+   * The amp ACKs with a short packet; we don't need it, so the socket is
+   * closed after a brief wait to flush the send buffer.
+   *
+   * @param fc         Function code (e.g. FuncCode.MUTE = 10)
+   * @param chx        Channel index 0–3
+   * @param body       Command payload bytes
+   * @param inOutFlag  StructHeader byte 9 (in_out_flag): 0=input, 1=Output (default 0)
+   * @param link       StructHeader bytes 5-8 (Link int32): link group (default 0)
+   * @param segment    StructHeader byte 4 (Segment): segment selector (default 0)
+   */
+  async sendControl(
+    fc: number,
+    chx: number,
+    body: Buffer,
+    inOutFlag = 0,
+    link = 0,
+    segment = 0,
+  ): Promise<void> {
+    const header: StructHeader = {
+      head: 0x55,
+      functionCode: fc,
+      statusCode: 1, // Write/control — confirmed from captured packets
+      chx,
+      link,
+      inOutFlag,
+      segment,
+    };
+
+    const sock = dgram.createSocket("udp4");
+    await new Promise<void>((resolve, reject) => {
+      sock.bind({ port: 0, address: "0.0.0.0" }, (err?: Error) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    const inner = Buffer.concat([structHeaderToBytes(header), body]);
+    const checkCode = getCheckCode(inner);
+    const frame = Buffer.concat([inner, checkCode]);
+
+    const nd: NetworkData = {
+      dataFlag: NETWORK_DATA_FLAG_WRITE, // 0x0000d903 — write-command flag
+      packetsCount: 1,
+      packetsLastlen: frame.length,
+      packetsStep: 1,
+      dataState: 0,
+      machineMode: 0,
+    };
+
+    const packet = Buffer.concat([networkDataToBytes(nd), frame]);
+
+    await new Promise<void>((resolve, reject) => {
+      sock.send(packet, 0, packet.length, AMP_SEND_PORT, this.ampIp, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    // Give the OS ~10 ms to flush — matches Python's time.sleep(0.01) throttle
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    try {
+      sock.close();
+    } catch {
+      // ignore close errors
+    }
   }
 
   private parseDeviceName(response: Buffer): string {

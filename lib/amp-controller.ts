@@ -274,6 +274,50 @@ class AmpController extends EventEmitter {
     this.isRefresh = true;
   }
 
+  /**
+   * Fire-and-forget command via the shared persistent socket.
+   *
+   * Uses the same socket that receives heartbeats — no ephemeral port needed.
+   * The amp will ACK back (data_state=1) which we already ignore in _onPacket.
+   *
+   * @param ip         Target amp IP
+   * @param fc         Function code (e.g. FuncCode.MUTE = 10)
+   * @param chx        Channel index 0–3
+   * @param body       Command payload bytes
+   * @param inOutFlag  StructHeader byte 5: 0=input, 1=output (default 0)
+   */
+  sendCommand(
+    ip: string,
+    fc: number,
+    chx: number,
+    body: Buffer,
+    inOutFlag = 0,
+  ): void {
+    if (!this.socket) {
+      console.warn("[AmpController] sendCommand: socket not ready");
+      return;
+    }
+    try {
+      const h = Buffer.alloc(10);
+      h[0] = 0x55;
+      h[1] = fc;
+      h[2] = 3; // statusCode=3 (write/response)
+      h[3] = chx;
+      h[4] = 0; // link
+      h[5] = inOutFlag;
+      h[6] = 0; // segment
+      h[7] = 0;
+      h[8] = 0;
+      h[9] = 0;
+      const inner = Buffer.concat([h, body]);
+      const frame = Buffer.concat([inner, calcCheckCode(inner)]);
+      const packet = Buffer.concat([buildNetworkData(frame.length), frame]);
+      this.socket.send(packet, 0, packet.length, AMP_PORT, ip);
+    } catch (err) {
+      console.error("[AmpController] sendCommand error:", err);
+    }
+  }
+
   /** Returns the last known IP for a given MAC, or null if not yet discovered. */
   getIpForMac(mac: string): string | null {
     for (const [m, entry] of this.knownMacs) {

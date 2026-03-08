@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { limiterPowerFromLoad } from "@/lib/generic";
 
 // ---------------------------------------------------------------------------
 // Types — three clearly separated concerns
@@ -11,6 +12,8 @@ export interface AmpConfig {
   id: string;
   /** User-given name stored in the project (optional). */
   customName?: string;
+  /** Nominal load impedance in Ω — used to calculate limiter power (default: 8). */
+  loadOhm?: number;
 }
 
 /**
@@ -91,12 +94,16 @@ export interface ChannelParam {
     thresholdVrms: number;
     attackMs: number;
     releaseMultiplier: number; // n × Attack
+    /** Power at threshold into the configured load (W). */
+    prmsW: number;
   };
   peakLimiter: {
     enabled: boolean;
     thresholdVp: number;
     holdMs: number;
     releaseMs: number;
+    /** Peak power at threshold into the configured load (W). */
+    ppeakW: number;
   };
   matrix: MatrixSource[];
   eqIn: EqBand[]; // 10 bands: HP + EQ1–8 + LP
@@ -242,28 +249,36 @@ export const useAmpStore = create<AmpStore>((set) => ({
     set((state) => ({
       amps: state.amps.map((amp) => {
         if (amp.mac !== mac) return amp;
+        const loadOhm = amp.loadOhm ?? 8;
         return {
           ...amp,
           channelParams: {
-            channels: channels.map((ch) => ({
-              channel: ch.channel,
-              inputName: ch.inputName,
-              outputName: ch.outputName,
-              gainIn: ch.gainIn,
-              volumeIn: ch.volumeIn,
-              muteIn: ch.muteIn,
-              delayIn: ch.delayIn,
-              trimOut: ch.trimOut,
-              muteOut: ch.muteOut,
-              noiseGateOut: ch.noiseGateOut,
-              delayOut: ch.delayOut,
-              invertedOut: ch.invertedOut,
-              rmsLimiter: ch.rmsLimiter,
-              peakLimiter: ch.peakLimiter,
-              matrix: ch.matrix,
-              eqIn: ch.eqIn,
-              eqOut: ch.eqOut,
-            })),
+            channels: channels.map((ch) => {
+              const { prmsW, ppeakW } = limiterPowerFromLoad(
+                ch.rmsLimiter.thresholdVrms,
+                ch.peakLimiter.thresholdVp,
+                loadOhm,
+              );
+              return {
+                channel: ch.channel,
+                inputName: ch.inputName,
+                outputName: ch.outputName,
+                gainIn: ch.gainIn,
+                volumeIn: ch.volumeIn,
+                muteIn: ch.muteIn,
+                delayIn: ch.delayIn,
+                trimOut: ch.trimOut,
+                muteOut: ch.muteOut,
+                noiseGateOut: ch.noiseGateOut,
+                delayOut: ch.delayOut,
+                invertedOut: ch.invertedOut,
+                rmsLimiter: { ...ch.rmsLimiter, prmsW },
+                peakLimiter: { ...ch.peakLimiter, ppeakW },
+                matrix: ch.matrix,
+                eqIn: ch.eqIn,
+                eqOut: ch.eqOut,
+              };
+            }),
           },
         };
       }),

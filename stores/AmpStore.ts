@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import type { ChannelData } from "@/lib/parse-fc27";
 
 // ---------------------------------------------------------------------------
 // Types — three clearly separated concerns
@@ -56,22 +55,39 @@ export interface HeartbeatData {
   receivedAt: number;
 }
 
+export interface MatrixSource {
+  source: number;
+  gain: number;
+  active: boolean;
+}
+
+export interface EqBand {
+  type: number;
+  gain: number;
+  freq: number;
+  q: number;
+  bypass: boolean;
+}
+
 /**
  * Per-channel parameters for all 4 channels, parsed from FC=27 SYNC_DATA response.
  * Updated every ~1 second from the raw binary payload.
- *
- * Each channel contains:
- * - Input name and gain/volume parameters
- * - Output name
- * - Input sensitivity (calculated from gain)
  */
 export interface ChannelParam {
   channel: number;
-  inputName: string; // e.g., "AIn1", "AIn2", "AIn3", "AIn4"
-  outputName: string; // e.g., "OutA", "OutB", "OutC", "OutD"
-  gainIn: number; // dB (sbyte range)
+  inputName: string; // e.g., "AIn1" – "AIn4"
+  outputName: string; // e.g., "OutA" – "OutD"
+  gainIn: number; // dB (sbyte)
   volumeIn: number; // dB (float32)
-  sensitivity: number; // V (calculated from gainIn)
+  muteIn: boolean; // true = muted
+  delayIn: number; // ms (float32)
+  trimOut: number; // dB (float32)
+  muteOut: boolean; // true = muted
+  delayOut: number; // ms (float32)
+  invertedOut: boolean; // true = polarity flipped
+  matrix: MatrixSource[];
+  eqIn: EqBand[]; // 10 bands: HP + EQ1–8 + LP
+  eqOut: EqBand[]; // 10 bands: HP + EQ1–8 + LP
 }
 
 export interface ChannelParams {
@@ -101,10 +117,6 @@ export interface AmpStatus {
   channelParams?: ChannelParams;
   /** Latest heartbeat sensor data (FC=6). undefined until first heartbeat. */
   heartbeat?: HeartbeatData;
-  /** Raw channel data (FC=27) hex bytes. Updated every ~1 second. */
-  channelDataHex?: string;
-  /** Parsed channel data (FC=27) for all 4 channels. Updated every ~1 second. */
-  parsedChannels?: ChannelData[];
 }
 
 /** On-demand preset list: written exclusively by the presets hook. */
@@ -149,12 +161,8 @@ interface AmpStore {
   updateAmpStatus: (mac: string, status: Partial<AmpStatus>) => void;
   /** Write the latest heartbeat sensor payload for an amp. */
   updateHeartbeat: (mac: string, heartbeat: HeartbeatData) => void;
-  /** Update the raw channel data (FC=27) hex for an amp. */
-  updateChannelData: (mac: string, hex: string) => void;
-  /** Update the parsed channel data (FC=27) for an amp. */
-  updateParsedChannels: (mac: string, channels: ChannelData[]) => void;
   /** Sync parsed channel data into ChannelParams for structured access. */
-  syncChannelParams: (mac: string, channels: ChannelData[]) => void;
+  syncChannelParams: (mac: string, channels: ChannelParam[]) => void;
 
   // — Presets (from presets hook) —
   /** Set the fetched preset list for an amp. */
@@ -217,20 +225,6 @@ export const useAmpStore = create<AmpStore>((set) => ({
       ),
     })),
 
-  updateChannelData: (mac, hex) =>
-    set((state) => ({
-      amps: state.amps.map((amp) =>
-        amp.mac === mac ? { ...amp, channelDataHex: hex } : amp,
-      ),
-    })),
-
-  updateParsedChannels: (mac, channels) =>
-    set((state) => ({
-      amps: state.amps.map((amp) =>
-        amp.mac === mac ? { ...amp, parsedChannels: channels } : amp,
-      ),
-    })),
-
   syncChannelParams: (mac, channels) =>
     set((state) => ({
       amps: state.amps.map((amp) => {
@@ -244,7 +238,15 @@ export const useAmpStore = create<AmpStore>((set) => ({
               outputName: ch.outputName,
               gainIn: ch.gainIn,
               volumeIn: ch.volumeIn,
-              sensitivity: ch.sensitivity,
+              muteIn: ch.muteIn,
+              delayIn: ch.delayIn,
+              trimOut: ch.trimOut,
+              muteOut: ch.muteOut,
+              delayOut: ch.delayOut,
+              invertedOut: ch.invertedOut,
+              matrix: ch.matrix,
+              eqIn: ch.eqIn,
+              eqOut: ch.eqOut,
             })),
           },
         };

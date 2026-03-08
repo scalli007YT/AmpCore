@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useAmpStore } from "@/stores/AmpStore";
-import { parseFC27Channels } from "@/lib/parse-fc27";
+import { parseFC27Channels } from "@/lib/parse-channel-data";
 
 /**
  * useAmpChannelData — Polls channel data for all reachable amps
@@ -13,42 +13,22 @@ import { parseFC27Channels } from "@/lib/parse-fc27";
  */
 export function useAmpChannelData(): void {
   useEffect(() => {
-    console.log("[useAmpChannelData] Starting polling (every 250ms)");
-
     const channelDataTimer = setInterval(() => {
       const amps = useAmpStore.getState().amps;
       const reachableAmps = amps.filter((amp) => amp.reachable);
-
-      if (reachableAmps.length > 0) {
-        console.log(
-          `[useAmpChannelData] Polling ${reachableAmps.length} reachable amp(s)`,
-        );
-      }
 
       reachableAmps.forEach((amp) => {
         fetch(`/api/amp-channel-data?mac=${encodeURIComponent(amp.mac)}`)
           .then((r) => r.json())
           .then((response) => {
             if (response.success && response.hex) {
-              console.log(
-                `[useAmpChannelData] Got data for ${amp.mac}, parsing...`,
-              );
-              const {
-                updateChannelData,
-                updateParsedChannels,
-                syncChannelParams,
-              } = useAmpStore.getState();
-              updateChannelData(amp.mac, response.hex);
+              const { syncChannelParams } = useAmpStore.getState();
 
               // Parse the raw hex into 4 channel configurations
               const channels = parseFC27Channels(response.hex);
-              updateParsedChannels(amp.mac, channels);
 
-              // Also sync into the structured ChannelParams for easy access
+              // Sync into ChannelParams for structured access
               syncChannelParams(amp.mac, channels);
-              console.log(
-                `[useAmpChannelData] Updated ${amp.mac} with ${channels.length} channels`,
-              );
             }
           })
           .catch((err) => {
@@ -61,7 +41,6 @@ export function useAmpChannelData(): void {
     }, 250);
 
     return () => {
-      console.log("[useAmpChannelData] Cleaning up polling");
       clearInterval(channelDataTimer);
     };
   }, []);

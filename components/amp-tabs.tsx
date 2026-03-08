@@ -13,6 +13,131 @@ import {
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
+// JsonTree — collapsible JSON viewer (collapsed by default)
+// ---------------------------------------------------------------------------
+
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [k: string]: JsonValue };
+
+function JsonNode({ value, depth = 0 }: { value: JsonValue; depth?: number }) {
+  const [open, setOpen] = useState(false);
+
+  if (value === null)
+    return <span className="text-muted-foreground">null</span>;
+  if (typeof value === "boolean")
+    return (
+      <span className={value ? "text-green-400" : "text-red-400"}>
+        {String(value)}
+      </span>
+    );
+  if (typeof value === "number")
+    return <span className="text-sky-400">{value}</span>;
+  if (typeof value === "string")
+    return <span className="text-amber-300">&quot;{value}&quot;</span>;
+
+  const isArray = Array.isArray(value);
+  const entries = isArray
+    ? (value as JsonValue[]).map(
+        (v, i) => [String(i), v] as [string, JsonValue],
+      )
+    : Object.entries(value as { [k: string]: JsonValue });
+
+  const preview = isArray ? `[${entries.length}]` : `{${entries.length}}`;
+  const indent = depth * 12;
+
+  return (
+    <span>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer select-none"
+      >
+        <span className="text-[10px] w-3 text-center">{open ? "▾" : "▸"}</span>
+        <span className="text-foreground/60">{preview}</span>
+      </button>
+      {open && (
+        <span className="block" style={{ paddingLeft: indent + 12 }}>
+          {entries.map(([k, v]) => (
+            <span key={k} className="block leading-5">
+              {!isArray && (
+                <span className="text-violet-300">&quot;{k}&quot;</span>
+              )}
+              {!isArray && <span className="text-foreground/50">: </span>}
+              <JsonNode value={v} depth={depth + 1} />
+              <span className="text-foreground/30">,</span>
+            </span>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function JsonTree({ label, value }: { label: string; value: JsonValue }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded border border-border/60 bg-muted/40 text-[11px] font-mono">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-1.5 px-3 py-2 text-left hover:bg-muted/60 transition-colors cursor-pointer"
+      >
+        <span className="text-muted-foreground text-[10px]">
+          {open ? "▾" : "▸"}
+        </span>
+        <span className="font-semibold text-foreground/80">{label}</span>
+        {!open && (
+          <span className="text-muted-foreground ml-1">
+            {Array.isArray(value)
+              ? `[${(value as JsonValue[]).length}]`
+              : "{…}"}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="px-3 pb-3 overflow-x-auto">
+          <JsonNode value={value} depth={0} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CopyJsonButton({ data }: { data: unknown }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+    >
+      {copied ? (
+        <>
+          <span className="text-green-400">✓</span>
+          Copied
+        </>
+      ) : (
+        <>
+          <span>⎘</span>
+          Copy JSON
+        </>
+      )}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Live sensor dashboard — rendered inside the Main tab
 // ---------------------------------------------------------------------------
 
@@ -61,10 +186,10 @@ function outDbScale(): { top: number; bot: number; ticks: number[] } {
   return { top: 0, bot: -40, ticks: [0, -8, -16, -24, -32, -40] };
 }
 
-// Input: 0 dBFS (top) → -48 dBFS (bottom)
+// Input: 0 dBFS (top) → -80 dBFS (bottom)
 const IN_DB_TOP = 0;
-const IN_DB_BOT = -48;
-const IN_SCALE = [0, -12, -24, -36, -48];
+const IN_DB_BOT = -80;
+const IN_SCALE = [0, -12, -24, -36, -48, -60, -80];
 
 function MeterBar({
   value, // current value in dB
@@ -194,10 +319,10 @@ function HeartbeatDashboard({
   const { top: OUT_DB_TOP, bot: OUT_DB_BOT, ticks: OUT_SCALE } = outDbScale();
 
   const METER_H = 220;
-  const BAR_W = 32;
-  const COL_W = 44; // channel column width — wider than bar so labels have room
+  const BAR_W = 36;
+  const COL_W = 64; // channel column width
   // Height of the channel label row above the bar — must match exactly
-  const LABEL_H = 22;
+  const LABEL_H = 24;
 
   return (
     <div className="flex gap-6 text-xs select-none overflow-x-auto items-start">
@@ -206,7 +331,7 @@ function HeartbeatDashboard({
         <span className="text-[11px] font-semibold text-center text-muted-foreground mb-3 tracking-wider uppercase">
           Volume / Source
         </span>
-        <div className="flex gap-2 items-start">
+        <div className="flex gap-3 items-start">
           {/* Scale column — sits to the left, bar-top aligned with channel bars */}
           <div
             className="flex flex-col items-end flex-shrink-0"
@@ -217,7 +342,7 @@ function HeartbeatDashboard({
             <ScaleColumn ticks={IN_SCALE} height={METER_H} width={28} />
           </div>
           {/* Channel columns */}
-          <div className="flex gap-2 items-start">
+          <div className="flex gap-3 items-start">
             {CH_LABELS.map((ch, i) => {
               const dbfsVal = vuInputDbfs[i];
               const hasSignal = hb.inputStates[i] === 0;
@@ -230,7 +355,7 @@ function HeartbeatDashboard({
                 >
                   {/* Channel label */}
                   <div
-                    className={`rounded border px-1 text-[10px] font-semibold text-center w-full mb-1 ${
+                    className={`rounded border px-1 text-[11px] font-semibold text-center w-full mb-1 ${
                       hasSignal
                         ? "border-green-500/50 bg-green-500/15 text-green-700 dark:text-green-400"
                         : "border-border/60 text-muted-foreground"
@@ -259,44 +384,57 @@ function HeartbeatDashboard({
                     Clip
                   </div>
                   {/* Volume readouts */}
-                  <div className="flex flex-col items-center gap-[3px] mt-2 w-full">
-                    <div className="rounded border border-border/60 bg-muted/30 px-1 py-0.5 text-center font-mono text-[11px] w-full leading-tight">
-                      {channelParams?.channels[i]?.volumeIn.toFixed(1) ?? "~"}{" "}
-                      <span className="text-[9px] text-muted-foreground">
-                        dB
+                  <div className="flex flex-col items-stretch gap-1.5 mt-3 w-full">
+                    {/* Volume */}
+                    <div className="flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1">
+                      <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                        {channelParams?.channels[i]?.volumeIn.toFixed(1) ?? "~"}
+                      </span>
+                      <span className="text-[9px] text-muted-foreground mt-0.5">
+                        Vol dB
                       </span>
                     </div>
-                    <span className="text-[9px] text-muted-foreground">
-                      Volume
-                    </span>
-                    <div className="rounded border border-border/60 bg-muted/30 px-1 py-0.5 text-center font-mono text-[11px] w-full leading-tight">
-                      {channelParams?.channels[i]?.gainIn ?? "~"}{" "}
-                      <span className="text-[9px] text-muted-foreground">
-                        dB
+                    {/* Gain */}
+                    <div className="flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1">
+                      <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                        {channelParams?.channels[i]?.gainIn ?? "~"}
+                      </span>
+                      <span className="text-[9px] text-muted-foreground mt-0.5">
+                        Gain dB
                       </span>
                     </div>
-                    <span className="text-[9px] text-muted-foreground">
-                      SEN
-                    </span>
-                    <div className="rounded border border-border/60 bg-muted/30 px-1 py-0.5 text-center font-mono text-[11px] w-full leading-tight">
-                      {channelParams?.channels[i]?.sensitivity.toFixed(2) ??
-                        "~"}{" "}
-                      <span className="text-[9px] text-muted-foreground">
-                        V
-                      </span>
-                    </div>
+                    {/* dBFS */}
                     <div
-                      className={`rounded border px-1 py-0.5 text-center font-mono text-[10px] w-full leading-tight ${
+                      className={`flex flex-col items-center rounded border px-1.5 py-1 ${
                         hasSignal
                           ? "border-green-500/40 bg-green-500/10"
                           : "border-border/40 bg-muted/20 opacity-60"
                       }`}
                     >
-                      {fDbfs(dbfsVal)}{" "}
-                      <span className="text-[9px] text-muted-foreground">
+                      <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                        {fDbfs(dbfsVal)}
+                      </span>
+                      <span className="text-[9px] text-muted-foreground mt-0.5">
                         dBFS
                       </span>
                     </div>
+                    {/* Mute In */}
+                    {(() => {
+                      const muted = channelParams?.channels[i]?.muteIn;
+                      return (
+                        <div
+                          className={`rounded border px-1.5 py-1 text-center text-[11px] font-semibold w-full transition-colors ${
+                            muted === true
+                              ? "border-orange-500/60 bg-orange-500/20 text-orange-400"
+                              : muted === false
+                                ? "border-border/40 bg-muted/20 text-muted-foreground/50"
+                                : "border-border/30 bg-muted/10 text-muted-foreground/30"
+                          }`}
+                        >
+                          {muted === true ? "MUTED" : "Mute In"}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -310,7 +448,7 @@ function HeartbeatDashboard({
         <span className="text-[11px] font-semibold text-center text-muted-foreground mb-3 tracking-wider uppercase">
           Output
         </span>
-        <div className="flex gap-2 items-start">
+        <div className="flex gap-3 items-start">
           {/* Scale column — left of all bars, aligned to bar tops */}
           <div
             className="flex flex-col items-end flex-shrink-0"
@@ -334,6 +472,7 @@ function HeartbeatDashboard({
             const a = hb.outputCurrents[i];
             const dbu = vuOutputDbu[i];
             const imp = hb.outputImpedance[i];
+            const temp = hb.temperatures[i] ?? 0;
             const isClip = st === 5;
             const isActive = st === 0 || st === 8;
             // Clamp: treat null or anything ≤ OUT_DB_BOT as silent
@@ -350,7 +489,7 @@ function HeartbeatDashboard({
               >
                 {/* Channel label */}
                 <div
-                  className={`rounded border px-1 text-[10px] font-semibold text-center w-full mb-1 ${
+                  className={`rounded border px-1 text-[11px] font-semibold text-center w-full mb-1 ${
                     isActive
                       ? "border-green-500/50 bg-green-500/15 text-green-700 dark:text-green-400"
                       : "border-border/60 text-muted-foreground"
@@ -368,42 +507,79 @@ function HeartbeatDashboard({
                   width={BAR_W}
                   height={METER_H}
                 />
-                {/* Mute */}
-                <div className="mt-1 rounded border border-border/60 bg-muted/20 px-1 py-0.5 text-[10px] text-muted-foreground/60 flex items-center gap-1 w-full justify-center">
-                  🔊 <span>Mute</span>
-                </div>
-                {/* V / A / Ω / Temp */}
+                {/* Clip indicator */}
                 <div
-                  className={`mt-1 text-sm font-semibold tabular-nums font-mono leading-tight ${v <= 0.01 ? "opacity-40" : ""}`}
+                  className={`mt-1 rounded px-1 py-0.5 text-[9px] font-semibold w-full text-center ${
+                    isClip
+                      ? "bg-red-500 text-white"
+                      : "bg-muted/30 text-muted-foreground/40"
+                  }`}
                 >
-                  {v > 0.01 ? f1(v) : "0"}{" "}
-                  <span className="text-[10px] font-normal text-muted-foreground">
-                    V
-                  </span>
+                  Clip
                 </div>
-                <div
-                  className={`text-sm font-semibold tabular-nums font-mono leading-tight ${a <= 0.001 ? "opacity-40" : ""}`}
-                >
-                  {a > 0.001 ? f1(a) : "0"}{" "}
-                  <span className="text-[10px] font-normal text-muted-foreground">
-                    A
-                  </span>
-                </div>
-                <div
-                  className={`text-sm font-semibold tabular-nums font-mono leading-tight ${imp === 0 ? "opacity-40" : ""}`}
-                >
-                  {imp > 0 ? imp : "---"}{" "}
-                  <span className="text-[10px] font-normal text-muted-foreground">
-                    Ω
-                  </span>
-                </div>
-                <div
-                  className={`text-sm font-semibold tabular-nums font-mono leading-tight mt-1 ${(hb.temperatures[i] ?? 0) > 80 ? "text-red-500" : ""}`}
-                >
-                  {f0(hb.temperatures[i] ?? 0)}{" "}
-                  <span className="text-[10px] font-normal text-muted-foreground">
-                    °C
-                  </span>
+                {/* Stats + Mute */}
+                <div className="flex flex-col items-stretch gap-1.5 mt-3 w-full">
+                  {/* V */}
+                  <div
+                    className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${v <= 0.01 ? "opacity-40" : ""}`}
+                  >
+                    <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                      {v > 0.01 ? f1(v) : "0"}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground mt-0.5">
+                      V
+                    </span>
+                  </div>
+                  {/* A */}
+                  <div
+                    className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${a <= 0.001 ? "opacity-40" : ""}`}
+                  >
+                    <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                      {a > 0.001 ? f1(a) : "0"}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground mt-0.5">
+                      A
+                    </span>
+                  </div>
+                  {/* Ω */}
+                  <div
+                    className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${imp === 0 ? "opacity-40" : ""}`}
+                  >
+                    <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                      {imp > 0 ? String(imp) : "---"}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground mt-0.5">
+                      Ω
+                    </span>
+                  </div>
+                  {/* °C */}
+                  <div className="flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1">
+                    <span
+                      className={`font-mono text-[13px] font-semibold tabular-nums leading-none ${temp > 80 ? "text-red-500" : ""}`}
+                    >
+                      {f0(temp)}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground mt-0.5">
+                      °C
+                    </span>
+                  </div>
+                  {/* Mute Out */}
+                  {(() => {
+                    const muted = channelParams?.channels[i]?.muteOut;
+                    return (
+                      <div
+                        className={`rounded border px-1.5 py-1 text-center text-[11px] font-semibold w-full transition-colors ${
+                          muted === true
+                            ? "border-orange-500/60 bg-orange-500/20 text-orange-400"
+                            : muted === false
+                              ? "border-border/40 bg-muted/20 text-muted-foreground/50"
+                              : "border-border/30 bg-muted/10 text-muted-foreground/30"
+                        }`}
+                      >
+                        {muted === true ? "MUTED" : "Mute Out"}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );
@@ -432,6 +608,74 @@ function HeartbeatDashboard({
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Audio matrix grid — rows = outputs (OutA–D), columns = inputs (AIn1–4)
+// ---------------------------------------------------------------------------
+
+const INPUT_LABELS = ["AIn1", "AIn2", "AIn3", "AIn4"];
+
+function MatrixGrid({ channels }: { channels: ChannelParams["channels"] }) {
+  return (
+    <div className="overflow-auto">
+      <table className="border-separate border-spacing-1 text-sm">
+        <thead>
+          <tr>
+            {/* top-left corner */}
+            <th className="w-16" />
+            {INPUT_LABELS.map((label) => (
+              <th
+                key={label}
+                className="text-center text-xs font-semibold text-muted-foreground pb-1 w-20"
+              >
+                {label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {channels.map((ch) => (
+            <tr key={ch.channel}>
+              {/* Row label — output name */}
+              <td className="text-xs font-semibold text-muted-foreground pr-2 text-right align-middle whitespace-nowrap">
+                {ch.outputName}
+              </td>
+              {ch.matrix.map((cell) => (
+                <td key={cell.source} className="align-middle">
+                  <MatrixCell gain={cell.gain} active={cell.active} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MatrixCell({ gain, active }: { gain: number; active: boolean }) {
+  const label = active
+    ? gain === 0
+      ? "0 dB"
+      : `${gain > 0 ? "+" : ""}${gain} dB`
+    : "Mute";
+
+  return (
+    <div
+      className={`
+        flex items-center justify-center rounded-md px-2 py-2 w-20 h-10
+        text-xs font-medium border
+        ${
+          active
+            ? "bg-card border-border text-foreground"
+            : "bg-muted/40 border-transparent text-muted-foreground italic"
+        }
+      `}
+    >
+      {label}
     </div>
   );
 }
@@ -539,9 +783,13 @@ export function AmpTabs() {
             </TabsContent>
 
             <TabsContent value="matrix" className="p-4 mt-0">
-              <p className="text-sm text-muted-foreground">
-                Matrix routing coming soon.
-              </p>
+              {!selectedAmp.channelParams ? (
+                <p className="text-sm text-muted-foreground animate-pulse">
+                  Waiting for data…
+                </p>
+              ) : (
+                <MatrixGrid channels={selectedAmp.channelParams.channels} />
+              )}
             </TabsContent>
 
             <TabsContent value="preferences" className="p-4 mt-0">
@@ -640,64 +888,24 @@ export function AmpTabs() {
                 )}
               </div>
 
-              {/* Channel Data section */}
-              <div className="mt-6 border-t pt-6">
-                <h3 className="text-sm font-semibold mb-3">
-                  Channel Data (FC=27)
-                </h3>
-                {selectedAmp.parsedChannels &&
-                selectedAmp.parsedChannels.length > 0 ? (
-                  <div className="space-y-4">
-                    {selectedAmp.parsedChannels.map((ch) => (
-                      <div
+              {/* Channel Data (FC=27) */}
+              {selectedAmp.channelParams && (
+                <div className="mt-6 border-t pt-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold">Channel Data</h3>
+                    <CopyJsonButton data={selectedAmp.channelParams.channels} />
+                  </div>
+                  <div className="space-y-2">
+                    {selectedAmp.channelParams.channels.map((ch) => (
+                      <JsonTree
                         key={ch.channel}
-                        className="border rounded-lg p-4 bg-muted/30"
-                      >
-                        <div className="mb-3 font-mono font-semibold text-sm">
-                          {ch.inputName} → {ch.outputName}
-                        </div>
-
-                        {/* Input Section */}
-                        <div className="mb-3 pb-3 border-b">
-                          <div className="text-xs font-semibold text-muted-foreground mb-2">
-                            INPUT ({ch.inputName})
-                          </div>
-                          <div className="grid grid-cols-3 gap-3 text-xs">
-                            <div>
-                              <dt className="font-semibold text-muted-foreground">
-                                Gain
-                              </dt>
-                              <dd className="text-foreground font-mono">
-                                {ch.gainIn} dB
-                              </dd>
-                            </div>
-                            <div>
-                              <dt className="font-semibold text-muted-foreground">
-                                Volume
-                              </dt>
-                              <dd className="text-foreground font-mono">
-                                {ch.volumeIn.toFixed(2)} dB
-                              </dd>
-                            </div>
-                            <div>
-                              <dt className="font-semibold text-muted-foreground">
-                                Sensitivity
-                              </dt>
-                              <dd className="text-foreground font-mono">
-                                {ch.sensitivity.toFixed(2)} V
-                              </dd>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                        label={`Channel ${ch.channel} — ${ch.inputName} → ${ch.outputName}`}
+                        value={ch as unknown as JsonValue}
+                      />
                     ))}
                   </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Waiting for channel data...
-                  </p>
-                )}
-              </div>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>

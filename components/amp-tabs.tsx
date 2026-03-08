@@ -6,6 +6,16 @@ import type { HeartbeatData, ChannelParams } from "@/stores/AmpStore";
 import { useAmpPresets } from "@/hooks/useAmpPresets";
 import { useAmpActions } from "@/hooks/useAmpActions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useVuMeters } from "@/hooks/useVuMeters";
 import { thresholdVToDbu, formatRuntime, formatDbfs } from "@/lib/generic";
 import {
@@ -120,9 +130,11 @@ function CopyJsonButton({ data }: { data: unknown }) {
   };
 
   return (
-    <button
+    <Button
+      variant="outline"
+      size="sm"
       onClick={handleCopy}
-      className="flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+      className="h-7 gap-1.5 text-xs font-medium"
     >
       {copied ? (
         <>
@@ -135,7 +147,7 @@ function CopyJsonButton({ data }: { data: unknown }) {
           Copy JSON
         </>
       )}
-    </button>
+    </Button>
   );
 }
 
@@ -199,18 +211,49 @@ function MeterBar({
         const pct = Math.min(1, Math.max(0, (dbu - dbBottom) / dbRange));
         // Skip lines that would be outside the visible range
         if (dbu < dbBottom || dbu > dbTop) return null;
+        // The line itself — 2px tall, positioned by bottom%
+        const lineStyle: React.CSSProperties = {
+          bottom: `calc(${pct * 100}% - 1px)`,
+          height: 2,
+          backgroundColor: color,
+          opacity: 0.85,
+        };
+        if (!label) {
+          return (
+            <div
+              key={idx}
+              className="absolute left-0 right-0 pointer-events-none"
+              style={lineStyle}
+            />
+          );
+        }
+        // Wider invisible hit area centred on the line for the tooltip trigger
         return (
-          <div
-            key={idx}
-            title={label}
-            className="absolute left-0 right-0 pointer-events-none"
-            style={{
-              bottom: `calc(${pct * 100}% - 1px)`,
-              height: 2,
-              backgroundColor: color,
-              opacity: 0.85,
-            }}
-          />
+          <Tooltip key={idx}>
+            <TooltipTrigger asChild>
+              <div
+                className="absolute left-0 right-0 cursor-default"
+                style={{
+                  bottom: `calc(${pct * 100}% - 5px)`,
+                  height: 10,
+                }}
+              >
+                {/* Actual visible 2px line, centred inside the hit area */}
+                <div
+                  className="absolute left-0 right-0"
+                  style={{
+                    top: 4,
+                    height: 2,
+                    backgroundColor: color,
+                    opacity: 0.85,
+                  }}
+                />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="text-xs">
+              {label}
+            </TooltipContent>
+          </Tooltip>
         );
       })}
     </div>
@@ -274,28 +317,207 @@ function HeartbeatDashboard({
   const LABEL_H = 24;
 
   return (
-    <div className="flex gap-6 text-xs select-none overflow-x-auto items-start">
-      {/* ────────────────── VOLUME / SOURCE ────────────────── */}
-      <div className="flex flex-col flex-shrink-0">
-        <span className="text-[11px] font-semibold text-center text-muted-foreground mb-3 tracking-wider uppercase">
-          Volume / Source
-        </span>
-        <div className="flex gap-3 items-start">
-          {/* Scale column — sits to the left, bar-top aligned with channel bars */}
-          <div
-            className="flex flex-col items-end flex-shrink-0"
-            style={{ width: 28 }}
-          >
-            {/* Spacer matching the channel label row height + mb-1 */}
-            <div style={{ height: LABEL_H + 4 }} />
-            <ScaleColumn ticks={IN_SCALE} height={METER_H} width={28} />
-          </div>
-          {/* Channel columns */}
+    <TooltipProvider delayDuration={300}>
+      <div className="flex gap-6 text-xs select-none overflow-x-auto items-start">
+        {/* ────────────────── VOLUME / SOURCE ────────────────── */}
+        <div className="flex flex-col flex-shrink-0">
+          <span className="text-[11px] font-semibold text-center text-muted-foreground mb-3 tracking-wider uppercase">
+            Volume / Source
+          </span>
           <div className="flex gap-3 items-start">
+            {/* Scale column — sits to the left, bar-top aligned with channel bars */}
+            <div
+              className="flex flex-col items-end flex-shrink-0"
+              style={{ width: 28 }}
+            >
+              {/* Spacer matching the channel label row height + mb-1 */}
+              <div style={{ height: LABEL_H + 4 }} />
+              <ScaleColumn ticks={IN_SCALE} height={METER_H} width={28} />
+            </div>
+            {/* Channel columns */}
+            <div className="flex gap-3 items-start">
+              {CH_LABELS.map((ch, i) => {
+                const dbfsVal = vuInputDbfs[i];
+                const hasSignal = hb.inputStates[i] === 0;
+                const isClip = dbfsVal !== null && dbfsVal > -1;
+                return (
+                  <div
+                    key={i}
+                    className="flex flex-col items-center gap-0"
+                    style={{ width: COL_W }}
+                  >
+                    {/* Channel label */}
+                    <div
+                      className={`rounded border px-1 text-[11px] font-semibold text-center w-full mb-1 ${
+                        hasSignal
+                          ? "border-green-500/50 bg-green-500/15 text-green-700 dark:text-green-400"
+                          : "border-border/60 text-muted-foreground"
+                      }`}
+                      style={{
+                        height: LABEL_H,
+                        lineHeight: `${LABEL_H - 2}px`,
+                      }}
+                    >
+                      In{i + 1}
+                    </div>
+                    {/* Bar — centered inside the column */}
+                    <MeterBar
+                      value={dbfsVal}
+                      dbTop={IN_DB_TOP}
+                      dbBottom={IN_DB_BOT}
+                      clip={isClip}
+                      width={BAR_W}
+                      height={METER_H}
+                    />
+                    {/* Clip indicator */}
+                    <div
+                      className={`mt-1 rounded px-1 py-0.5 text-[9px] font-semibold w-full text-center ${
+                        isClip
+                          ? "bg-red-500 text-white"
+                          : "bg-muted/30 text-muted-foreground/40"
+                      }`}
+                    >
+                      Clip
+                    </div>
+                    {/* Volume readouts */}
+                    <div className="flex flex-col items-stretch gap-1.5 mt-3 w-full">
+                      {/* dBFS */}
+                      <div
+                        className={`flex flex-col items-center rounded border px-1.5 py-1 ${
+                          hasSignal
+                            ? "border-green-500/40 bg-green-500/10"
+                            : "border-border/40 bg-muted/20 opacity-60"
+                        }`}
+                      >
+                        <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                          {formatDbfs(dbfsVal)}
+                        </span>
+                        <span className="text-[9px] text-muted-foreground mt-0.5">
+                          dBFS
+                        </span>
+                      </div>
+                      {/* Volume */}
+                      <div className="flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1">
+                        <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                          {channelParams?.channels[i]?.volumeIn.toFixed(1) ??
+                            "~"}
+                        </span>
+                        <span className="text-[9px] text-muted-foreground mt-0.5">
+                          Vol dB
+                        </span>
+                      </div>
+                      {/* Gain */}
+                      <div className="flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1">
+                        <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                          {channelParams?.channels[i]?.gainIn ?? "~"}
+                        </span>
+                        <span className="text-[9px] text-muted-foreground mt-0.5">
+                          Gain dB
+                        </span>
+                      </div>
+                      {/* Mute In */}
+                      {(() => {
+                        const muted = channelParams?.channels[i]?.muteIn;
+                        const canClick = muted !== undefined;
+                        return (
+                          <Button
+                            disabled={!canClick}
+                            size="sm"
+                            onClick={() =>
+                              canClick &&
+                              void muteIn(mac, i as 0 | 1 | 2 | 3, !muted)
+                            }
+                            className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
+                              muted === true
+                                ? "border-orange-500/60 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 hover:text-orange-400"
+                                : muted === false
+                                  ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-orange-500/40 hover:text-orange-400/70"
+                                  : "border-border/30 bg-muted/10 text-muted-foreground/30"
+                            }`}
+                            variant="outline"
+                          >
+                            {muted === true ? "MUTED" : "Mute In"}
+                          </Button>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* ────────────────── OUTPUT ────────────────── */}
+        <div className="flex flex-col flex-1 min-w-0 border-l border-border/40 pl-6">
+          <span className="text-[11px] font-semibold text-center text-muted-foreground mb-3 tracking-wider uppercase">
+            Output
+          </span>
+          <div className="flex gap-3 items-start">
+            {/* Scale column — left of all bars, aligned to bar tops */}
+            <div
+              className="flex flex-col items-end flex-shrink-0"
+              style={{ width: 32 }}
+            >
+              {/* "dB" label sits in same row as channel labels */}
+              <div
+                className="flex items-end justify-end pr-1 w-full"
+                style={{ height: LABEL_H, marginBottom: 4 }}
+              >
+                <span className="text-[9px] text-muted-foreground leading-none">
+                  dB
+                </span>
+              </div>
+              <ScaleColumn ticks={OUT_SCALE} height={METER_H} width={32} />
+            </div>
+
             {CH_LABELS.map((ch, i) => {
-              const dbfsVal = vuInputDbfs[i];
-              const hasSignal = hb.inputStates[i] === 0;
-              const isClip = dbfsVal !== null && dbfsVal > -1;
+              const st = hb.outputStates[i] ?? 0;
+              const v = hb.outputVoltages[i];
+              const a = hb.outputCurrents[i];
+              const dbu = vuOutputDbu[i];
+              const imp = hb.outputImpedance[i];
+              const temp = hb.temperatures[i] ?? 0;
+              const isClip = st === 5;
+              const isActive = st === 0 || st === 8;
+              // Clamp: treat null or anything ≤ OUT_DB_BOT as silent
+              const dbuVal =
+                dbu === null || dbu <= OUT_DB_BOT
+                  ? null
+                  : Math.min(dbu, OUT_DB_TOP);
+
+              // Threshold lines — RMS (yellow) and Peak (orange)
+              const chParam = channelParams?.channels[i];
+              const thresholdLines: {
+                dbu: number;
+                color: string;
+                label: string;
+              }[] = [];
+              if (chParam?.rmsLimiter.enabled) {
+                const d = thresholdVToDbu(
+                  chParam.rmsLimiter.thresholdVrms,
+                  ratedRmsV,
+                );
+                if (d !== null)
+                  thresholdLines.push({
+                    dbu: d,
+                    color: "#facc15",
+                    label: `RMS ${d.toFixed(1)} dBu`,
+                  });
+              }
+              if (chParam?.peakLimiter.enabled) {
+                const d = thresholdVToDbu(
+                  chParam.peakLimiter.thresholdVp / Math.SQRT2,
+                  ratedRmsV,
+                );
+                if (d !== null)
+                  thresholdLines.push({
+                    dbu: d,
+                    color: "#f97316",
+                    label: `Peak ${d.toFixed(1)} dBu`,
+                  });
+              }
+
               return (
                 <div
                   key={i}
@@ -305,22 +527,23 @@ function HeartbeatDashboard({
                   {/* Channel label */}
                   <div
                     className={`rounded border px-1 text-[11px] font-semibold text-center w-full mb-1 ${
-                      hasSignal
+                      isActive
                         ? "border-green-500/50 bg-green-500/15 text-green-700 dark:text-green-400"
                         : "border-border/60 text-muted-foreground"
                     }`}
                     style={{ height: LABEL_H, lineHeight: `${LABEL_H - 2}px` }}
                   >
-                    In{i + 1}
+                    Out{ch}
                   </div>
                   {/* Bar — centered inside the column */}
                   <MeterBar
-                    value={dbfsVal}
-                    dbTop={IN_DB_TOP}
-                    dbBottom={IN_DB_BOT}
+                    value={dbuVal}
+                    dbTop={OUT_DB_TOP}
+                    dbBottom={OUT_DB_BOT}
                     clip={isClip}
                     width={BAR_W}
                     height={METER_H}
+                    thresholdLines={thresholdLines}
                   />
                   {/* Clip indicator */}
                   <div
@@ -332,64 +555,92 @@ function HeartbeatDashboard({
                   >
                     Clip
                   </div>
-                  {/* Volume readouts */}
+                  {/* Stats + Mute */}
                   <div className="flex flex-col items-stretch gap-1.5 mt-3 w-full">
-                    {/* dBFS */}
+                    {/* V */}
                     <div
-                      className={`flex flex-col items-center rounded border px-1.5 py-1 ${
-                        hasSignal
-                          ? "border-green-500/40 bg-green-500/10"
-                          : "border-border/40 bg-muted/20 opacity-60"
-                      }`}
+                      className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${v <= 0.01 ? "opacity-40" : ""}`}
                     >
                       <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                        {formatDbfs(dbfsVal)}
+                        {v > 0.01 ? f1(v) : "0"}
                       </span>
                       <span className="text-[9px] text-muted-foreground mt-0.5">
-                        dBFS
+                        V
                       </span>
                     </div>
-                    {/* Volume */}
-                    <div className="flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1">
+                    {/* A */}
+                    <div
+                      className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${a <= 0.001 ? "opacity-40" : ""}`}
+                    >
                       <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                        {channelParams?.channels[i]?.volumeIn.toFixed(1) ?? "~"}
+                        {a > 0.001 ? f1(a) : "0"}
                       </span>
                       <span className="text-[9px] text-muted-foreground mt-0.5">
-                        Vol dB
+                        A
                       </span>
                     </div>
-                    {/* Gain */}
-                    <div className="flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1">
+                    {/* Ω */}
+                    <div
+                      className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${imp === 0 ? "opacity-40" : ""}`}
+                    >
                       <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                        {channelParams?.channels[i]?.gainIn ?? "~"}
+                        {imp > 0 ? String(imp) : "---"}
                       </span>
                       <span className="text-[9px] text-muted-foreground mt-0.5">
-                        Gain dB
+                        Ω
                       </span>
                     </div>
-                    {/* Mute In */}
+                    {/* °C */}
+                    <div className="flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1">
+                      <span
+                        className={`font-mono text-[13px] font-semibold tabular-nums leading-none ${temp > 80 ? "text-red-500" : ""}`}
+                      >
+                        {f0(temp)}
+                      </span>
+                      <span className="text-[9px] text-muted-foreground mt-0.5">
+                        °C
+                      </span>
+                    </div>
+                    {/* Mute Out */}
                     {(() => {
-                      const muted = channelParams?.channels[i]?.muteIn;
+                      const muted = channelParams?.channels[i]?.muteOut;
                       const canClick = muted !== undefined;
                       return (
-                        <button
+                        <Button
                           disabled={!canClick}
+                          size="sm"
                           onClick={() =>
                             canClick &&
-                            void muteIn(mac, i as 0 | 1 | 2 | 3, !muted)
+                            void muteOut(mac, i as 0 | 1 | 2 | 3, !muted)
                           }
-                          className={`rounded border px-1.5 py-1 text-center text-[11px] font-semibold w-full transition-colors ${
-                            canClick ? "cursor-pointer" : "cursor-default"
-                          } ${
+                          className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
                             muted === true
-                              ? "border-orange-500/60 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30"
+                              ? "border-orange-500/60 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 hover:text-orange-400"
                               : muted === false
                                 ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-orange-500/40 hover:text-orange-400/70"
                                 : "border-border/30 bg-muted/10 text-muted-foreground/30"
                           }`}
+                          variant="outline"
                         >
-                          {muted === true ? "MUTED" : "Mute In"}
-                        </button>
+                          {muted === true ? "MUTED" : "Mute Out"}
+                        </Button>
+                      );
+                    })()}
+                    {/* Noise Gate */}
+                    {(() => {
+                      const ng = channelParams?.channels[i]?.noiseGateOut;
+                      return (
+                        <div
+                          className={`rounded border px-1.5 py-1 text-center text-[11px] font-semibold w-full transition-colors ${
+                            ng === true
+                              ? "border-sky-500/60 bg-sky-500/20 text-sky-400"
+                              : ng === false
+                                ? "border-border/40 bg-muted/20 text-muted-foreground/50"
+                                : "border-border/30 bg-muted/10 text-muted-foreground/30"
+                          }`}
+                        >
+                          {ng === true ? "GATE ON" : "Gate"}
+                        </div>
                       );
                     })()}
                   </div>
@@ -397,227 +648,25 @@ function HeartbeatDashboard({
               );
             })}
           </div>
-        </div>
-      </div>
 
-      {/* ────────────────── OUTPUT ────────────────── */}
-      <div className="flex flex-col flex-1 min-w-0 border-l border-border/40 pl-6">
-        <span className="text-[11px] font-semibold text-center text-muted-foreground mb-3 tracking-wider uppercase">
-          Output
-        </span>
-        <div className="flex gap-3 items-start">
-          {/* Scale column — left of all bars, aligned to bar tops */}
-          <div
-            className="flex flex-col items-end flex-shrink-0"
-            style={{ width: 32 }}
-          >
-            {/* "dB" label sits in same row as channel labels */}
-            <div
-              className="flex items-end justify-end pr-1 w-full"
-              style={{ height: LABEL_H, marginBottom: 4 }}
-            >
-              <span className="text-[9px] text-muted-foreground leading-none">
-                dB
-              </span>
-            </div>
-            <ScaleColumn ticks={OUT_SCALE} height={METER_H} width={32} />
-          </div>
-
-          {CH_LABELS.map((ch, i) => {
-            const st = hb.outputStates[i] ?? 0;
-            const v = hb.outputVoltages[i];
-            const a = hb.outputCurrents[i];
-            const dbu = vuOutputDbu[i];
-            const imp = hb.outputImpedance[i];
-            const temp = hb.temperatures[i] ?? 0;
-            const isClip = st === 5;
-            const isActive = st === 0 || st === 8;
-            // Clamp: treat null or anything ≤ OUT_DB_BOT as silent
-            const dbuVal =
-              dbu === null || dbu <= OUT_DB_BOT
-                ? null
-                : Math.min(dbu, OUT_DB_TOP);
-
-            // Threshold lines — RMS (yellow) and Peak (orange)
-            const chParam = channelParams?.channels[i];
-            const thresholdLines: {
-              dbu: number;
-              color: string;
-              label: string;
-            }[] = [];
-            if (chParam?.rmsLimiter.enabled) {
-              const d = thresholdVToDbu(
-                chParam.rmsLimiter.thresholdVrms,
-                ratedRmsV,
-              );
-              if (d !== null)
-                thresholdLines.push({
-                  dbu: d,
-                  color: "#facc15",
-                  label: `RMS ${d.toFixed(1)} dBu`,
-                });
-            }
-            if (chParam?.peakLimiter.enabled) {
-              const d = thresholdVToDbu(
-                chParam.peakLimiter.thresholdVp / Math.SQRT2,
-                ratedRmsV,
-              );
-              if (d !== null)
-                thresholdLines.push({
-                  dbu: d,
-                  color: "#f97316",
-                  label: `Peak ${d.toFixed(1)} dBu`,
-                });
-            }
-
-            return (
-              <div
-                key={i}
-                className="flex flex-col items-center gap-0"
-                style={{ width: COL_W }}
+          {/* Bottom row */}
+          <div className="flex items-center gap-4 mt-3 pt-2 border-t border-border/40 text-[11px] flex-wrap">
+            <span className="text-muted-foreground">
+              PSU
+              <span
+                className={`font-semibold tabular-nums font-mono ml-1 ${(hb.temperatures[4] ?? 0) > 80 ? "text-red-500" : ""}`}
               >
-                {/* Channel label */}
-                <div
-                  className={`rounded border px-1 text-[11px] font-semibold text-center w-full mb-1 ${
-                    isActive
-                      ? "border-green-500/50 bg-green-500/15 text-green-700 dark:text-green-400"
-                      : "border-border/60 text-muted-foreground"
-                  }`}
-                  style={{ height: LABEL_H, lineHeight: `${LABEL_H - 2}px` }}
-                >
-                  Out{ch}
-                </div>
-                {/* Bar — centered inside the column */}
-                <MeterBar
-                  value={dbuVal}
-                  dbTop={OUT_DB_TOP}
-                  dbBottom={OUT_DB_BOT}
-                  clip={isClip}
-                  width={BAR_W}
-                  height={METER_H}
-                  thresholdLines={thresholdLines}
-                />
-                {/* Clip indicator */}
-                <div
-                  className={`mt-1 rounded px-1 py-0.5 text-[9px] font-semibold w-full text-center ${
-                    isClip
-                      ? "bg-red-500 text-white"
-                      : "bg-muted/30 text-muted-foreground/40"
-                  }`}
-                >
-                  Clip
-                </div>
-                {/* Stats + Mute */}
-                <div className="flex flex-col items-stretch gap-1.5 mt-3 w-full">
-                  {/* V */}
-                  <div
-                    className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${v <= 0.01 ? "opacity-40" : ""}`}
-                  >
-                    <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                      {v > 0.01 ? f1(v) : "0"}
-                    </span>
-                    <span className="text-[9px] text-muted-foreground mt-0.5">
-                      V
-                    </span>
-                  </div>
-                  {/* A */}
-                  <div
-                    className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${a <= 0.001 ? "opacity-40" : ""}`}
-                  >
-                    <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                      {a > 0.001 ? f1(a) : "0"}
-                    </span>
-                    <span className="text-[9px] text-muted-foreground mt-0.5">
-                      A
-                    </span>
-                  </div>
-                  {/* Ω */}
-                  <div
-                    className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${imp === 0 ? "opacity-40" : ""}`}
-                  >
-                    <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                      {imp > 0 ? String(imp) : "---"}
-                    </span>
-                    <span className="text-[9px] text-muted-foreground mt-0.5">
-                      Ω
-                    </span>
-                  </div>
-                  {/* °C */}
-                  <div className="flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1">
-                    <span
-                      className={`font-mono text-[13px] font-semibold tabular-nums leading-none ${temp > 80 ? "text-red-500" : ""}`}
-                    >
-                      {f0(temp)}
-                    </span>
-                    <span className="text-[9px] text-muted-foreground mt-0.5">
-                      °C
-                    </span>
-                  </div>
-                  {/* Mute Out */}
-                  {(() => {
-                    const muted = channelParams?.channels[i]?.muteOut;
-                    const canClick = muted !== undefined;
-                    return (
-                      <button
-                        disabled={!canClick}
-                        onClick={() =>
-                          canClick &&
-                          void muteOut(mac, i as 0 | 1 | 2 | 3, !muted)
-                        }
-                        className={`rounded border px-1.5 py-1 text-center text-[11px] font-semibold w-full transition-colors ${
-                          canClick ? "cursor-pointer" : "cursor-default"
-                        } ${
-                          muted === true
-                            ? "border-orange-500/60 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30"
-                            : muted === false
-                              ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-orange-500/40 hover:text-orange-400/70"
-                              : "border-border/30 bg-muted/10 text-muted-foreground/30"
-                        }`}
-                      >
-                        {muted === true ? "MUTED" : "Mute Out"}
-                      </button>
-                    );
-                  })()}
-                  {/* Noise Gate */}
-                  {(() => {
-                    const ng = channelParams?.channels[i]?.noiseGateOut;
-                    return (
-                      <div
-                        className={`rounded border px-1.5 py-1 text-center text-[11px] font-semibold w-full transition-colors ${
-                          ng === true
-                            ? "border-sky-500/60 bg-sky-500/20 text-sky-400"
-                            : ng === false
-                              ? "border-border/40 bg-muted/20 text-muted-foreground/50"
-                              : "border-border/30 bg-muted/10 text-muted-foreground/30"
-                        }`}
-                      >
-                        {ng === true ? "GATE ON" : "Gate"}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Bottom row */}
-        <div className="flex items-center gap-4 mt-3 pt-2 border-t border-border/40 text-[11px] flex-wrap">
-          <span className="text-muted-foreground">
-            PSU
-            <span
-              className={`font-semibold tabular-nums font-mono ml-1 ${(hb.temperatures[4] ?? 0) > 80 ? "text-red-500" : ""}`}
-            >
-              {f0(hb.temperatures[4] ?? 0)}
+                {f0(hb.temperatures[4] ?? 0)}
+              </span>
+              <span className="text-[10px] ml-0.5">°C</span>
             </span>
-            <span className="text-[10px] ml-0.5">°C</span>
-          </span>
-          <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
-            {new Date(hb.receivedAt).toLocaleTimeString()}
-          </span>
+            <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
+              {new Date(hb.receivedAt).toLocaleTimeString()}
+            </span>
+          </div>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
 
@@ -674,105 +723,108 @@ function LimiterBlock({
           const enabled = lim.enabled;
 
           return (
-            <div
+            <Card
               key={i}
-              className={`flex items-center gap-4 rounded-lg border px-3 py-2 transition-colors ${
-                enabled
-                  ? "border-border bg-card"
-                  : "border-border/30 bg-muted/20 opacity-50"
+              className={`relative overflow-visible rounded-tr-none transition-colors ${
+                enabled ? "" : "border-border/30 bg-muted/20 opacity-50"
               }`}
             >
-              {/* Channel label + ON/BYP pill + GR bar */}
-              <div className="flex items-center gap-2 w-24 flex-shrink-0">
-                <span className="text-[13px] font-bold text-foreground w-10">
-                  Out{CH_LABELS[i]}
-                </span>
-                <span
-                  className={`text-[9px] font-semibold rounded px-1.5 py-0.5 ${
-                    enabled
-                      ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                      : "bg-muted/40 text-muted-foreground border border-border/40"
-                  }`}
-                >
-                  {enabled ? "ON" : "BYP"}
-                </span>
-                <LimiterGrBar gainReduction={gr} height={28} />
-              </div>
-
-              <div className="w-px self-stretch bg-border/40 flex-shrink-0" />
-
-              {/* Threshold + Power */}
-              <div className="flex gap-4 flex-shrink-0">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
-                    Threshold
+              {/* ON / BYP dot — top-right corner */}
+              <div
+                className={`absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full z-10 ${
+                  enabled ? "bg-green-500" : "bg-red-500/60"
+                }`}
+              />
+              <CardContent className="flex items-center gap-4 px-4">
+                {/* Channel label + GR bar */}
+                <div className="flex items-center gap-2 w-20 flex-shrink-0">
+                  <span className="text-[13px] font-bold text-foreground w-10">
+                    Out{CH_LABELS[i]}
                   </span>
-                  <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                    {"thresholdVrms" in lim
-                      ? `${lim.thresholdVrms.toFixed(2)} V`
-                      : `${(lim as typeof ch.peakLimiter).thresholdVp.toFixed(2)} V`}
-                  </span>
-                  <span className="text-[9px] text-muted-foreground">
-                    {"thresholdVrms" in lim ? "Vrms" : "Vpeak"}
-                  </span>
+                  <LimiterGrBar gainReduction={gr} height={28} />
                 </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
-                    {"thresholdVrms" in lim ? "Prms" : "Ppeak"}
-                  </span>
-                  <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                    {"thresholdVrms" in lim
-                      ? `${ch.rmsLimiter.prmsW} W`
-                      : `${ch.peakLimiter.ppeakW} W`}
-                  </span>
+
+                <Separator
+                  orientation="vertical"
+                  className="self-stretch h-auto opacity-40 flex-shrink-0"
+                />
+
+                {/* Threshold + Power */}
+                <div className="flex gap-4 flex-shrink-0">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
+                      Threshold
+                    </span>
+                    <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                      {"thresholdVrms" in lim
+                        ? `${lim.thresholdVrms.toFixed(2)} V`
+                        : `${(lim as typeof ch.peakLimiter).thresholdVp.toFixed(2)} V`}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground">
+                      {"thresholdVrms" in lim ? "Vrms" : "Vpeak"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
+                      {"thresholdVrms" in lim ? "Prms" : "Ppeak"}
+                    </span>
+                    <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                      {"thresholdVrms" in lim
+                        ? `${ch.rmsLimiter.prmsW} W`
+                        : `${ch.peakLimiter.ppeakW} W`}
+                    </span>
+                  </div>
                 </div>
-              </div>
 
-              <div className="w-px self-stretch bg-border/40 flex-shrink-0" />
+                <Separator
+                  orientation="vertical"
+                  className="self-stretch h-auto opacity-40 flex-shrink-0"
+                />
 
-              {/* Timing fields */}
-              <div className="flex gap-4">
-                {"attackMs" in lim ? (
-                  <>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[9px] text-muted-foreground">
-                        Atk
-                      </span>
-                      <span className="font-mono text-[11px] font-semibold tabular-nums">
-                        {lim.attackMs} ms
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[9px] text-muted-foreground">
-                        Rel
-                      </span>
-                      <span className="font-mono text-[11px] font-semibold tabular-nums">
-                        ×{lim.releaseMultiplier}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[9px] text-muted-foreground">
-                        Hold
-                      </span>
-                      <span className="font-mono text-[11px] font-semibold tabular-nums">
-                        {(lim as typeof ch.peakLimiter).holdMs} ms
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[9px] text-muted-foreground">
-                        Rel
-                      </span>
-                      <span className="font-mono text-[11px] font-semibold tabular-nums">
-                        {(lim as typeof ch.peakLimiter).releaseMs} ms
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+                {/* Timing fields */}
+                <div className="flex gap-4">
+                  {"attackMs" in lim ? (
+                    <>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[9px] text-muted-foreground">
+                          Atk
+                        </span>
+                        <span className="font-mono text-[11px] font-semibold tabular-nums">
+                          {lim.attackMs} ms
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[9px] text-muted-foreground">
+                          Rel
+                        </span>
+                        <span className="font-mono text-[11px] font-semibold tabular-nums">
+                          ×{lim.releaseMultiplier}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[9px] text-muted-foreground">
+                          Hold
+                        </span>
+                        <span className="font-mono text-[11px] font-semibold tabular-nums">
+                          {(lim as typeof ch.peakLimiter).holdMs} ms
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[9px] text-muted-foreground">
+                          Rel
+                        </span>
+                        <span className="font-mono text-[11px] font-semibold tabular-nums">
+                          {(lim as typeof ch.peakLimiter).releaseMs} ms
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           );
         })}
       </div>
@@ -887,15 +939,12 @@ export function AmpTabs() {
       {/* Vertical amp selector */}
       <div className="flex flex-col gap-1">
         {amps.map((amp) => (
-          <button
+          <Button
             key={amp.mac}
+            variant={selectedMac === amp.mac ? "outline" : "ghost"}
+            size="sm"
             onClick={() => setSelectedMac(amp.mac)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors text-left whitespace-nowrap
-              ${
-                selectedMac === amp.mac
-                  ? "bg-background text-foreground shadow-sm border border-border"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
+            className="justify-start gap-2 whitespace-nowrap font-medium"
           >
             <div
               className={`flex-shrink-0 w-2 h-2 rounded-full ${
@@ -903,7 +952,7 @@ export function AmpTabs() {
               }`}
             />
             <span className="truncate">{getDisplayName(amp)}</span>
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -966,13 +1015,16 @@ export function AmpTabs() {
                   </div>
 
                   {/* Limiters — side by side */}
-                  <div className="flex gap-6 border-l border-border/40 pl-6">
+                  <div className="flex gap-6 pl-6 border-l border-border/40">
                     <LimiterBlock
                       label="RMS Limiter"
                       channels={selectedAmp.channelParams.channels}
                       limiters={selectedAmp.heartbeat?.limiters ?? [0, 0, 0, 0]}
                     />
-                    <div className="border-l border-border/40" />
+                    <Separator
+                      orientation="vertical"
+                      className="self-stretch h-auto opacity-40"
+                    />
                     <LimiterBlock
                       label="Peak Limiter"
                       channels={selectedAmp.channelParams.channels}

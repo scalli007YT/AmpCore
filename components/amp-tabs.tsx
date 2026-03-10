@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAmpStore } from "@/stores/AmpStore";
-import type { HeartbeatData, ChannelParams } from "@/stores/AmpStore";
+import type { HeartbeatData, ChannelParams, EqBand } from "@/stores/AmpStore";
 import { useAmpPresets } from "@/hooks/useAmpPresets";
 import { useAmpActions } from "@/hooks/useAmpActions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -10,6 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -148,6 +155,127 @@ function CopyJsonButton({ data }: { data: unknown }) {
         </>
       )}
     </Button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EQ band display
+// ---------------------------------------------------------------------------
+
+const EQ_TYPE_NAMES: Record<number, string> = {
+  0: "Peak",
+  1: "LowShelf",
+  2: "HighShelf",
+  3: "BW-12",
+  4: "BW-24",
+  253: "HighShelf",
+  255: "Bypass",
+};
+
+const EQ_BAND_LABELS = [
+  "HP",
+  "EQ1",
+  "EQ2",
+  "EQ3",
+  "EQ4",
+  "EQ5",
+  "EQ6",
+  "EQ7",
+  "EQ8",
+  "LP",
+];
+
+function EqBandTable({ bands }: { bands: EqBand[] }) {
+  return (
+    <table className="w-full text-xs font-mono border-separate border-spacing-y-0.5">
+      <thead>
+        <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          <th className="text-left pb-2 pr-3 font-semibold">Band</th>
+          <th className="text-left pb-2 pr-3 font-semibold">Type</th>
+          <th className="text-right pb-2 pr-3 font-semibold">Freq</th>
+          <th className="text-right pb-2 pr-3 font-semibold">Gain</th>
+          <th className="text-right pb-2 pr-3 font-semibold">Q</th>
+          <th className="text-center pb-2 font-semibold">Bypass</th>
+        </tr>
+      </thead>
+      <tbody>
+        {bands.map((band, idx) => (
+          <tr
+            key={idx}
+            className={`leading-6 ${band.bypass ? "opacity-40" : ""}`}
+          >
+            <td className="pr-3 text-muted-foreground">
+              {EQ_BAND_LABELS[idx] ?? String(idx)}
+            </td>
+            <td className="pr-3">
+              {EQ_TYPE_NAMES[band.type] ?? String(band.type)}
+            </td>
+            <td className="pr-3 text-right tabular-nums text-sky-400">
+              {band.freq.toFixed(1)} Hz
+            </td>
+            <td className="pr-3 text-right tabular-nums">
+              <span
+                className={
+                  band.gain > 0
+                    ? "text-green-400"
+                    : band.gain < 0
+                      ? "text-red-400"
+                      : "text-muted-foreground"
+                }
+              >
+                {band.gain > 0 ? "+" : ""}
+                {band.gain.toFixed(2)} dB
+              </span>
+            </td>
+            <td className="pr-3 text-right tabular-nums text-amber-300">
+              {band.q.toFixed(3)}
+            </td>
+            <td className="text-center">
+              {band.bypass ? (
+                <span className="text-orange-400">BYP</span>
+              ) : (
+                <span className="text-muted-foreground/30">—</span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function EqBandDialog({
+  triggerLabel,
+  title,
+  bands,
+}: {
+  triggerLabel: string;
+  title: string;
+  bands?: EqBand[];
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          disabled={!bands}
+          size="sm"
+          variant="outline"
+          className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
+            !bands
+              ? "border-border/30 bg-muted/10 text-muted-foreground/30"
+              : "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-violet-500/40 hover:text-violet-400/70"
+          }`}
+        >
+          {triggerLabel}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        {bands && <EqBandTable bands={bands} />}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -440,6 +568,12 @@ function HeartbeatDashboard({
                           </Button>
                         );
                       })()}
+                      {/* EQ In */}
+                      <EqBandDialog
+                        triggerLabel="EQ In"
+                        title={`Input EQ — Ch ${CH_LABELS[i]}`}
+                        bands={channelParams?.channels[i]?.eqIn}
+                      />
                     </div>
                   </div>
                 );
@@ -502,7 +636,7 @@ function HeartbeatDashboard({
                   thresholdLines.push({
                     dbu: d,
                     color: "#facc15",
-                    label: `RMS ${d.toFixed(1)} dBu`,
+                    label: `RMS ${chParam.rmsLimiter.thresholdVrms.toFixed(2)} Vrms · ${chParam.rmsLimiter.prmsW} W (${d.toFixed(1)} dB)`,
                   });
               }
               if (chParam?.peakLimiter.enabled) {
@@ -514,7 +648,7 @@ function HeartbeatDashboard({
                   thresholdLines.push({
                     dbu: d,
                     color: "#f97316",
-                    label: `Peak ${d.toFixed(1)} dBu`,
+                    label: `Peak ${chParam.peakLimiter.thresholdVp.toFixed(2)} Vp · ${chParam.peakLimiter.ppeakW} W (${d.toFixed(1)} dB)`,
                   });
               }
 
@@ -643,6 +777,12 @@ function HeartbeatDashboard({
                         </div>
                       );
                     })()}
+                    {/* EQ Out */}
+                    <EqBandDialog
+                      triggerLabel="EQ Out"
+                      title={`Output EQ — Ch ${CH_LABELS[i]}`}
+                      bands={channelParams?.channels[i]?.eqOut}
+                    />
                   </div>
                 </div>
               );

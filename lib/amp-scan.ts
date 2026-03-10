@@ -1,9 +1,30 @@
 import dgram from "dgram";
+import os from "os";
 import { FuncCode } from "./amp-device";
 
-const BROADCAST_ADDR = "255.255.255.255";
 const AMP_PORT = 45455;
 const DISCOVERY_TIMEOUT = 200; // 200ms — amps respond in <50ms on LAN/WiFi
+
+/**
+ * Returns the directed broadcast address for every active IPv4 interface
+ * (e.g. 192.168.1.255, 10.0.0.255). Sending to each ensures discovery works
+ * even when the machine has multiple adapters on different subnets.
+ */
+function getDirectedBroadcasts(): string[] {
+  const broadcasts: string[] = [];
+  for (const iface of Object.values(os.networkInterfaces())) {
+    if (!iface) continue;
+    for (const addr of iface) {
+      if (addr.family !== "IPv4" || addr.internal) continue;
+      const ip = addr.address.split(".").map(Number);
+      const mask = addr.netmask.split(".").map(Number);
+      const bcast = ip.map((b, i) => (b & mask[i]) | (~mask[i] & 0xff));
+      broadcasts.push(bcast.join("."));
+    }
+  }
+  // Fallback to limited broadcast if no usable interfaces found
+  return broadcasts.length > 0 ? broadcasts : ["255.255.255.255"];
+}
 
 /**
  * Broadcast-based discovery for AMP devices (matching original C# app)
@@ -134,23 +155,16 @@ export async function broadcastDiscovery(): Promise<
 
             const packet = Buffer.concat([networkData, frame]);
 
-            // Send broadcast discovery query
-            socket.send(
-              packet,
-              0,
-              packet.length,
-              AMP_PORT,
-              BROADCAST_ADDR,
-              (err) => {
+            // Send directed broadcast on every active network interface so amps
+            // are discovered regardless of which subnet/adapter they're on.
+            const broadcastAddrs = getDirectedBroadcasts();
+            for (const addr of broadcastAddrs) {
+              socket.send(packet, 0, packet.length, AMP_PORT, addr, (err) => {
                 if (err) {
-                  clearTimeout(timeoutHandle);
-                  try {
-                    socket.close();
-                  } catch {}
-                  resolve([]);
+                  console.error(`[DISCOVERY] Send error on ${addr}:`, err);
                 }
-              },
-            );
+              });
+            }
           } catch (err) {
             console.error("[DISCOVERY] Failed to build or send packet:", err);
             clearTimeout(timeoutHandle);

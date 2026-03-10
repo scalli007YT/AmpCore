@@ -1,6 +1,16 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
+import { v4 as uuidv4 } from "uuid";
+
+/** Resolves the persistent storage directory.
+ *  In the Electron production build, APP_USER_DATA is set by main.js to
+ *  app.getPath("userData") — a writable OS-managed folder that survives updates.
+ *  In dev (Next.js only), falls back to <cwd>/storage/projects. */
+function getProjectsDir() {
+  const base = process.env.APP_USER_DATA ?? process.cwd();
+  return path.join(base, "storage", "projects");
+}
 
 interface Project {
   id: string;
@@ -15,7 +25,8 @@ interface Project {
 
 export async function GET() {
   try {
-    const projectsDir = path.join(process.cwd(), "storage", "projects");
+    const projectsDir = getProjectsDir();
+    await fs.mkdir(projectsDir, { recursive: true });
 
     // Read all files in the projects directory
     const files = await fs.readdir(projectsDir);
@@ -63,7 +74,7 @@ export async function PUT(request: Request) {
       );
     }
 
-    const projectsDir = path.join(process.cwd(), "storage", "projects");
+    const projectsDir = getProjectsDir();
     const filePath = path.join(projectsDir, `${body.id}.json`);
 
     // Update the updatedAt timestamp
@@ -84,6 +95,79 @@ export async function PUT(request: Request) {
       {
         success: false,
         error: err instanceof Error ? err.message : "Failed to save project",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json()) as {
+      name: string;
+      description?: string;
+    };
+
+    if (!body.name?.trim()) {
+      return NextResponse.json(
+        { success: false, error: "Project name is required" },
+        { status: 400 },
+      );
+    }
+
+    const projectsDir = getProjectsDir();
+    await fs.mkdir(projectsDir, { recursive: true });
+
+    const id = uuidv4();
+    const newProject: Project = {
+      id,
+      name: body.name.trim(),
+      description: body.description?.trim() ?? "",
+      updatedAt: new Date().toISOString(),
+      assigned_amps: [],
+    };
+
+    const filePath = path.join(projectsDir, `${id}.json`);
+    await fs.writeFile(filePath, JSON.stringify(newProject, null, 2));
+
+    return NextResponse.json(
+      { success: true, project: newProject },
+      { status: 201 },
+    );
+  } catch (err) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : "Failed to create project",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "Project ID is required" },
+        { status: 400 },
+      );
+    }
+
+    const projectsDir = getProjectsDir();
+    const filePath = path.join(projectsDir, `${id}.json`);
+
+    await fs.unlink(filePath);
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : "Failed to delete project",
       },
       { status: 500 },
     );

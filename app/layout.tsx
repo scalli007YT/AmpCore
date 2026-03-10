@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   title: "CVR AMP Controller",
   description: "Control and monitor your CVR AMP system",
   icons: {
-    icon: "/logo.svg",
+    icon: "/logo.ico",
   },
 };
 

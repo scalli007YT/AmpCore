@@ -1,12 +1,49 @@
 {
   "name": "cvr-amp-controller-web",
   "version": "0.1.0",
+  "description": "CVR AMP Controller — desktop app for managing CVR amplifier devices",
+  "author": "scalli007",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron:dev": "concurrently -k -n next,electron -c cyan,yellow \"next dev -p 3000\" \"cross-env ELECTRON_DEV=1 electron .\"",
+    "electron:build": "next build && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.cvr.ampcontroller",
+    "productName": "CVR AMP Controller",
+    "icon": "public/logo.ico",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/**/*.node"
+    ],
+    "files": [
+      "electron/**/*",
+      ".next/**/*",
+      "node_modules/**/*",
+      "public/**/*",
+      "storage/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "public/logo.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "installerIcon": "public/logo.ico",
+      "uninstallerIcon": "public/logo.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "public/logo.ico"
+    }
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
@@ -30,9 +67,14 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^40.8.0",
+    "electron-builder": "^26.8.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wait-on": "^9.0.4"
   }
 }

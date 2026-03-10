@@ -40,7 +40,7 @@ export function LayoutContent({ children }: { children: ReactNode }) {
     <>
       <Header projects={projects} loading={loading} />
       <main>
-        <div className="container mx-auto py-8 px-4">{children}</div>
+        <div className="px-3 py-4">{children}</div>
       </main>
     </>
   );

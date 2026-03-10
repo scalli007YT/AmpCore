@@ -83,6 +83,8 @@ export interface ChannelData {
     attackMs: number;
     /** n × Attack (uint8 @ 97) */
     releaseMultiplier: number;
+    /** Power at threshold into the configured load (W). Computed after parse. */
+    prmsW: number;
   };
   /** Peak limiter settings */
   peakLimiter: {
@@ -94,6 +96,8 @@ export interface ChannelData {
     holdMs: number;
     /** ms (uint16LE @ 110) */
     releaseMs: number;
+    /** Peak power at threshold into the configured load (W). Computed after parse. */
+    ppeakW: number;
   };
   /** 4 matrix crosspoint entries — one per input source (offsets 60, 65, 70, 75) */
   matrix: MatrixSource[];
@@ -271,6 +275,7 @@ function parseChannelFromBuffer(
       thresholdVrms: round2(buffer.readFloatLE(base + 98)),
       attackMs: buffer.readUInt16LE(base + 95),
       releaseMultiplier: buffer.readUInt8(base + 97),
+      prmsW: 0, // computed by the store after parse (depends on configured load impedance)
     };
 
     // Peak bypass flag: byte @ offset 116 (1=bypassed, 0=active).
@@ -281,6 +286,7 @@ function parseChannelFromBuffer(
       thresholdVp: round2(buffer.readFloatLE(base + 112)),
       holdMs: buffer.readUInt16LE(base + 108),
       releaseMs: buffer.readUInt16LE(base + 110),
+      ppeakW: 0, // computed by the store after parse (depends on configured load impedance)
     };
 
     return {

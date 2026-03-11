@@ -19,6 +19,7 @@ import { useProjectStore, type Project } from "@/stores/ProjectStore";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { EditProjectDialog } from "@/components/edit-project-dialog";
 import { DeleteProjectDialog } from "@/components/delete-project-dialog";
+import { ModeToggle } from "@/components/color-mode-toggle";
 
 interface HeaderProps {
   projects?: Project[];
@@ -119,8 +120,9 @@ export function Header({ projects = [], loading = false }: HeaderProps) {
             </ToggleGroup>
           </div>
 
-          {/* Right — project selector */}
-          <div className="flex justify-end">
+          {/* Right — theme toggle + project selector */}
+          <div className="flex justify-end items-center gap-2">
+            <ModeToggle />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

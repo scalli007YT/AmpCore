@@ -28,6 +28,7 @@ import { thresholdVToDbu, formatRuntime, formatDbfs } from "@/lib/generic";
 import { getFilterTypeName } from "@/lib/parse-channel-data";
 import { EQ_BAND_LABELS, formatFreqFull } from "@/lib/eq";
 import { EqCurveChart } from "@/components/eq-curve-chart";
+import { COLORS } from "@/lib/colors";
 import {
   LayoutDashboardIcon,
   GridIcon,
@@ -53,14 +54,14 @@ function JsonNode({ value, depth = 0 }: { value: JsonValue; depth?: number }) {
     return <span className="text-muted-foreground">null</span>;
   if (typeof value === "boolean")
     return (
-      <span className={value ? "text-green-400" : "text-red-400"}>
+      <span className={value ? "text-green-500" : "text-destructive"}>
         {String(value)}
       </span>
     );
   if (typeof value === "number")
-    return <span className="text-sky-400">{value}</span>;
+    return <span className="text-foreground">{value}</span>;
   if (typeof value === "string")
-    return <span className="text-amber-300">&quot;{value}&quot;</span>;
+    return <span className="text-foreground">&quot;{value}&quot;</span>;
 
   const isArray = Array.isArray(value);
   const entries = isArray
@@ -86,7 +87,7 @@ function JsonNode({ value, depth = 0 }: { value: JsonValue; depth?: number }) {
           {entries.map(([k, v]) => (
             <span key={k} className="block leading-5">
               {!isArray && (
-                <span className="text-violet-300">&quot;{k}&quot;</span>
+                <span className="text-foreground/70">&quot;{k}&quot;</span>
               )}
               {!isArray && <span className="text-foreground/50">: </span>}
               <JsonNode value={v} depth={depth + 1} />
@@ -260,7 +261,7 @@ function EqBandDialog({
           className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
             !bands
               ? "border-border/30 bg-muted/10 text-muted-foreground/30"
-              : "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-violet-500/40 hover:text-violet-400/70"
+              : "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-border/60 hover:text-foreground/70"
           }`}
         >
           {triggerLabel}
@@ -641,7 +642,7 @@ function HeartbeatDashboard({
                 if (d !== null)
                   thresholdLines.push({
                     dbu: d,
-                    color: "#facc15",
+                    color: COLORS.RMS_LIMITER,
                     label: `RMS ${chParam.rmsLimiter.thresholdVrms.toFixed(2)} Vrms · ${chParam.rmsLimiter.prmsW} W (${d.toFixed(1)} dB)`,
                   });
               }
@@ -653,7 +654,7 @@ function HeartbeatDashboard({
                 if (d !== null)
                   thresholdLines.push({
                     dbu: d,
-                    color: "#f97316",
+                    color: COLORS.PEAK_LIMITER,
                     label: `Peak ${chParam.peakLimiter.thresholdVp.toFixed(2)} Vp · ${chParam.peakLimiter.ppeakW} W (${d.toFixed(1)} dB)`,
                   });
               }

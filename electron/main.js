@@ -52,17 +52,25 @@ function startServer() {
 // --- Window ---------------------------------------------------------------
 
 function createWindow() {
+  const { COLORS } = require('../lib/colors.js');
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    backgroundColor: "#09090b",
+    backgroundColor: COLORS.WINDOW_BG,
     show: true,
     title: "CVR AMP Controller",
     autoHideMenuBar: true,
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
 
-  mainWindow.loadFile(path.join(__dirname, "splash.html"));
+  mainWindow.loadFile(path.join(__dirname, "splash.html"), {
+    query: {
+      bg: COLORS.SPLASH_BG,
+      text: COLORS.SPLASH_TEXT,
+      border: COLORS.SPLASH_BORDER,
+      borderTop: COLORS.SPLASH_BORDER_TOP,
+    },
+  });
 }
 
 // --- Lifecycle ------------------------------------------------------------
@@ -72,12 +80,25 @@ app.whenReady().then(() => {
 
   createWindow();
 
-  serverReady.then(() => {
+  serverReady.then(async () => {
     const url = isDev
       ? `http://localhost:${PORT}`
       : `http://127.0.0.1:${PORT}`;
 
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(url);
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+
+    try {
+      // Ask splash page to fade out before navigation.
+      const fadeMs = await mainWindow.webContents.executeJavaScript(
+        "window.startFadeOut ? window.startFadeOut() : 0",
+      );
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(url);
+      }, Number(fadeMs) || 0);
+    } catch {
+      // If JS execution fails, fall back to immediate navigation.
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(url);
+    }
   });
 });
 

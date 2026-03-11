@@ -142,7 +142,7 @@ export function AssignAmpsDialog() {
   ).length;
   const statusColor =
     totalAmps === 0
-      ? "bg-gray-400"
+      ? "bg-muted/40"
       : reachableAmps === totalAmps
         ? "bg-green-500"
         : reachableAmps === 0
@@ -181,7 +181,7 @@ export function AssignAmpsDialog() {
                   return (
                     <div
                       key={amp.mac}
-                      className="flex items-center justify-between p-3 hover:bg-gray-50 gap-3"
+                      className="flex items-center justify-between p-3 hover:bg-accent gap-3"
                     >
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -204,7 +204,7 @@ export function AssignAmpsDialog() {
                                   ? getDisplayName(ampInfo)
                                   : "Unknown Amp"}
                               </p>
-                              <p className="text-xs text-gray-500 font-mono">
+                              <p className="text-xs text-muted-foreground font-mono">
                                 {amp.mac}
                               </p>
                             </div>
@@ -233,7 +233,7 @@ export function AssignAmpsDialog() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDeleteAmp(amp.mac)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -242,7 +242,7 @@ export function AssignAmpsDialog() {
                 })}
               </div>
             ) : (
-              <p className="text-sm text-gray-500 py-4 text-center">
+              <p className="text-sm text-muted-foreground py-4 text-center">
                 No amps assigned yet
               </p>
             )}
@@ -319,13 +319,13 @@ export function AssignAmpsDialog() {
                   {isScanning ? "Scanning..." : "Start Scan"}
                 </Button>
 
-                <p className="text-xs text-gray-500 text-center italic">
+                <p className="text-xs text-muted-foreground text-center italic">
                   Note: Other devices may become unreachable for a few seconds
                   during scanning.
                 </p>
 
                 {scanError && (
-                  <p className="text-xs text-red-600 text-center">
+                  <p className="text-xs text-destructive text-center">
                     {scanError}
                   </p>
                 )}
@@ -335,16 +335,16 @@ export function AssignAmpsDialog() {
                     {scannedDevices.map((device) => (
                       <div
                         key={device.mac}
-                        className="flex items-center justify-between p-3 hover:bg-gray-50"
+                        className="flex items-center justify-between p-3 hover:bg-accent"
                       >
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold truncate">
                             {device.name}
                           </p>
-                          <p className="text-xs text-gray-500 font-mono">
+                          <p className="text-xs text-muted-foreground font-mono">
                             {device.mac}
                           </p>
-                          <p className="text-xs text-gray-400 truncate">
+                          <p className="text-xs text-muted-foreground truncate">
                             {device.ip}
                           </p>
                         </div>

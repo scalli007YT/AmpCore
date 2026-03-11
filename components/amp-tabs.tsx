@@ -169,7 +169,7 @@ function CopyJsonButton({ data }: { data: unknown }) {
 function EqParamStrip({ bands }: { bands: EqBand[] }) {
   return (
     <div
-      className="grid gap-px border-t border-border/40"
+      className="grid gap-px m-4"
       style={{
         gridTemplateColumns: `repeat(${bands.length}, minmax(64px, 1fr))`,
         minWidth: `${bands.length * 72}px`,
@@ -186,7 +186,7 @@ function EqParamStrip({ bands }: { bands: EqBand[] }) {
             }`}
           >
             {/* Band label */}
-            <div className="text-[11px] font-bold mb-1.5 w-full py-0.5 rounded-sm bg-muted text-foreground">
+            <div className="text-[11px] font-bold mb-2 w-full py-0.5 rounded-sm bg-muted text-foreground">
               {EQ_BAND_LABELS[idx]}
             </div>
 
@@ -267,8 +267,8 @@ function EqBandDialog({
           {triggerLabel}
         </Button>
       </DialogTrigger>
-      <DialogContent className="w-[min(64rem,95vw)] max-w-none sm:max-w-none p-0 gap-0 max-h-[90vh] overflow-y-auto">
-        <DialogHeader className="px-4 pt-4 pb-2">
+      <DialogContent className="w-[min(64rem,95vw)] max-w-none sm:max-w-none gap-0">
+        <DialogHeader className="pb-4">
           <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
         </DialogHeader>
         {bands && (
@@ -276,7 +276,7 @@ function EqBandDialog({
             <div className="px-3">
               <EqCurveChart bands={bands} />
             </div>
-            <div className="overflow-x-auto px-3 pb-3">
+            <div className="overflow-x-auto">
               <EqParamStrip bands={bands} />
             </div>
           </>

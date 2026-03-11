@@ -26,10 +26,7 @@ import {
 import { useVuMeters } from "@/hooks/useVuMeters";
 import { thresholdVToDbu, formatRuntime, formatDbfs } from "@/lib/generic";
 import { getFilterTypeName } from "@/lib/parse-channel-data";
-import {
-  EQ_BAND_LABELS,
-  formatFreqFull,
-} from "@/lib/eq";
+import { EQ_BAND_LABELS, formatFreqFull } from "@/lib/eq";
 import { EqCurveChart } from "@/components/eq-curve-chart";
 import {
   LayoutDashboardIcon,
@@ -271,9 +268,7 @@ function EqBandDialog({
       </DialogTrigger>
       <DialogContent className="w-[min(64rem,95vw)] max-w-none sm:max-w-none p-0 gap-0 max-h-[90vh] overflow-y-auto">
         <DialogHeader className="px-4 pt-4 pb-2">
-          <DialogTitle className="text-sm font-semibold">
-            {title}
-          </DialogTitle>
+          <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
         </DialogHeader>
         {bands && (
           <>

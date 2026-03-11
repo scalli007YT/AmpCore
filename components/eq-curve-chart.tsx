@@ -43,7 +43,7 @@ export function EqCurveChart({ bands }: { bands: EqBand[] }) {
     pad.top + ((yMax - db) / (yMax - yMin)) * ch;
 
   const pathPoints = curveData.map(
-    (p) => `${xScale(p.freq)},${yScaleRaw(p.gain)}`
+    (p) => `${xScale(p.freq)},${yScaleRaw(p.gain)}`,
   );
   const linePath = `M${pathPoints.join("L")}`;
   const fillPath = `${linePath}L${xScale(20000)},${yScaleRaw(0)}L${xScale(20)},${yScaleRaw(0)}Z`;
@@ -80,7 +80,7 @@ export function EqCurveChart({ bands }: { bands: EqBand[] }) {
             x2={W - pad.right}
             y1={yScale(db)}
             y2={yScale(db)}
-            className={db === 0 ? "stroke-border" : "stroke-border/30"}
+            className={db === 0 ? "stroke-border" : "stroke-border/80"}
             strokeWidth={db === 0 ? 1.5 : 0.5}
           />
           <text
@@ -103,7 +103,7 @@ export function EqCurveChart({ bands }: { bands: EqBand[] }) {
             x2={xScale(f)}
             y1={pad.top}
             y2={H - pad.bottom}
-            className="stroke-border/30"
+            className="stroke-border/60"
             strokeWidth={0.5}
           />
           <text
@@ -137,7 +137,11 @@ export function EqCurveChart({ bands }: { bands: EqBand[] }) {
       </text>
 
       {/* Filled area under/above 0 dB */}
-      <path d={fillPath} className="fill-foreground/5" clipPath={`url(#${clipId})`} />
+      <path
+        d={fillPath}
+        className="fill-foreground/5"
+        clipPath={`url(#${clipId})`}
+      />
       {/* Curve line */}
       <path
         d={linePath}
@@ -148,41 +152,27 @@ export function EqCurveChart({ bands }: { bands: EqBand[] }) {
         clipPath={`url(#${clipId})`}
       />
 
-      {/* Band markers */}
+      {/* Band markers — placed at the band's Hz/dB point on the curve */}
       {markers.map((m, i) => {
         if (m.bypass) return null;
-        const cx = Math.max(pad.left, Math.min(W - pad.right, m.x));
-        const cy = Math.max(
-          pad.top + 7,
-          Math.min(H - pad.bottom - 7, m.y - 12)
-        );
+        const cx = Math.max(pad.left + 8, Math.min(W - pad.right - 8, m.x));
+        const cy = Math.max(pad.top + 8, Math.min(H - pad.bottom - 8, m.y));
         return (
           <g key={i}>
-            {/* Connector line */}
-            <line
-              x1={cx}
-              x2={Math.max(pad.left, Math.min(W - pad.right, m.x))}
-              y1={cy + 6}
-              y2={Math.max(pad.top, Math.min(H - pad.bottom, m.y))}
-              className="stroke-muted-foreground/30"
-              strokeWidth={0.5}
-            />
-            {/* Circle */}
             <circle
               cx={cx}
               cy={cy}
-              r={6}
+              r={7.5}
               className="fill-background stroke-foreground/50"
               strokeWidth={1}
             />
-            {/* Label */}
             <text
               x={cx}
               y={cy}
               textAnchor="middle"
               dominantBaseline="central"
               className="fill-foreground"
-              fontSize={5}
+              fontSize={6}
               fontWeight="bold"
             >
               {m.label}

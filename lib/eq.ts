@@ -30,16 +30,16 @@ interface HpLpDef {
 
 /** Map HPLP type code → slope definition. Indices match HPLP_FILTER_TYPE_NAMES. */
 const HPLP_DEFS: Record<number, HpLpDef> = {
-  0: { order: 2, family: "bw" },  // BW-12
-  1: { order: 2, family: "be" },  // BE-12
-  2: { order: 2, family: "lr" },  // LR-12
-  3: { order: 3, family: "bw" },  // BW-18
-  4: { order: 4, family: "bw" },  // BW-24
-  5: { order: 4, family: "be" },  // BE-24
-  6: { order: 4, family: "lr" },  // LR-24
-  7: { order: 6, family: "bw" },  // BW-36
-  8: { order: 8, family: "bw" },  // BW-48
-  9: { order: 8, family: "be" },  // BE-48
+  0: { order: 2, family: "bw" }, // BW-12
+  1: { order: 2, family: "be" }, // BE-12
+  2: { order: 2, family: "lr" }, // LR-12
+  3: { order: 3, family: "bw" }, // BW-18
+  4: { order: 4, family: "bw" }, // BW-24
+  5: { order: 4, family: "be" }, // BE-24
+  6: { order: 4, family: "lr" }, // LR-24
+  7: { order: 6, family: "bw" }, // BW-36
+  8: { order: 8, family: "bw" }, // BW-48
+  9: { order: 8, family: "be" }, // BE-48
   10: { order: 8, family: "lr" }, // LR-48
 };
 
@@ -54,7 +54,11 @@ const HPLP_DEFS: Record<number, HpLpDef> = {
  * @param freq   - evaluation frequency in Hz
  * @param bandIndex - 0-based index: 0 = HP, 1–8 = parametric, 9 = LP
  */
-export function bandGainAt(band: EqBand, freq: number, bandIndex: number): number {
+export function bandGainAt(
+  band: EqBand,
+  freq: number,
+  bandIndex: number,
+): number {
   if (band.bypass) return 0;
 
   // HP (band 0) and LP (band 9) use rolloff filters
@@ -72,14 +76,16 @@ function parametricGainAt(band: EqBand, freq: number): number {
   const G = band.gain;
 
   switch (band.type) {
-    case 0: { // Peak (parametric bell)
+    case 0: {
+      // Peak (parametric bell)
       const A = Math.pow(10, G / 40);
       const w2 = w * w;
-      const num = w2 * w2 + w2 * (A * A / (Q * Q) - 2) + 1;
+      const num = w2 * w2 + w2 * ((A * A) / (Q * Q) - 2) + 1;
       const den = w2 * w2 + w2 * (1 / (A * A * Q * Q) - 2) + 1;
       return 10 * Math.log10(num / den);
     }
-    case 1: { // LowShelf  — matches C# Tone_Low_Shelf
+    case 1: {
+      // LowShelf  — matches C# Tone_Low_Shelf
       // A = 10^(G/40), num5 = 1/√((A+1/A)·(1/Q-1)+2)
       // dB = 10·log10(((A-ω²)²+A·(ω/num5)²)/((1/A-ω²)²+(ω/num5)²/A))
       const A = Math.pow(10, G / 40);
@@ -91,9 +97,8 @@ function parametricGainAt(band: EqBand, freq: number): number {
       const den = (1 / A - w2) * (1 / A - w2) + wn2 / A;
       return 10 * Math.log10(num / den);
     }
-    case 2:   // HighShelf — matches C# Tone_high_Shelf
-    case 253: // HighShelf variant (byte 253 = same shelf, different encoding)
-    {
+    case 2: // HighShelf — matches C# Tone_high_Shelf
+    case 253: { // HighShelf variant (byte 253 = same shelf, different encoding)
       // dB = 10·log10(((1-A·ω²)²+A·(ω/num5)²)/((1-ω²/A)²+(ω/num5)²/A))
       const A = Math.pow(10, G / 40);
       const w2 = w * w;
@@ -206,15 +211,24 @@ function besselGainDb(w: number, order: number): number {
 
 /** Generic delay-normalised Bessel, used only for orders not in the firmware. */
 function besselGainDbGeneric(w: number, order: number): number {
-  let re = 0, im = 0;
+  let re = 0,
+    im = 0;
   for (let k = 0; k <= order; k++) {
     const wk = Math.pow(w, k);
     const term = besselCoeff(order, k) * wk;
     switch (k % 4) {
-      case 0: re += term; break;
-      case 1: im += term; break;
-      case 2: re -= term; break;
-      case 3: im -= term; break;
+      case 0:
+        re += term;
+        break;
+      case 1:
+        im += term;
+        break;
+      case 2:
+        re -= term;
+        break;
+      case 3:
+        im -= term;
+        break;
     }
   }
   const a0 = besselCoeff(order, 0);
@@ -222,7 +236,10 @@ function besselGainDbGeneric(w: number, order: number): number {
 }
 
 function besselCoeff(n: number, k: number): number {
-  return factorial(2 * n - k) / (Math.pow(2, n - k) * factorial(k) * factorial(n - k));
+  return (
+    factorial(2 * n - k) /
+    (Math.pow(2, n - k) * factorial(k) * factorial(n - k))
+  );
 }
 
 function factorial(n: number): number {
@@ -277,14 +294,34 @@ export function curveGainAtBand(bands: EqBand[], bandIndex: number): number {
 }
 
 export const EQ_BAND_LABELS = [
-  "HP", "EQ1", "EQ2", "EQ3", "EQ4", "EQ5", "EQ6", "EQ7", "EQ8", "LP",
+  "HP",
+  "EQ1",
+  "EQ2",
+  "EQ3",
+  "EQ4",
+  "EQ5",
+  "EQ6",
+  "EQ7",
+  "EQ8",
+  "LP",
 ] as const;
 
 export const EQ_BAND_SHORT_LABELS = [
-  "HP", "1", "2", "3", "4", "5", "6", "7", "8", "LP",
+  "HP",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "LP",
 ] as const;
 
-export const EQ_FREQ_TICKS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+export const EQ_FREQ_TICKS = [
+  20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000,
+];
 
 export function formatFreq(hz: number): string {
   if (hz >= 1000) return `${hz / 1000}K`;

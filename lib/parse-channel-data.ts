@@ -65,7 +65,9 @@ export const HPLP_FILTER_TYPE_NAMES: Record<number, string> = {
 export function getFilterTypeName(type: number, bandIndex: number): string {
   // Band 0 (HP) and band 9 (LP) use the HP/LP rolloff lookup
   if (bandIndex === 0 || bandIndex === 9) {
-    return HPLP_FILTER_TYPE_NAMES[type] ?? EQ_FILTER_TYPE_NAMES[type] ?? String(type);
+    return (
+      HPLP_FILTER_TYPE_NAMES[type] ?? EQ_FILTER_TYPE_NAMES[type] ?? String(type)
+    );
   }
   return EQ_FILTER_TYPE_NAMES[type] ?? String(type);
 }
@@ -282,7 +284,7 @@ function parseChannelFromBuffer(
         const off = base + blockOffset + i * EQ_BAND_STRIDE;
         const rawType = buffer.readUInt8(off);
         const isBypassEncoded = rawType >= 128; // negative sbyte = band bypassed
-        const type = isBypassEncoded ? (255 - rawType) : rawType;
+        const type = isBypassEncoded ? 255 - rawType : rawType;
         const bypass = isBypassEncoded || buffer.readUInt8(off + 13) !== 0;
         return {
           type,

@@ -583,6 +583,38 @@ export class CvrAmpDevice {
   }
 
   /**
+   * Store (save) current device state into a preset slot.
+   *
+   * Confirmed from original C# source:
+   *   Save_Recall_data { mode = 1, ch_x = slotIndex, buffers = name[32] }
+   */
+  async storePreset(slot: number, name: string): Promise<void> {
+    if (!Number.isInteger(slot) || slot < 1 || slot > 40) {
+      throw new Error(`Invalid preset slot: ${slot}`);
+    }
+
+    const trimmed = (name ?? "").trim();
+    if (trimmed.length === 0) {
+      throw new Error("Preset name cannot be empty");
+    }
+
+    const body = Buffer.alloc(34, 0);
+    body.writeUInt8(1, 0); // mode = 1 (store)
+    body.writeUInt8(slot - 1, 1); // ch_x = zero-based slot index
+
+    // Device preset names are 32-byte null-padded ASCII fields.
+    const nameBytes = Buffer.from(trimmed, "ascii").subarray(0, 32);
+    nameBytes.copy(body, 2);
+
+    await this.sendControl(
+      FuncCode.SAVE_RECALL,
+      0,
+      body,
+      0 /* input/default */,
+    );
+  }
+
+  /**
    * Send a fire-and-forget control command via an ephemeral UDP socket.
    *
    * Wire format derived from real packet captures (Python reverse-engineering)

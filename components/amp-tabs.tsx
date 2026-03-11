@@ -13,6 +13,7 @@ import { useAmpActions } from "@/hooks/useAmpActions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -45,6 +46,46 @@ import {
 // ---------------------------------------------------------------------------
 // JsonTree — collapsible JSON viewer (collapsed by default)
 // ---------------------------------------------------------------------------
+
+function PresetActionDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirmLabel,
+  confirmDisabled,
+  onConfirm,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  confirmDisabled?: boolean;
+  onConfirm?: () => void | Promise<void>;
+  children?: React.ReactNode;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        {children}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button disabled={confirmDisabled} onClick={() => void onConfirm?.()}>
+            {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 type JsonValue =
   | string
@@ -1097,15 +1138,20 @@ export function AmpTabs() {
   const {
     fetchPresets,
     recallPreset,
+    storePreset,
     fetching,
     recallingSlot,
+    storingSlot,
     error: presetsError,
   } = useAmpPresets();
   const [selectedMac, setSelectedMac] = useState<string | null>(
     amps.length > 0 ? amps[0].mac : null,
   );
   const [activeSection, setActiveSection] = useState<AmpSection>("main");
-  const [presetToRecall, setPresetToRecall] = useState<AmpPreset | null>(null);
+  const [activePreset, setActivePreset] = useState<AmpPreset | null>(null);
+  const [recallDialogOpen, setRecallDialogOpen] = useState(false);
+  const [storeDialogOpen, setStoreDialogOpen] = useState(false);
+  const [storePresetName, setStorePresetName] = useState("");
 
   const selectedAmp = amps.find((a) => a.mac === selectedMac);
 
@@ -1123,6 +1169,13 @@ export function AmpTabs() {
     // fetchPresets identity is stable (useCallback); fetching guards against double-fire
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, selectedMac]);
+
+  useEffect(() => {
+    setActivePreset(null);
+    setRecallDialogOpen(false);
+    setStoreDialogOpen(false);
+    setStorePresetName("");
+  }, [selectedMac]);
 
   if (!amps || amps.length === 0) {
     return (
@@ -1278,51 +1331,83 @@ export function AmpTabs() {
 
               {/* Presets section */}
               <div>
-                <Dialog
-                  open={presetToRecall !== null}
+                <PresetActionDialog
+                  open={recallDialogOpen}
+                  onOpenChange={setRecallDialogOpen}
+                  title="Recall Preset"
+                  description={
+                    activePreset
+                      ? `Recall preset ${activePreset.slot}: ${activePreset.name}?`
+                      : "Recall this preset?"
+                  }
+                  confirmLabel={
+                    recallingSlot === activePreset?.slot
+                      ? "Recalling..."
+                      : "Recall"
+                  }
+                  confirmDisabled={
+                    !selectedAmp?.reachable ||
+                    activePreset === null ||
+                    recallingSlot !== null
+                  }
+                  onConfirm={async () => {
+                    if (!selectedAmp || !activePreset) return;
+                    const ok = await recallPreset(
+                      selectedAmp.mac,
+                      activePreset.slot,
+                      activePreset.name,
+                    );
+                    if (ok) setRecallDialogOpen(false);
+                  }}
+                />
+
+                <PresetActionDialog
+                  open={storeDialogOpen}
                   onOpenChange={(open) => {
-                    if (!open) setPresetToRecall(null);
+                    setStoreDialogOpen(open);
+                    if (!open && activePreset)
+                      setStorePresetName(activePreset.name);
+                  }}
+                  title="Store Preset"
+                  description={
+                    activePreset
+                      ? `Store current device state to preset ${activePreset.slot}.`
+                      : "Choose a name for this preset."
+                  }
+                  confirmLabel={
+                    storingSlot === activePreset?.slot ? "Storing..." : "Store"
+                  }
+                  confirmDisabled={
+                    !selectedAmp?.reachable ||
+                    activePreset === null ||
+                    storingSlot !== null ||
+                    storePresetName.trim().length === 0
+                  }
+                  onConfirm={async () => {
+                    if (!selectedAmp || !activePreset) return;
+                    const ok = await storePreset(
+                      selectedAmp.mac,
+                      activePreset.slot,
+                      storePresetName,
+                    );
+                    if (ok) setStoreDialogOpen(false);
                   }}
                 >
-                  <DialogContent className="sm:max-w-sm">
-                    <DialogHeader>
-                      <DialogTitle>Recall Preset</DialogTitle>
-                      <DialogDescription>
-                        {presetToRecall
-                          ? `Recall preset ${presetToRecall.slot}: ${presetToRecall.name}?`
-                          : "Recall this preset?"}
-                      </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                      <Button
-                        variant="outline"
-                        onClick={() => setPresetToRecall(null)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        disabled={
-                          !selectedAmp?.reachable ||
-                          presetToRecall === null ||
-                          recallingSlot !== null
-                        }
-                        onClick={async () => {
-                          if (!selectedAmp || !presetToRecall) return;
-                          const ok = await recallPreset(
-                            selectedAmp.mac,
-                            presetToRecall.slot,
-                            presetToRecall.name,
-                          );
-                          if (ok) setPresetToRecall(null);
-                        }}
-                      >
-                        {recallingSlot === presetToRecall?.slot
-                          ? "Recalling..."
-                          : "Recall"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Preset Name
+                    </label>
+                    <Input
+                      value={storePresetName}
+                      onChange={(e) => setStorePresetName(e.target.value)}
+                      placeholder="Enter preset name"
+                      maxLength={32}
+                    />
+                    <p className="text-[11px] text-muted-foreground text-right">
+                      {storePresetName.length}/32
+                    </p>
+                  </div>
+                </PresetActionDialog>
 
                 <div className="flex items-center gap-2 mb-3">
                   <h3 className="text-sm font-semibold">Presets</h3>
@@ -1362,17 +1447,67 @@ export function AmpTabs() {
                   <ul className="space-y-1">
                     {selectedAmp.presets.map((preset) => (
                       <li key={preset.slot} className="list-none">
-                        <button
-                          type="button"
-                          disabled={!selectedAmp.reachable}
-                          onClick={() => setPresetToRecall(preset)}
-                          className="flex w-full items-center gap-3 rounded-md border px-3 py-1.5 text-sm text-left transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                        <div
+                          role="button"
+                          tabIndex={selectedAmp.reachable ? 0 : -1}
+                          onClick={() => {
+                            if (!selectedAmp.reachable) return;
+                            setActivePreset((current) =>
+                              current?.slot === preset.slot ? null : preset,
+                            );
+                            setStorePresetName(preset.name);
+                          }}
+                          onKeyDown={(e) => {
+                            if (!selectedAmp.reachable) return;
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setActivePreset((current) =>
+                                current?.slot === preset.slot ? null : preset,
+                              );
+                              setStorePresetName(preset.name);
+                            }
+                          }}
+                          className={`flex w-full items-center gap-3 rounded-md border px-3 py-1.5 text-sm text-left transition-colors ${
+                            activePreset?.slot === preset.slot
+                              ? "border-primary/40 bg-accent"
+                              : "hover:bg-accent"
+                          } ${
+                            !selectedAmp.reachable
+                              ? "pointer-events-none opacity-50"
+                              : "cursor-pointer"
+                          }`}
                         >
                           <span className="w-6 text-center text-xs font-mono text-muted-foreground">
                             {preset.slot}
                           </span>
-                          <span className="font-medium">{preset.name}</span>
-                        </button>
+                          <span className="font-medium flex-1 min-w-0 truncate">
+                            {preset.name}
+                          </span>
+                          {activePreset?.slot === preset.slot && (
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setStorePresetName(preset.name);
+                                  setStoreDialogOpen(true);
+                                }}
+                              >
+                                Store
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRecallDialogOpen(true);
+                                }}
+                              >
+                                Recall
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                       </li>
                     ))}
                   </ul>

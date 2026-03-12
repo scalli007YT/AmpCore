@@ -2,7 +2,6 @@
 
 import { useCallback } from "react";
 import { toast } from "sonner";
-import { useAmpStore } from "@/stores/AmpStore";
 import { MATRIX_GAIN_MAX_DB, MATRIX_GAIN_MIN_DB } from "@/lib/constants";
 
 // ---------------------------------------------------------------------------
@@ -45,16 +44,13 @@ interface AmpActionsHook {
 // ---------------------------------------------------------------------------
 
 export function useAmpActions(): AmpActionsHook {
-  const { syncChannelParams, amps } = useAmpStore();
-
-  /** Send a POST to /api/amp-actions and revert store + toast on failure. */
+  /** Send a POST to /api/amp-actions. UI updates from polled amp state. */
   const send = useCallback(
     async (
       mac: string,
       action: string,
       channel: Channel,
       value: boolean | number,
-      revert: () => void,
       extra?: Record<string, unknown>,
     ) => {
       try {
@@ -71,8 +67,6 @@ export function useAmpActions(): AmpActionsHook {
           throw new Error(data.error ?? `HTTP ${res.status}`);
         }
       } catch (err) {
-        // Revert optimistic update
-        revert();
         const msg = err instanceof Error ? err.message : String(err);
         toast.error(`Command failed: ${msg}`);
       }
@@ -81,47 +75,13 @@ export function useAmpActions(): AmpActionsHook {
   );
 
   // ---------------------------------------------------------------------------
-  // Helpers — snapshot and patch channelParams in-place
-  // ---------------------------------------------------------------------------
-
-  const patchChannelParams = useCallback(
-    (
-      mac: string,
-      channel: Channel,
-      patch: Partial<{
-        muteIn: boolean;
-        muteOut: boolean;
-        invertedOut: boolean;
-        noiseGateOut: boolean;
-      }>,
-    ) => {
-      const amp = amps.find((a) => a.mac.toUpperCase() === mac.toUpperCase());
-      if (!amp?.channelParams) return;
-
-      const patched = amp.channelParams.channels.map((ch, i) => {
-        if (i !== channel) return ch;
-        return { ...ch, ...patch };
-      });
-
-      syncChannelParams(mac, patched);
-    },
-    [amps, syncChannelParams],
-  );
-
-  // ---------------------------------------------------------------------------
   // muteIn
   // ---------------------------------------------------------------------------
   const muteIn = useCallback(
     async (mac: string, channel: Channel, muted: boolean) => {
-      // Optimistic update
-      patchChannelParams(mac, channel, { muteIn: muted });
-
-      await send(mac, "muteIn", channel, muted, () => {
-        // Revert
-        patchChannelParams(mac, channel, { muteIn: !muted });
-      });
+      await send(mac, "muteIn", channel, muted);
     },
-    [patchChannelParams, send],
+    [send],
   );
 
   // ---------------------------------------------------------------------------
@@ -129,15 +89,9 @@ export function useAmpActions(): AmpActionsHook {
   // ---------------------------------------------------------------------------
   const muteOut = useCallback(
     async (mac: string, channel: Channel, muted: boolean) => {
-      // Optimistic update
-      patchChannelParams(mac, channel, { muteOut: muted });
-
-      await send(mac, "muteOut", channel, muted, () => {
-        // Revert
-        patchChannelParams(mac, channel, { muteOut: !muted });
-      });
+      await send(mac, "muteOut", channel, muted);
     },
-    [patchChannelParams, send],
+    [send],
   );
 
   // ---------------------------------------------------------------------------
@@ -145,13 +99,9 @@ export function useAmpActions(): AmpActionsHook {
   // ---------------------------------------------------------------------------
   const invertPolarityOut = useCallback(
     async (mac: string, channel: Channel, inverted: boolean) => {
-      patchChannelParams(mac, channel, { invertedOut: inverted });
-
-      await send(mac, "invertPolarityOut", channel, inverted, () => {
-        patchChannelParams(mac, channel, { invertedOut: !inverted });
-      });
+      await send(mac, "invertPolarityOut", channel, inverted);
     },
-    [patchChannelParams, send],
+    [send],
   );
 
   // ---------------------------------------------------------------------------
@@ -159,41 +109,9 @@ export function useAmpActions(): AmpActionsHook {
   // ---------------------------------------------------------------------------
   const noiseGateOut = useCallback(
     async (mac: string, channel: Channel, enabled: boolean) => {
-      patchChannelParams(mac, channel, { noiseGateOut: enabled });
-
-      await send(mac, "noiseGateOut", channel, enabled, () => {
-        patchChannelParams(mac, channel, { noiseGateOut: !enabled });
-      });
+      await send(mac, "noiseGateOut", channel, enabled);
     },
-    [patchChannelParams, send],
-  );
-
-  // ---------------------------------------------------------------------------
-  // setMatrixGain
-  // ---------------------------------------------------------------------------
-  const patchMatrix = useCallback(
-    (
-      mac: string,
-      channel: Channel,
-      source: Channel,
-      patch: Partial<{ gain: number; active: boolean }>,
-    ) => {
-      const amp = amps.find((a) => a.mac.toUpperCase() === mac.toUpperCase());
-      if (!amp?.channelParams) return;
-
-      const patched = amp.channelParams.channels.map((ch, i) => {
-        if (i !== channel) return ch;
-        return {
-          ...ch,
-          matrix: ch.matrix.map((cell) =>
-            cell.source === source ? { ...cell, ...patch } : cell,
-          ),
-        };
-      });
-
-      syncChannelParams(mac, patched);
-    },
-    [amps, syncChannelParams],
+    [send],
   );
 
   const setMatrixGain = useCallback(
@@ -202,24 +120,9 @@ export function useAmpActions(): AmpActionsHook {
         MATRIX_GAIN_MIN_DB,
         Math.min(MATRIX_GAIN_MAX_DB, gainDb),
       );
-      const amp = amps.find((a) => a.mac.toUpperCase() === mac.toUpperCase());
-      const oldGain =
-        amp?.channelParams?.channels[channel]?.matrix[source]?.gain ?? 0;
-
-      patchMatrix(mac, channel, source, { gain: clampedGainDb });
-
-      await send(
-        mac,
-        "matrixGain",
-        channel,
-        clampedGainDb,
-        () => {
-          patchMatrix(mac, channel, source, { gain: oldGain });
-        },
-        { source },
-      );
+      await send(mac, "matrixGain", channel, clampedGainDb, { source });
     },
-    [amps, patchMatrix, send],
+    [send],
   );
 
   // ---------------------------------------------------------------------------
@@ -227,20 +130,9 @@ export function useAmpActions(): AmpActionsHook {
   // ---------------------------------------------------------------------------
   const setMatrixActive = useCallback(
     async (mac: string, channel: Channel, source: Channel, active: boolean) => {
-      patchMatrix(mac, channel, source, { active });
-
-      await send(
-        mac,
-        "matrixActive",
-        channel,
-        active,
-        () => {
-          patchMatrix(mac, channel, source, { active: !active });
-        },
-        { source },
-      );
+      await send(mac, "matrixActive", channel, active, { source });
     },
-    [patchMatrix, send],
+    [send],
   );
 
   return {

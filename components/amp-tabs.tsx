@@ -52,8 +52,8 @@ import {
   LayoutDashboardIcon,
   GridIcon,
   SlidersHorizontalIcon,
-    ChevronRight,
-  } from "lucide-react";
+  ChevronRight,
+} from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // JsonTree — collapsible JSON viewer (collapsed by default)
@@ -580,7 +580,7 @@ function ScaleColumn({
       {ticks.map((t) => (
         <span
           key={t}
-          className="text-[9px] text-muted-foreground leading-none text-right pr-1 block"
+          className="text-[9px] text-foreground/65 leading-none text-right pr-1 block"
         >
           {t}
         </span>
@@ -630,7 +630,7 @@ function HeartbeatDashboard({
       <div className="flex gap-6 text-xs select-none overflow-x-auto items-start">
         {/* ────────────────── VOLUME / SOURCE ────────────────── */}
         <div className="flex flex-col flex-shrink-0">
-          <span className="text-[11px] font-semibold text-center text-muted-foreground mb-3 tracking-wider uppercase">
+          <span className="text-[11px] font-semibold text-center text-foreground/70 mb-3 tracking-wider uppercase">
             Volume / Source
           </span>
           <div className="flex gap-3 items-start">
@@ -683,7 +683,7 @@ function HeartbeatDashboard({
                       className={`mt-1 rounded px-1 py-0.5 text-[9px] font-semibold w-full text-center ${
                         isClip
                           ? "bg-red-500 text-white"
-                          : "bg-muted/30 text-muted-foreground/40"
+                          : "bg-muted/30 text-muted-foreground/60"
                       }`}
                     >
                       Clip
@@ -701,7 +701,7 @@ function HeartbeatDashboard({
                         <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
                           {formatDbfs(dbfsVal)}
                         </span>
-                        <span className="text-[9px] text-muted-foreground mt-0.5">
+                        <span className="text-[9px] text-foreground/65 mt-0.5">
                           dBFS
                         </span>
                       </div>
@@ -711,7 +711,7 @@ function HeartbeatDashboard({
                           {channelParams?.channels[i]?.volumeIn.toFixed(1) ??
                             "~"}
                         </span>
-                        <span className="text-[9px] text-muted-foreground mt-0.5">
+                        <span className="text-[9px] text-foreground/65 mt-0.5">
                           Vol dB
                         </span>
                       </div>
@@ -720,7 +720,7 @@ function HeartbeatDashboard({
                         <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
                           {channelParams?.channels[i]?.gainIn ?? "~"}
                         </span>
-                        <span className="text-[9px] text-muted-foreground mt-0.5">
+                        <span className="text-[9px] text-foreground/65 mt-0.5">
                           Gain dB
                         </span>
                       </div>
@@ -778,8 +778,8 @@ function HeartbeatDashboard({
         </div>
 
         {/* ────────────────── OUTPUT ────────────────── */}
-        <div className="flex flex-col flex-1 min-w-0 border-l border-border/40 pl-6">
-          <span className="text-[11px] font-semibold text-center text-muted-foreground mb-3 tracking-wider uppercase">
+        <div className="flex flex-col flex-shrink-0 border-l border-border/40 pl-6">
+          <span className="text-[11px] font-semibold text-center text-foreground/70 mb-3 tracking-wider uppercase">
             Output
           </span>
           <div className="flex gap-3 items-start">
@@ -879,7 +879,7 @@ function HeartbeatDashboard({
                     className={`mt-1 rounded px-1 py-0.5 text-[9px] font-semibold w-full text-center ${
                       isClip
                         ? "bg-red-500 text-white"
-                        : "bg-muted/30 text-muted-foreground/40"
+                        : "bg-muted/30 text-muted-foreground/60"
                     }`}
                   >
                     Clip
@@ -893,7 +893,7 @@ function HeartbeatDashboard({
                       <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
                         {v > 0.01 ? f1(v) : "0"}
                       </span>
-                      <span className="text-[9px] text-muted-foreground mt-0.5">
+                      <span className="text-[9px] text-foreground/65 mt-0.5">
                         V
                       </span>
                     </div>
@@ -904,7 +904,7 @@ function HeartbeatDashboard({
                       <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
                         {a > 0.001 ? f1(a) : "0"}
                       </span>
-                      <span className="text-[9px] text-muted-foreground mt-0.5">
+                      <span className="text-[9px] text-foreground/65 mt-0.5">
                         A
                       </span>
                     </div>
@@ -915,7 +915,7 @@ function HeartbeatDashboard({
                       <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
                         {imp > 0 ? String(imp) : "---"}
                       </span>
-                      <span className="text-[9px] text-muted-foreground mt-0.5">
+                      <span className="text-[9px] text-foreground/65 mt-0.5">
                         Ω
                       </span>
                     </div>
@@ -926,7 +926,7 @@ function HeartbeatDashboard({
                       >
                         {f0(temp)}
                       </span>
-                      <span className="text-[9px] text-muted-foreground mt-0.5">
+                      <span className="text-[9px] text-foreground/65 mt-0.5">
                         °C
                       </span>
                     </div>
@@ -1411,6 +1411,7 @@ export function AmpTabs() {
   const [recallDialogOpen, setRecallDialogOpen] = useState(false);
   const [storeDialogOpen, setStoreDialogOpen] = useState(false);
   const [storePresetName, setStorePresetName] = useState("");
+  const onlineCount = amps.filter((amp) => amp.reachable).length;
 
   const selectedAmp = amps.find((a) => a.mac === selectedMac);
 
@@ -1438,57 +1439,108 @@ export function AmpTabs() {
 
   if (!amps || amps.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
-        No amps assigned. Add amps to get started.
+      <div className="rounded-xl border border-border/50 bg-muted/20 px-6 py-12 text-center text-sm text-muted-foreground">
+        No amps assigned. Add amps to start monitoring.
       </div>
     );
   }
 
   return (
-    <div className="flex gap-4 w-full">
-      {/* Vertical amp selector */}
-      <div className="flex flex-col gap-1">
-        {amps.map((amp) => (
-          <Button
-            key={amp.mac}
-            variant={selectedMac === amp.mac ? "outline" : "ghost"}
-            size="sm"
-            onClick={() => setSelectedMac(amp.mac)}
-            className="justify-start gap-2 whitespace-nowrap font-medium"
-          >
-            <div
-              className={`flex-shrink-0 w-2 h-2 rounded-full ${
-                amp.reachable ? "bg-green-500" : "bg-red-500"
-              }`}
-            />
-            <span className="truncate">{getDisplayName(amp)}</span>
-          </Button>
-        ))}
-      </div>
+    <div className="grid w-full gap-3 xl:grid-cols-[190px_minmax(0,1fr)]">
+      <aside className="rounded-lg border border-border/50 bg-card/25 p-2">
+        <div className="mb-2 flex items-center justify-between border-b border-border/50 px-2 pb-2">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Amp Rack
+            </p>
+            <p className="text-sm font-semibold">{amps.length} Devices</p>
+          </div>
+          <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-500">
+            {onlineCount} online
+          </span>
+        </div>
 
-      {/* Selected amp panel with horizontal section tabs */}
+        <div className="space-y-1.5">
+          {amps.map((amp) => {
+            const selected = selectedMac === amp.mac;
+            return (
+              <Button
+                key={amp.mac}
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedMac(amp.mac)}
+                className={`h-11 w-full justify-start gap-2.5 whitespace-nowrap border px-2.5 font-medium transition-colors ${
+                  selected
+                    ? "border-primary/40 bg-primary/10 text-foreground"
+                    : "border-border/50 bg-card/30 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                }`}
+              >
+                <div
+                  className={`h-2 w-2 flex-shrink-0 rounded-full ${
+                    amp.reachable ? "bg-emerald-500" : "bg-rose-500"
+                  }`}
+                />
+                <div className="min-w-0 text-left">
+                  <p className="truncate text-xs font-semibold">
+                    {getDisplayName(amp)}
+                  </p>
+                  <p className="truncate text-[10px] opacity-70">{amp.mac}</p>
+                </div>
+              </Button>
+            );
+          })}
+        </div>
+      </aside>
+
       {selectedAmp && (
-        <div className="flex-1 border rounded-lg overflow-hidden">
+        <div className="min-w-0 overflow-hidden rounded-lg border border-border/50 bg-card/20">
           <Tabs
             value={activeSection}
             onValueChange={(v) => setActiveSection(v as AmpSection)}
             orientation="horizontal"
             className="flex flex-col"
           >
-            <TabsList className="w-full justify-start rounded-none rounded-t-lg border-b h-10 px-2">
-              <TabsTrigger value="main">
-                <LayoutDashboardIcon />
+            <div className="border-b border-border/50 px-3 pb-2 pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    {selectedAmp.reachable ? "Connected" : "Offline"}
+                  </p>
+                  <h2 className="truncate text-lg font-semibold leading-tight">
+                    {getDisplayName(selectedAmp)}
+                  </h2>
+                </div>
+                <div className="flex items-center gap-2 text-[11px]">
+                  <Badge variant="outline" className="rounded border-border/50 bg-muted/20 font-mono">
+                    {selectedAmp.ip ?? "no ip"}
+                  </Badge>
+                </div>
+              </div>
+
+              <TabsList className="mt-2 h-9 w-full justify-start gap-1 rounded-md border border-border/50 bg-background/35 px-1">
+                <TabsTrigger
+                  value="main"
+                  className="h-7 flex-none border border-transparent px-3 data-active:border-primary/45 data-active:bg-primary/18 data-active:text-foreground"
+                >
+                  <LayoutDashboardIcon className="size-4" />
                 Main
-              </TabsTrigger>
-              <TabsTrigger value="matrix">
-                <GridIcon />
+                </TabsTrigger>
+                <TabsTrigger
+                  value="matrix"
+                  className="h-7 flex-none border border-transparent px-3 data-active:border-primary/45 data-active:bg-primary/18 data-active:text-foreground"
+                >
+                  <GridIcon className="size-4" />
                 Matrix / Limiter
-              </TabsTrigger>
-              <TabsTrigger value="preferences">
-                <SlidersHorizontalIcon />
+                </TabsTrigger>
+                <TabsTrigger
+                  value="preferences"
+                  className="h-7 flex-none border border-transparent px-3 data-active:border-primary/45 data-active:bg-primary/18 data-active:text-foreground"
+                >
+                  <SlidersHorizontalIcon className="size-4" />
                 Preferences
-              </TabsTrigger>
-            </TabsList>
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="main" className="p-4 mt-0">
               {!selectedAmp.reachable ? (
@@ -1500,12 +1552,14 @@ export function AmpTabs() {
                   Waiting for data…
                 </p>
               ) : (
-                <HeartbeatDashboard
-                  hb={selectedAmp.heartbeat}
-                  mac={selectedAmp.mac}
-                  ratedRmsV={selectedAmp.ratedRmsV}
-                  channelParams={selectedAmp.channelParams}
-                />
+                <div className="overflow-hidden rounded-md border border-border/50 bg-background/30 p-2.5">
+                  <HeartbeatDashboard
+                    hb={selectedAmp.heartbeat}
+                    mac={selectedAmp.mac}
+                    ratedRmsV={selectedAmp.ratedRmsV}
+                    channelParams={selectedAmp.channelParams}
+                  />
+                </div>
               )}
             </TabsContent>
 
@@ -1515,9 +1569,9 @@ export function AmpTabs() {
                   Waiting for data…
                 </p>
               ) : (
-                <div className="flex gap-6 items-start">
+                <div className="flex flex-wrap gap-6 items-start">
                   {/* Matrix */}
-                  <div className="flex flex-col gap-2 flex-shrink-0">
+                  <div className="flex flex-col gap-2 flex-shrink-0 rounded-md border border-border/50 bg-background/30 p-2.5">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Crosspoint Matrix
                     </span>
@@ -1528,7 +1582,7 @@ export function AmpTabs() {
                   </div>
 
                   {/* Limiters — side by side */}
-                  <div className="flex gap-6 pl-6 border-l border-border/40">
+                  <div className="flex gap-6 rounded-md border border-border/50 bg-background/30 p-2.5">
                     <LimiterBlock
                       label="RMS Limiter"
                       channels={selectedAmp.channelParams.channels}

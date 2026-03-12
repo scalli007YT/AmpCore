@@ -26,9 +26,7 @@ interface HeaderProps {
   loading?: boolean;
 }
 
-const NAV_LINKS = [
-  { label: "Monitor", href: "/monitor" },
-];
+const NAV_LINKS = [{ label: "Monitor", href: "/monitor" }];
 
 export function Header({ projects = [], loading = false }: HeaderProps) {
   const { selectedProject, selectProjectById } = useProjectStore();

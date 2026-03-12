@@ -27,7 +27,6 @@ interface HeaderProps {
 }
 
 const NAV_LINKS = [
-  { label: "Main", href: "/" },
   { label: "Monitor", href: "/monitor" },
 ];
 

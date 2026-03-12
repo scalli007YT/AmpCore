@@ -192,10 +192,6 @@ interface AmpStore {
   getDisplayName: (amp: Amp) => string;
 }
 
-// ---------------------------------------------------------------------------
-// Implementation
-// ---------------------------------------------------------------------------
-
 function makeAmp(config: AmpConfig): Amp {
   return { ...config, reachable: false };
 }

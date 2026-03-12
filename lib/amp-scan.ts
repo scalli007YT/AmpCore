@@ -1,6 +1,5 @@
-import dgram from "dgram";
-import os from "os";
-import { FuncCode } from "./amp-device";
+import {FuncCode} from "./amp-device";
+import {createSocket, getNetworkInterfaces} from "@/lib/network/datagram";
 
 const AMP_PORT = 45455;
 const DISCOVERY_TIMEOUT = 200; // 200ms — amps respond in <50ms on LAN/WiFi
@@ -12,7 +11,7 @@ const DISCOVERY_TIMEOUT = 200; // 200ms — amps respond in <50ms on LAN/WiFi
  */
 function getDirectedBroadcasts(): string[] {
   const broadcasts: string[] = [];
-  for (const iface of Object.values(os.networkInterfaces())) {
+  for (const iface of Object.values(getNetworkInterfaces())) {
     if (!iface) continue;
     for (const addr of iface) {
       if (addr.family !== "IPv4" || addr.internal) continue;
@@ -43,7 +42,7 @@ export async function broadcastDiscovery(): Promise<
 
   return new Promise((resolve) => {
     try {
-      const socket = dgram.createSocket("udp4");
+      const socket = createSocket();
 
       const timeoutHandle = setTimeout(() => {
         try {

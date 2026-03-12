@@ -1,5 +1,5 @@
-import dgram from "dgram";
-import type { HeartbeatData } from "@/stores/AmpStore";
+import type {HeartbeatData} from "@/stores/AmpStore";
+import {createSocket, DatagramRemoteInfo, DatagramSocket} from "@/lib/network/datagram";
 
 const AMP_SEND_PORT = 45455;
 // CvrAmpDevice uses an ephemeral port (0) for short-lived unicast commands
@@ -136,7 +136,7 @@ function getCheckCode(frame: Buffer): Buffer {
 
 export class CvrAmpDevice {
   private ampIp: string;
-  private socket: dgram.Socket | null = null;
+  private socket: DatagramSocket | null = null;
 
   constructor(ampIp: string) {
     this.ampIp = ampIp;
@@ -145,7 +145,7 @@ export class CvrAmpDevice {
   private ensureSocket(
     retries: number = 3,
     retryDelay: number = 100,
-  ): Promise<dgram.Socket> {
+  ): Promise<DatagramSocket> {
     return new Promise((resolve, reject) => {
       if (this.socket) {
         resolve(this.socket);
@@ -153,7 +153,7 @@ export class CvrAmpDevice {
       }
 
       const attemptBind = (retriesLeft: number) => {
-        this.socket = dgram.createSocket("udp4");
+        this.socket = createSocket();
         this.socket.setMaxListeners(10);
 
         const bindTimeout = setTimeout(() => {
@@ -242,7 +242,7 @@ export class CvrAmpDevice {
         reject(new Error("Response timeout (75ms)"));
       }, 75);
 
-      const messageHandler = (msg: Buffer, rinfo: dgram.RemoteInfo) => {
+      const messageHandler = (msg: Buffer, rinfo: DatagramRemoteInfo) => {
         if (!responded && rinfo.address === this.ampIp) {
           responded = true;
           clearTimeout(timeout);
@@ -318,7 +318,7 @@ export class CvrAmpDevice {
     return new Promise((resolve, reject) => {
       const collected: Buffer[] = [];
 
-      const collector = (msg: Buffer, rinfo: dgram.RemoteInfo) => {
+      const collector = (msg: Buffer, rinfo: DatagramRemoteInfo) => {
         if (rinfo.address === this.ampIp) {
           collected.push(Buffer.from(msg));
         }
@@ -435,7 +435,7 @@ export class CvrAmpDevice {
     return new Promise((resolve) => {
       const collected: Buffer[] = [];
 
-      const collector = (msg: Buffer, rinfo: dgram.RemoteInfo) => {
+      const collector = (msg: Buffer, rinfo: DatagramRemoteInfo) => {
         if (rinfo.address === this.ampIp) {
           collected.push(Buffer.from(msg));
         }
@@ -655,7 +655,7 @@ export class CvrAmpDevice {
       segment,
     };
 
-    const sock = dgram.createSocket("udp4");
+    const sock = createSocket();
     await new Promise<void>((resolve, reject) => {
       sock.bind({ port: 0, address: "0.0.0.0" }, (err?: Error) => {
         if (err) reject(err);

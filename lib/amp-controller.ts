@@ -17,7 +17,7 @@
  * │                    Falls back to broadcast when no amps are known yet.  │
  * │                    Every 25 ticks: judgeOnline() watchdog.              │
  * │                                                                          │
- * │  refrash()       → 4000 ms timer (refresh_step counter):               │
+ * │  refresh()       → 4000 ms timer (refresh_step counter):               │
  * │                      step=1: clear window list + broadcast FC=0        │
  * │                      step=2: broadcast FC=0 again + mark offline       │
  * │                    Two-cycle grace: a device must miss TWO consecutive  │
@@ -25,10 +25,11 @@
  * └─────────────────────────────────────────────────────────────────────────┘
  */
 
-import dgram from "dgram";
-import { EventEmitter } from "events";
-import { FuncCode, parseHeartbeat } from "./amp-device";
-import type { HeartbeatData } from "@/stores/AmpStore";
+import {EventEmitter} from "events";
+import {FuncCode, parseHeartbeat} from "./amp-device";
+import type {HeartbeatData} from "@/stores/AmpStore";
+import {setInterval} from "node:timers";
+import {createSocket, DatagramRemoteInfo, DatagramSocket} from "@/lib/network/datagram";
 
 // ---------------------------------------------------------------------------
 // Constants — matching original C# values exactly
@@ -193,7 +194,7 @@ function parseDiscoveryPacket(raw: Buffer, ip: string): DiscoveryEvent | null {
 // AmpController
 // ---------------------------------------------------------------------------
 class AmpController extends EventEmitter {
-  private socket: dgram.Socket | null = null;
+  private socket: DatagramSocket | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private discoveryTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -231,7 +232,7 @@ class AmpController extends EventEmitter {
 
   // Promise that resolves once the UDP socket is successfully bound.
   // triggerDiscovery awaits this so it never fires into a null socket.
-  private _socketReadyResolve: (() => void) | null = null;
+  private _socketReadyResolve: ((...args: any) => void) | null = null;
   private _socketReady: Promise<void> = new Promise(
     (res) => (this._socketReadyResolve = res),
   );
@@ -414,7 +415,7 @@ class AmpController extends EventEmitter {
   // Socket — Receive_Thread equivalent
   // -------------------------------------------------------------------------
   private _bindSocket(): void {
-    const sock = dgram.createSocket("udp4");
+    const sock = createSocket();
     this.socket = sock;
 
     sock.on("error", (err) => {
@@ -432,7 +433,7 @@ class AmpController extends EventEmitter {
       }, 500);
     });
 
-    sock.on("message", (msg: Buffer, rinfo: dgram.RemoteInfo) => {
+    sock.on("message", (msg: Buffer, rinfo: DatagramRemoteInfo) => {
       this._onPacket(msg, rinfo.address);
     });
 

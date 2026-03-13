@@ -281,6 +281,51 @@ export function AmpTabs() {
                           : "---"}
                       </dd>
                     </div>
+                    <div>
+                      <dt className="font-semibold">
+                        Analog_signal_Input_chx:
+                      </dt>
+                      <dd>
+                        {selectedAmp.analog_signal_input_chx !== undefined
+                          ? selectedAmp.analog_signal_input_chx
+                          : "---"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold">Output_chx:</dt>
+                      <dd>
+                        {selectedAmp.output_chx !== undefined
+                          ? selectedAmp.output_chx
+                          : "---"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold">
+                        Digital_signal_input_chx:
+                      </dt>
+                      <dd>
+                        {selectedAmp.basic_info?.Digital_signal_input_chx !==
+                        undefined
+                          ? selectedAmp.basic_info.Digital_signal_input_chx
+                          : "---"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold">Gain_max:</dt>
+                      <dd>
+                        {selectedAmp.gain_max !== undefined
+                          ? selectedAmp.gain_max
+                          : "---"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold">Machine_state:</dt>
+                      <dd>
+                        {selectedAmp.machine_state !== undefined
+                          ? selectedAmp.machine_state
+                          : "---"}
+                      </dd>
+                    </div>
                   </dl>
                 </CollapsibleContent>
               </Collapsible>

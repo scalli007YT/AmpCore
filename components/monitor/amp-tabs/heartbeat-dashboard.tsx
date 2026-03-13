@@ -544,7 +544,7 @@ export function HeartbeatDashboard({
                         {f0(temp)}
                       </span>
                       <span className="text-[9px] text-foreground/65 mt-0.5">
-                        degC
+                        °C
                       </span>
                     </div>
                     <DelayPopover
@@ -658,7 +658,7 @@ export function HeartbeatDashboard({
               >
                 {f0(hb.temperatures[4] ?? 0)}
               </span>
-              <span className="text-[10px] ml-0.5">degC</span>
+              <span className="text-[10px] ml-0.5">°C</span>
             </span>
             <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
               {new Date(hb.receivedAt).toLocaleTimeString()}

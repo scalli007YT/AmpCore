@@ -25,23 +25,65 @@ export interface MatrixSource {
  * Wire layout per band (14 bytes, stride 14):
  *   byte(type) | float32(gain dB) | float32(freq Hz) | float32(Q) | byte(bypass)
  *
- * Confirmed type codes from live binary vs CVR software UI:
- *   0   = Peak
- *   1   = LowShelf
- *   2   = HighShelf
- *   3   = BW-12  (HP/LP filter)
- *   4   = BW-24  (HP/LP filter)
- *   253 = HighShelf (variant — observed on bands that show HS in UI)
- *   255 = Bypassed  (band is inactive regardless of other fields)
+ * Parametric type codes from the original CVR controller UI:
+ *   0  = Peaking
+ *   1  = Low_Shelf
+ *   2  = High_Shelf
+ *   3  = All_Pass-1st
+ *   4  = All_Pass-2nd
+ *   5  = General_Low
+ *   6  = General_High
+ *   7  = Butterworth_Low
+ *   8  = Butterworth_High
+ *   9  = Bessel_Low
+ *   10 = Bessel_High
+ *   255 = Bypassed (band is inactive regardless of other fields)
  *
- * HP/LP positions (band 0 and band 9) use filter type codes (e.g. 4=BW-24).
+ * HP/LP positions (band 0 and band 9) use their own crossover type codes.
  * type=255 means the entire band slot is bypassed.
  */
 export const EQ_FILTER_TYPE_NAMES: Record<number, string> = {
-  0: "Peak",
-  1: "LowShelf",
-  2: "HighShelf",
+  0: "Peaking",
+  1: "Low_Shelf",
+  2: "High_Shelf",
+  3: "All_Pass-1st",
+  4: "All_Pass-2nd",
+  5: "General_Low",
+  6: "General_High",
+  7: "Butterworth_Low",
+  8: "Butterworth_High",
+  9: "Bessel_Low",
+  10: "Bessel_High",
 };
+
+export interface EqFilterTypeCapabilities {
+  supportsGain: boolean;
+  supportsQ: boolean;
+}
+
+export function getEqFilterTypeCapabilities(
+  type: number,
+): EqFilterTypeCapabilities {
+  switch (type) {
+    case 0:
+    case 1:
+    case 2:
+      return { supportsGain: true, supportsQ: true };
+    case 3:
+      return { supportsGain: false, supportsQ: false };
+    case 4:
+    case 5:
+    case 6:
+      return { supportsGain: false, supportsQ: true };
+    case 7:
+    case 8:
+    case 9:
+    case 10:
+      return { supportsGain: false, supportsQ: false };
+    default:
+      return { supportsGain: true, supportsQ: true };
+  }
+}
 
 /**
  * HP/LP rolloff filter types — indices match the C# HPorLP_InttoString array.

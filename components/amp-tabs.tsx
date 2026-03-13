@@ -27,6 +27,14 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -48,6 +56,7 @@ import {
   HPLP_FILTER_TYPE_NAMES,
   EQ_FILTER_TYPE_NAMES,
   getEqFilterTypeCapabilities,
+  getPowerModeName,
 } from "@/lib/parse-channel-data";
 import { EQ_BAND_LABELS, formatFreqFull } from "@/lib/eq";
 import {
@@ -886,6 +895,95 @@ function DelayPopover({
 // ---------------------------------------------------------------------------
 
 const CH_LABELS = ["A", "B", "C", "D"];
+const POWER_MODE_OPTIONS = [0, 1, 2] as const;
+
+function PowerModePill({
+  mode,
+  channelLabel,
+  onConfirm,
+}: {
+  mode: number | undefined;
+  channelLabel: string;
+  onConfirm: (mode: number) => void | Promise<void>;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingMode, setPendingMode] = useState<number | null>(null);
+
+  const currentMode = mode ?? 0;
+  const nextMode = pendingMode ?? currentMode;
+
+  const requestModeChange = (value: string) => {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isInteger(parsed) || parsed === currentMode) return;
+    setMenuOpen(false);
+    setPendingMode(parsed);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirm = () => {
+    if (pendingMode === null) return;
+    void onConfirm(pendingMode);
+    setConfirmOpen(false);
+    setPendingMode(null);
+  };
+
+  const handleConfirmOpen = (open: boolean) => {
+    setConfirmOpen(open);
+    if (!open) setPendingMode(null);
+  };
+
+  return (
+    <>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={mode === undefined}
+            className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
+              mode === undefined
+                ? "border-border/30 bg-muted/10 text-muted-foreground/30"
+                : "border-border/40 bg-muted/20 text-muted-foreground/80 hover:border-primary/40 hover:text-foreground"
+            }`}
+          >
+            {mode === undefined ? "Power Mode" : getPowerModeName(currentMode)}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="center" className="w-44">
+          <DropdownMenuLabel>Output Power Mode</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={String(currentMode)}
+            onValueChange={requestModeChange}
+          >
+            {POWER_MODE_OPTIONS.map((option) => (
+              <DropdownMenuRadioItem key={option} value={String(option)}>
+                {getPowerModeName(option)}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={confirmOpen} onOpenChange={handleConfirmOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Change Power Mode</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to switch output {channelLabel} to {getPowerModeName(nextMode)}?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => handleConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirm}>Are you sure?</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // VU Meter bar — just the bar, no scale. Scale is rendered separately.
@@ -1040,6 +1138,7 @@ function HeartbeatDashboard({
     noiseGateOut,
     setDelayIn,
     setDelayOut,
+    setPowerModeOut,
   } = useAmpActions();
   const vuOutputDbu = vu?.outputDbu ?? hb.outputDbu.map(() => null);
   const vuInputDbfs = vu?.inputDbfs ?? hb.inputDbfs;
@@ -1375,6 +1474,14 @@ function HeartbeatDashboard({
                         />
                       );
                     })()}
+                    {/* Power mode */}
+                    <PowerModePill
+                      mode={channelParams?.channels[i]?.powerMode}
+                      channelLabel={`Out${CH_LABELS[i]}`}
+                      onConfirm={(mode) =>
+                        setPowerModeOut(mac, i as 0 | 1 | 2 | 3, mode)
+                      }
+                    />
                     {/* Mute Out */}
                     {(() => {
                       const muted = channelParams?.channels[i]?.muteOut;

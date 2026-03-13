@@ -5,8 +5,11 @@
  * composite sum across the audible range (20 Hz – 20 kHz).
  *
  * Supported filter types:
- *   - Peak (parametric bell)
- *   - LowShelf / HighShelf
+ *   - Peaking, Low_Shelf, High_Shelf
+ *   - All_Pass-1st, All_Pass-2nd
+ *   - General_Low, General_High
+ *   - Butterworth_Low, Butterworth_High
+ *   - Bessel_Low, Bessel_High
  *   - HP/LP rolloffs: Butterworth (BW), Bessel (BE), Linkwitz-Riley (LR)
  *     at 12/18/24/36/48 dB/oct slopes
  */
@@ -69,7 +72,7 @@ export function bandGainAt(
   return parametricGainAt(band, freq);
 }
 
-/** Peak / LowShelf / HighShelf parametric band gain. */
+/** Parametric band gain for the full original CVR PEQ type list. */
 function parametricGainAt(band: EqBand, freq: number): number {
   const w = freq / band.freq;
   const Q = Math.max(band.q, 0.1);
@@ -77,7 +80,7 @@ function parametricGainAt(band: EqBand, freq: number): number {
 
   switch (band.type) {
     case 0: {
-      // Peak (parametric bell)
+      // Peaking
       const A = Math.pow(10, G / 40);
       const w2 = w * w;
       const num = w2 * w2 + w2 * ((A * A) / (Q * Q) - 2) + 1;
@@ -85,9 +88,7 @@ function parametricGainAt(band: EqBand, freq: number): number {
       return 10 * Math.log10(num / den);
     }
     case 1: {
-      // LowShelf  — matches C# Tone_Low_Shelf
-      // A = 10^(G/40), num5 = 1/√((A+1/A)·(1/Q-1)+2)
-      // dB = 10·log10(((A-ω²)²+A·(ω/num5)²)/((1/A-ω²)²+(ω/num5)²/A))
+      // Low_Shelf
       const A = Math.pow(10, G / 40);
       const w2 = w * w;
       const inside = (A + 1 / A) * (1 / Q - 1) + 2;
@@ -97,10 +98,9 @@ function parametricGainAt(band: EqBand, freq: number): number {
       const den = (1 / A - w2) * (1 / A - w2) + wn2 / A;
       return 10 * Math.log10(num / den);
     }
-    case 2: // HighShelf — matches C# Tone_high_Shelf
+    case 2:
     case 253: {
-      // HighShelf variant (byte 253 = same shelf, different encoding)
-      // dB = 10·log10(((1-A·ω²)²+A·(ω/num5)²)/((1-ω²/A)²+(ω/num5)²/A))
+      // High_Shelf. 253 is kept as a compatibility alias for legacy captures.
       const A = Math.pow(10, G / 40);
       const w2 = w * w;
       const inside = (A + 1 / A) * (1 / Q - 1) + 2;
@@ -109,6 +109,43 @@ function parametricGainAt(band: EqBand, freq: number): number {
       const num = (1 - A * w2) * (1 - A * w2) + A * wn2;
       const den = (1 - w2 / A) * (1 - w2 / A) + wn2 / A;
       return 10 * Math.log10(num / den);
+    }
+    case 3:
+    case 4:
+      // All-pass modes have flat magnitude response.
+      return 0;
+    case 5: {
+      // General_Low
+      const w2 = w * w;
+      return -10 * Math.log10((1 - w2) * (1 - w2) + w2 / (Q * Q));
+    }
+    case 6: {
+      // General_High
+      const inverseW = 1 / Math.max(w, 1e-9);
+      const inverseW2 = inverseW * inverseW;
+      return (
+        -10 *
+        Math.log10((1 - inverseW2) * (1 - inverseW2) + inverseW2 / (Q * Q))
+      );
+    }
+    case 7:
+      // Butterworth_Low
+      return -10 * Math.log10(1 + Math.pow(w, 4));
+    case 8:
+      // Butterworth_High
+      return -10 * Math.log10(1 + Math.pow(1 / Math.max(w, 1e-9), 4));
+    case 9: {
+      // Bessel_Low
+      const w2 = w * w;
+      const w4 = w2 * w2;
+      return -10 * Math.log10(w4 + w2 + 1);
+    }
+    case 10: {
+      // Bessel_High
+      const inverseW = 1 / Math.max(w, 1e-9);
+      const inverseW2 = inverseW * inverseW;
+      const inverseW4 = inverseW2 * inverseW2;
+      return -10 * Math.log10(inverseW4 + inverseW2 + 1);
     }
     default:
       return 0;

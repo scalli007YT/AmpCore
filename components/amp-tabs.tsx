@@ -47,6 +47,7 @@ import {
   getFilterTypeName,
   HPLP_FILTER_TYPE_NAMES,
   EQ_FILTER_TYPE_NAMES,
+  getEqFilterTypeCapabilities,
 } from "@/lib/parse-channel-data";
 import { EQ_BAND_LABELS, formatFreqFull } from "@/lib/eq";
 import {
@@ -544,6 +545,9 @@ function EqBandCell({
     ? gainDraft
     : String(Math.round(band.gain * 10) / 10);
   const qValue = qDirty ? qDraft : band.q.toFixed(2);
+  const capabilities = getEqFilterTypeCapabilities(band.type);
+  const gainDisabled = pending || !capabilities.supportsGain;
+  const qDisabled = pending || !capabilities.supportsQ;
 
   const commitFreq = () => {
     const parsed = parseCrossoverDraft(freqValue);
@@ -563,6 +567,11 @@ function EqBandCell({
   };
 
   const commitGain = () => {
+    if (!capabilities.supportsGain) {
+      setGainDraft(String(Math.round(band.gain * 10) / 10));
+      setGainDirty(false);
+      return;
+    }
     const parsed = parseCrossoverDraft(gainValue);
     if (!Number.isFinite(parsed)) {
       setGainDraft(String(Math.round(band.gain * 10) / 10));
@@ -580,6 +589,11 @@ function EqBandCell({
   };
 
   const commitQ = () => {
+    if (!capabilities.supportsQ) {
+      setQDraft(band.q.toFixed(2));
+      setQDirty(false);
+      return;
+    }
     const parsed = parseCrossoverDraft(qValue);
     if (!Number.isFinite(parsed)) {
       setQDraft(band.q.toFixed(2));
@@ -594,7 +608,7 @@ function EqBandCell({
   };
 
   const handleTypeChange = (nextType: number) => {
-    if (!Number.isInteger(nextType) || nextType < 0 || nextType > 2) return;
+    if (!Number.isInteger(nextType) || nextType < 0 || nextType > 10) return;
     markPending();
     void setEqBandType(mac, channel, target, idx, nextType, band.bypass);
   };
@@ -649,7 +663,7 @@ function EqBandCell({
           max={String(EQ_BAND_GAIN_MAX_DB)}
           step="0.1"
           value={gainValue}
-          disabled={pending}
+          disabled={gainDisabled}
           onChange={(e) => {
             setGainDraft(e.target.value);
             setGainDirty(true);
@@ -673,7 +687,7 @@ function EqBandCell({
           max={String(EQ_BAND_Q_MAX)}
           step="0.01"
           value={qValue}
-          disabled={pending}
+          disabled={qDisabled}
           onChange={(e) => {
             setQDraft(e.target.value);
             setQDirty(true);

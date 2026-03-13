@@ -116,8 +116,8 @@ const eqBandIndexSchema = z
 
 const eqBandTypeSchema = baseSchema.extend({
   action: z.literal("eqBandType"),
-  /** 0=Peak 1=LowShelf 2=HighShelf */
-  value: z.number().int().min(0).max(2),
+  /** 0..10 = full parametric EQ type list from the original controller UI */
+  value: z.number().int().min(0).max(10),
   target: eqTargetSchema,
   band: eqBandIndexSchema,
   bypass: z.boolean(),

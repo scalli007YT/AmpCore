@@ -6,7 +6,7 @@ import { usePollingStore } from "@/stores/PollingStore";
 import { useAmpStore } from "@/stores/AmpStore";
 import type { HeartbeatData } from "@/stores/AmpStore";
 import { smoothHeartbeat, resetSmootherForMac } from "@/lib/heartbeat-smoother";
-import { maxDbFromDeviceName, ratedRmsVFromDeviceName } from "@/lib/amp-model";
+import { ratedRmsVFromDeviceName } from "@/lib/amp-model";
 
 // ---------------------------------------------------------------------------
 // SSE event shapes (mirroring what /api/amp-events sends)
@@ -167,13 +167,17 @@ export function useAmpPoller(): UseAmpPollerReturn {
               name ||
               version ||
               (amp.name ?? amp.lastKnownName ?? amp.version ?? "");
-            const maxDb = maxDbFromDeviceName(deviceName);
+            // Keep the meter reference stable: prefer the already-resolved rated RMS
+            // voltage from store, and only derive from device strings as fallback.
+            const derivedRatedRmsV = ratedRmsVFromDeviceName(deviceName);
+            const meterRatedRmsV = amp.ratedRmsV ?? derivedRatedRmsV;
+            const maxDb = 20 * Math.log10(meterRatedRmsV);
 
             // Store the rated RMS voltage once (avoids store churn on every heartbeat).
             // Also retries if a 0 was stored previously due to a name/version race on startup.
             if (!amp.ratedRmsV) {
               useAmpStore.getState().updateAmpStatus(amp.mac, {
-                ratedRmsV: ratedRmsVFromDeviceName(deviceName),
+                ratedRmsV: derivedRatedRmsV,
               });
             }
 

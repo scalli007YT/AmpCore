@@ -33,7 +33,8 @@ export interface HeartbeatData {
    */
   outputImpedance: number[];
   /**
-   * 4 output channel levels in dBu = 20 * log10(Vs[i] / 0.775).
+   * 4 output channel levels on the original CVR relative meter scale:
+   * 20 * log10(Vs[i] / ratedRmsV), with 0 dB at rated/max RMS output.
    * -Infinity floor (stored as -100) when voltage is 0 (amp idle).
    */
   outputDbu: number[];

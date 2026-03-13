@@ -23,6 +23,36 @@ export function formatDbfs(v: number | null): string {
 }
 
 /**
+ * Small rolling median filter for numeric telemetry/state values.
+ *
+ * Designed for short windows (3 or 5) to remove single-sample flicker.
+ * For odd window sizes, the median stays on a real sample value.
+ */
+export class RollingMedianFilter {
+  private buf: number[] = [];
+  private last: number | null = null;
+
+  constructor(private readonly windowSize: number = 3) {}
+
+  push(value: number | null | undefined): number | null {
+    if (value == null || !isFinite(value)) return this.last;
+    this.buf.push(value);
+    if (this.buf.length > this.windowSize) this.buf.shift();
+
+    const s = [...this.buf].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    const med = s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    this.last = med;
+    return med;
+  }
+
+  reset(): void {
+    this.buf = [];
+    this.last = null;
+  }
+}
+
+/**
  * Calculate RMS and peak power from limiter threshold voltages and load impedance.
  *
  *   P_rms  = V_rms²  / Z
@@ -44,20 +74,27 @@ export function limiterPowerFromLoad(
 }
 
 /**
- * Convert a threshold voltage to the output dBu scale used by the VU meters.
+ * Convert a voltage to the output meter scale used by the original CVR app.
  *
- * The VU meter scale is referenced to the device's rated RMS output voltage:
- *   dbu = 20 * log10(thresholdV / ratedRmsV)
+ * The output meter is not absolute dBu. It is a relative dB scale referenced
+ * to the channel's maximum output voltage:
+ *   dB = 20 * log10(voltage / maxVoltage)
  *
- * Pass `thresholdVp / Math.SQRT2` when converting a peak voltage to the
- * RMS-referenced scale (e.g. for peak limiter thresholds).
- *
- * Returns `null` when `ratedRmsV` is unknown or `thresholdV` ≤ 0.
+ * For RMS values, pass the channel's RMS max voltage.
+ * For peak values, pass the channel's peak max voltage.
+ * Returns `null` when `maxVoltage` is unknown or `voltage` ≤ 0.
  */
-export function thresholdVToDbu(
-  thresholdV: number,
-  ratedRmsV: number | undefined,
+export function voltageToMeterDb(
+  voltage: number,
+  maxVoltage: number | undefined,
 ): number | null {
-  if (!ratedRmsV || thresholdV <= 0) return null;
-  return 20 * Math.log10(thresholdV / ratedRmsV);
+  if (!maxVoltage || voltage <= 0) return null;
+  return 20 * Math.log10(voltage / maxVoltage);
+}
+
+/** Convert a rated RMS output voltage into its equivalent peak voltage. */
+export function rmsToPeakVoltage(
+  ratedRmsV: number | undefined,
+): number | undefined {
+  return ratedRmsV ? ratedRmsV * Math.SQRT2 : undefined;
 }

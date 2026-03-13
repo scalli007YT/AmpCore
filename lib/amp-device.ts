@@ -961,7 +961,7 @@ export function parseHeartbeat(buf: Buffer): HeartbeatData | null {
     return a > 0 ? Math.round(v / a) : 0;
   });
 
-  // Output dBu is intentionally left as floor values here.
+  // Output meter dB is intentionally left as floor values here.
   // The real computation happens in MedianSmoother.smooth() using the
   // already-smoothed outputVoltages, so spike samples never reach the VU targets.
   const outputDbu = outputVoltages.map(() => -100);

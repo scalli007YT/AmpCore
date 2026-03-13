@@ -7,13 +7,14 @@
 
 /**
  * Rated output RMS voltage by model — from CVR DSP series datasheet.
- * Used to compute maxdB = 20*log10(ratedRmsV) for the output dBu formula.
+ * Used to compute maxdB = 20*log10(ratedRmsV) for the output meter formula
+ * used by the original CVR app, where 0 dB means rated/max RMS output.
  *
  * Source: "Output RMS voltage" column in the official spec sheet.
  * The model substring is matched case-insensitively against the device name
  * returned by BASIC_INFO (e.g. "PASCAL ROSE DSP-2004").
  *
- * When FC=27 sync data is implemented, replace this with per-channel RMS_MaxV.
+ * When per-channel RMS_MaxV is parsed from the device, replace this lookup.
  */
 const RATED_RMS_VOLTAGE: Record<string, number> = {
   "DSP-654": 72.1,

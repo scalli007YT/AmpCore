@@ -1,5 +1,5 @@
 import dgram from "dgram";
-import type { HeartbeatData } from "@/stores/AmpStore";
+import type {HeartbeatData} from "@/stores/AmpStore";
 
 const AMP_SEND_PORT = 45455;
 // CvrAmpDevice uses an ephemeral port (0) for short-lived unicast commands
@@ -191,8 +191,7 @@ export class CvrAmpDevice {
           this.socket.bind(
             {
               port: PC_RECV_PORT,
-              address: "0.0.0.0",
-              exclusive: false,
+              exclusive: false
             },
             () => {
               clearTimeout(bindTimeout);
@@ -626,12 +625,6 @@ export class CvrAmpDevice {
    */
   async commitCrossover(): Promise<void> {
     const sock = dgram.createSocket("udp4");
-    await new Promise<void>((resolve, reject) => {
-      sock.bind({ port: 0, address: "0.0.0.0" }, (err?: Error) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
 
     await new Promise<void>((resolve, reject) => {
       sock.send(
@@ -697,12 +690,6 @@ export class CvrAmpDevice {
     };
 
     const sock = dgram.createSocket("udp4");
-    await new Promise<void>((resolve, reject) => {
-      sock.bind({ port: 0, address: "0.0.0.0" }, (err?: Error) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
 
     const inner = Buffer.concat([structHeaderToBytes(header), body]);
     const checkCode = getCheckCode(inner);

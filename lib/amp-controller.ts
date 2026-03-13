@@ -26,9 +26,9 @@
  */
 
 import dgram from "dgram";
-import { EventEmitter } from "events";
-import { FuncCode, parseHeartbeat } from "./amp-device";
-import type { HeartbeatData } from "@/stores/AmpStore";
+import {EventEmitter} from "events";
+import {FuncCode, parseHeartbeat} from "./amp-device";
+import type {HeartbeatData} from "@/stores/AmpStore";
 
 // ---------------------------------------------------------------------------
 // Constants — matching original C# values exactly
@@ -437,11 +437,11 @@ class AmpController extends EventEmitter {
     });
 
     sock.bind(
-      { port: PC_RECV_PORT, address: "0.0.0.0", exclusive: false },
+      { port: PC_RECV_PORT, exclusive: false },
       () => {
         sock.setBroadcast(true);
         console.log(
-          `[AmpController] Socket bound on 0.0.0.0:${PC_RECV_PORT} — starting loops`,
+          `[AmpController] Socket bound on port ${PC_RECV_PORT} - starting loops`,
         );
         // Resolve the ready promise so triggerDiscovery() can proceed
         this._socketReadyResolve?.();

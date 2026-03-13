@@ -1,6 +1,6 @@
 import dgram from "dgram";
 import os from "os";
-import { FuncCode } from "./amp-device";
+import {FuncCode} from "./amp-device";
 
 const AMP_PORT = 45455;
 const DISCOVERY_TIMEOUT = 200; // 200ms — amps respond in <50ms on LAN/WiFi
@@ -110,7 +110,7 @@ export async function broadcastDiscovery(): Promise<
 
       // Bind socket to receive port BEFORE sending
       socket.bind(
-        { port: PC_RECV_PORT, address: "0.0.0.0", exclusive: false },
+        { port: PC_RECV_PORT, exclusive: false },
         () => {
           try {
             // Now that socket is bound, enable broadcast mode

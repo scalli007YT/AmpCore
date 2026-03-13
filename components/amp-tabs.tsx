@@ -48,7 +48,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useVuMeters } from "@/hooks/useVuMeters";
-import { thresholdVToDbu, formatRuntime, formatDbfs } from "@/lib/generic";
+import {
+  voltageToMeterDb,
+  rmsToPeakVoltage,
+  formatRuntime,
+  formatDbfs,
+} from "@/lib/generic";
 import {
   getFilterTypeName,
   HPLP_FILTER_TYPE_NAMES,
@@ -940,7 +945,8 @@ function PowerModePill({
 // VU Meter bar — just the bar, no scale. Scale is rendered separately.
 // ---------------------------------------------------------------------------
 
-// Output scale: fixed -40 to 0 dBu range (matches C# DC_CHItem: Maximum="0" Minimum="-40").
+// Output scale: fixed -40 to 0 relative dB range.
+// This matches the original app, where 0 dB means rated/max output.
 // maxDb is only used to correctly position signals within that window —
 // the window itself is always 40 dB wide.
 function outDbScale(): { top: number; bot: number; ticks: number[] } {
@@ -968,7 +974,7 @@ function MeterBar({
   width?: number;
   height?: number;
   /** Horizontal threshold lines rendered over the bar fill. */
-  thresholdLines?: { dbu: number; color: string; label?: string }[];
+  thresholdLines?: { db: number; color: string; label?: string }[];
 }) {
   const fill =
     value === null || value < dbBottom
@@ -986,14 +992,14 @@ function MeterBar({
         className={`absolute bottom-0 left-0 right-0 ${clip ? "bg-destructive" : "bg-primary"}`}
         style={{ height: `${fill * 100}%` }}
       />
-      {thresholdLines?.map(({ dbu, color, label }, idx) => {
-        const pct = Math.min(1, Math.max(0, (dbu - dbBottom) / dbRange));
+      {thresholdLines?.map(({ db, color, label }, idx) => {
+        const pct = Math.min(1, Math.max(0, (db - dbBottom) / dbRange));
         // Skip lines that would be outside the visible range
-        if (dbu < dbBottom || dbu > dbTop) return null;
+        if (db < dbBottom || db > dbTop) return null;
         // The line itself — 2px tall, positioned by bottom%
         const lineStyle: React.CSSProperties = {
           bottom: `calc(${pct * 100}% - 1px)`,
-          height: 2,
+          height: 3,
           backgroundColor: color,
           opacity: 0.85,
         };
@@ -1021,8 +1027,8 @@ function MeterBar({
                 <div
                   className="absolute left-0 right-0"
                   style={{
-                    top: 4,
-                    height: 2,
+                    top: 3.5,
+                    height: 3,
                     backgroundColor: color,
                     opacity: 0.85,
                   }}
@@ -1094,7 +1100,7 @@ function HeartbeatDashboard({
   const vuOutputDbu = vu?.outputDbu ?? hb.outputDbu.map(() => null);
   const vuInputDbfs = vu?.inputDbfs ?? hb.inputDbfs;
 
-  // Fixed -40 to 0 dBu output meter scale (matches C# reference UI).
+  // Fixed -40 to 0 relative dB output meter scale (matches the original UI).
   const { top: OUT_DB_TOP, bot: OUT_DB_BOT, ticks: OUT_SCALE } = outDbScale();
 
   const METER_H = 220;
@@ -1156,6 +1162,10 @@ function HeartbeatDashboard({
                       width={BAR_W}
                       height={METER_H}
                     />
+                    {/* dB readout pill */}
+                    <div className="mt-1 w-full rounded border border-border/50 bg-muted/40 px-1 py-0.5 text-center font-mono text-[10px] tabular-nums text-foreground/70">
+                      {dbfsVal !== null ? `${dbfsVal.toFixed(1)} dB` : "---"}
+                    </div>
                     {/* Clip indicator */}
                     <div
                       className={`mt-1 rounded px-1 py-0.5 text-[9px] font-semibold w-full text-center ${
@@ -1286,7 +1296,6 @@ function HeartbeatDashboard({
               const v = hb.outputVoltages[i];
               const a = hb.outputCurrents[i];
               const dbu = vuOutputDbu[i];
-              const imp = hb.outputImpedance[i];
               const temp = hb.temperatures[i] ?? 0;
               const isClip = st === 5;
               const isActive = st === 0 || st === 8;
@@ -1299,30 +1308,30 @@ function HeartbeatDashboard({
               // Threshold lines — RMS (yellow) and Peak (orange)
               const chParam = channelParams?.channels[i];
               const thresholdLines: {
-                dbu: number;
+                db: number;
                 color: string;
                 label: string;
               }[] = [];
               if (chParam?.rmsLimiter.enabled) {
-                const d = thresholdVToDbu(
+                const d = voltageToMeterDb(
                   chParam.rmsLimiter.thresholdVrms,
                   ratedRmsV,
                 );
                 if (d !== null)
                   thresholdLines.push({
-                    dbu: d,
+                    db: d,
                     color: COLORS.RMS_LIMITER,
                     label: `RMS ${chParam.rmsLimiter.thresholdVrms.toFixed(2)} Vrms · ${chParam.rmsLimiter.prmsW} W (${d.toFixed(1)} dB)`,
                   });
               }
               if (chParam?.peakLimiter.enabled) {
-                const d = thresholdVToDbu(
-                  chParam.peakLimiter.thresholdVp / Math.SQRT2,
-                  ratedRmsV,
+                const d = voltageToMeterDb(
+                  chParam.peakLimiter.thresholdVp,
+                  rmsToPeakVoltage(ratedRmsV),
                 );
                 if (d !== null)
                   thresholdLines.push({
-                    dbu: d,
+                    db: d,
                     color: COLORS.PEAK_LIMITER,
                     label: `Peak ${chParam.peakLimiter.thresholdVp.toFixed(2)} Vp · ${chParam.peakLimiter.ppeakW} W (${d.toFixed(1)} dB)`,
                   });
@@ -1355,6 +1364,10 @@ function HeartbeatDashboard({
                     height={METER_H}
                     thresholdLines={thresholdLines}
                   />
+                  {/* dB readout pill */}
+                  <div className="mt-1 w-full rounded border border-border/50 bg-muted/40 px-1 py-0.5 text-center font-mono text-[10px] tabular-nums text-foreground/70">
+                    {dbuVal !== null ? `${dbuVal.toFixed(1)} dB` : "---"}
+                  </div>
                   {/* Clip indicator */}
                   <div
                     className={`mt-1 rounded px-1 py-0.5 text-[9px] font-semibold w-full text-center ${
@@ -1387,17 +1400,6 @@ function HeartbeatDashboard({
                       </span>
                       <span className="text-[9px] text-foreground/65 mt-0.5">
                         A
-                      </span>
-                    </div>
-                    {/* Ω */}
-                    <div
-                      className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${imp === 0 ? "opacity-40" : ""}`}
-                    >
-                      <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                        {imp > 0 ? String(imp) : "---"}
-                      </span>
-                      <span className="text-[9px] text-foreground/65 mt-0.5">
-                        Ω
                       </span>
                     </div>
                     {/* °C */}

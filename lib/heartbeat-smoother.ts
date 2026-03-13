@@ -14,6 +14,7 @@
  *             release τ = 300 ms (smooth fall-off)
  */
 
+import { RollingMedianFilter } from "@/lib/generic";
 import type { HeartbeatData } from "@/stores/AmpStore";
 
 // ─── Tuning ─────────────────────────────────────────────────────────────────
@@ -25,12 +26,6 @@ const VU_FLOOR = -100; // below this → treat as silent (null)
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function median(values: number[]): number {
-  const s = [...values].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-}
-
 /** EMA step: move `from` toward `to` with time-constant `tau` over `dt` ms. */
 function ema(from: number, to: number, tau: number, dt: number): number {
   return from + (to - from) * (1 - Math.exp(-dt / tau));
@@ -39,14 +34,14 @@ function ema(from: number, to: number, tau: number, dt: number): number {
 // ─── Stage 1: Median smoother ────────────────────────────────────────────────
 
 class ChannelWindow {
-  private buf: number[] = [];
-  private last: number | null = null;
+  private median = new RollingMedianFilter(WINDOW_SIZE);
 
   push(value: number | null | undefined): number | null {
-    if (value == null || !isFinite(value)) return this.last;
-    this.buf.push(value);
-    if (this.buf.length > WINDOW_SIZE) this.buf.shift();
-    return (this.last = median(this.buf));
+    return this.median.push(value);
+  }
+
+  reset(): void {
+    this.median.reset();
   }
 }
 
@@ -60,6 +55,7 @@ interface SensorWindows {
   outputImpedance: ChannelWindow[];
   inputVoltages: ChannelWindow[];
   limiters: ChannelWindow[];
+  outputStates: ChannelWindow[];
   fanVoltage: ChannelWindow;
 }
 
@@ -71,6 +67,7 @@ function makeWindows(): SensorWindows {
     outputImpedance: channels(4),
     inputVoltages: channels(4),
     limiters: channels(4),
+    outputStates: channels(4),
     fanVoltage: new ChannelWindow(),
   };
 }
@@ -84,6 +81,9 @@ class MedianSmoother {
       wins.map((win, i) => win.push(vals[i]) ?? vals[i]);
 
     const outputVoltages = arr(w.outputVoltages, raw.outputVoltages);
+    const outputStates = arr(w.outputStates, raw.outputStates).map((v) =>
+      Math.round(v),
+    );
 
     // Recompute outputDbu from the already-smoothed voltages so spike samples
     // in the raw packet never propagate to the VU targets.
@@ -93,7 +93,7 @@ class MedianSmoother {
 
     return {
       // Discrete / state — pass through unchanged
-      outputStates: raw.outputStates,
+      outputStates,
       inputStates: raw.inputStates,
       machineMode: raw.machineMode,
       receivedAt: raw.receivedAt,
@@ -209,7 +209,8 @@ function getPair(mac: string): SmootherPair {
 /**
  * Run a raw heartbeat through Stage 1 (median) and update Stage 2 VU targets.
  * Returns the median-smoothed HeartbeatData for the store.
- * `maxDb` = 20*log10(ratedRmsV) for this device — use maxDbFromDeviceName().
+ * `maxDb` = 20*log10(ratedRmsV) for this device, matching the original app's
+ * relative output meter scale where 0 dB means rated/max RMS output.
  * Call on every incoming heartbeat.
  */
 export function smoothHeartbeat(

@@ -9,7 +9,8 @@ export async function GET() {
       // Use the AmpController's already-bound socket so we don't create a
       // second UDP socket on port 45454 (which would cause EADDRINUSE).
       ampController.start();
-      devices = await ampController.triggerDiscovery(500);
+      // Match runtime discovery behavior more closely; Dante units can reply later.
+      devices = await ampController.triggerDiscovery(1200);
     } catch (err) {
       throw err;
     }
@@ -21,22 +22,35 @@ export async function GET() {
       );
     }
 
-    const foundDevices: any[] = [];
-    for (const device of devices) {
+    const foundDevices = devices.map((device) => ({
+      ip: device.ip,
+      mac: device.mac,
+      name: device.name || "Unknown",
+      deviceVersion: device.version || "Unknown",
+      identifier: "Unknown",
+      runtime: "Unknown",
+    }));
+
+    for (const [idx, device] of devices.entries()) {
       try {
         const ampDevice = new CvrAmpDevice(device.ip);
         const info = await ampDevice.queryBasicInfo();
         ampDevice.close();
-        foundDevices.push({
+        foundDevices[idx] = {
           ip: device.ip,
           mac: device.mac,
           name: info.name,
           deviceVersion: info.deviceVersion,
           identifier: info.identifier,
           runtime: info.runtime,
-        });
+        };
       } catch (err) {
-        // Silently continue if one device fails
+        // Keep device discovered via AmpController even if enrichment fails.
+        console.warn(
+          `[scan] Enrichment failed for ${device.mac} @ ${device.ip}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
       }
     }
 

@@ -29,6 +29,8 @@
  * Supported actions:
  *
  *   "muteIn"  — FC=10 MUTE, in_out_flag=0 (input)
+ *   "volumeIn" — FC=9 VOL, in_out_flag=0 (input)
+ *   "bridgePair" — FC=50 BRIDGE, pair channel=0 (A/B) or 1 (C/D)
  *   "muteOut" — FC=10 MUTE, in_out_flag=1 (Output)
  *   "invertPolarityOut" — FC=18 INVERTED, in_out_flag=1 (Output)
  *   "noiseGateOut" — FC=69 NOISE_GATE, in_out_flag=1 (Output)
@@ -139,6 +141,18 @@ export async function POST(request: Request): Promise<Response> {
           payload,
           0 /* input */,
         );
+        break;
+      }
+
+      // -----------------------------------------------------------------------
+      // Input volume/attenuation — FC=9 VOL, in_out_flag=0 (input)
+      // Wire body: float32 LE (dB)
+      // FC=27 sync data reports the value back at body[405].
+      // -----------------------------------------------------------------------
+      case "volumeIn": {
+        const payload = Buffer.alloc(4);
+        payload.writeFloatLE(value, 0);
+        await device.sendControl(FuncCode.VOL, channel, payload, 0 /* input */);
         break;
       }
 
@@ -351,6 +365,17 @@ export async function POST(request: Request): Promise<Response> {
           payload,
           1 /* Output */,
         );
+        break;
+      }
+
+      // -----------------------------------------------------------------------
+      // Bridge mode toggle — FC=50 BRIDGE
+      // chx = pair index (0 => A/B, 1 => C/D)
+      // body: 0x00 = bridged, 0x01 = unbridged
+      // -----------------------------------------------------------------------
+      case "bridgePair": {
+        const payload = Buffer.from([value ? 0x00 : 0x01]);
+        await device.sendControl(FuncCode.BRIDGE, channel, payload, 0);
         break;
       }
 

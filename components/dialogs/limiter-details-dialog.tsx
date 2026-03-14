@@ -15,9 +15,19 @@ import { VerticalDbMeter } from "@/components/monitor/vertical-db-meter";
 import { Separator } from "@/components/ui/separator";
 import { COLORS } from "@/lib/colors";
 import {
+  bridgeVoltageMultiplier,
+  fromLimiterDisplayVoltage,
+  limiterDisplayMaxVp,
+  limiterDisplayMaxVrms,
+  limiterDisplayMinVp,
+  limiterDisplayMinVrms,
+  limiterPowerFromDisplayVoltage,
   limiterPowerFromLoad,
+  limiterRawVoltageFromDisplayPower,
   limiterVoltageFromPower,
+  normalizeLimiterLoadOhm,
   rmsToPeakVoltage,
+  toLimiterDisplayVoltage,
   voltageToMeterDb,
 } from "@/lib/generic";
 import {
@@ -231,6 +241,8 @@ export function LimiterDetailsDialog({
   mac,
   channel,
   channelName,
+  bridgeMode = false,
+  disabled = false,
   ratedRmsV,
   loadOhm,
   rms,
@@ -251,6 +263,8 @@ export function LimiterDetailsDialog({
   mac: string;
   channel: 0 | 1 | 2 | 3;
   channelName: string;
+  bridgeMode?: boolean;
+  disabled?: boolean;
   ratedRmsV?: number;
   loadOhm?: number;
   rms: {
@@ -353,32 +367,53 @@ export function LimiterDetailsDialog({
 }) {
   const METER_H = 220;
   const METER_W = 36;
-  const resolvedLoadOhm = loadOhm ?? 8;
-  const maxVrms = ratedRmsV ?? 200;
-  const maxVp = rmsToPeakVoltage(ratedRmsV) ?? maxVrms * Math.SQRT2;
+  const bridgeMultiplier = bridgeVoltageMultiplier(bridgeMode);
+  const resolvedLoadOhm = normalizeLimiterLoadOhm(loadOhm, bridgeMode);
+  const minLoadOhm = bridgeMode ? 4 : 2;
+  const maxVrmsRaw = ratedRmsV ?? 200;
+  const maxVpRaw = rmsToPeakVoltage(ratedRmsV) ?? maxVrmsRaw * Math.SQRT2;
+  const maxVrms = limiterDisplayMaxVrms(maxVrmsRaw, bridgeMode);
+  const maxVp = limiterDisplayMaxVp(maxVpRaw, bridgeMode);
 
   // Local draft state so sliders track live during drag
-  const [rmsSliderV, setRmsSliderV] = useState(rms.thresholdVrms);
-  const [peakSliderV, setPeakSliderV] = useState(peak.thresholdVp);
+  const [rmsSliderV, setRmsSliderV] = useState(
+    toLimiterDisplayVoltage(rms.thresholdVrms, bridgeMode),
+  );
+  const [peakSliderV, setPeakSliderV] = useState(
+    toLimiterDisplayVoltage(peak.thresholdVp, bridgeMode),
+  );
 
   // Sync slider from external prop changes (e.g. polled updates) only when not dragging
   useEffect(() => {
-    setRmsSliderV(rms.thresholdVrms);
-  }, [rms.thresholdVrms]);
+    setRmsSliderV(toLimiterDisplayVoltage(rms.thresholdVrms, bridgeMode));
+  }, [rms.thresholdVrms, bridgeMode]);
   useEffect(() => {
-    setPeakSliderV(peak.thresholdVp);
-  }, [peak.thresholdVp]);
+    setPeakSliderV(toLimiterDisplayVoltage(peak.thresholdVp, bridgeMode));
+  }, [peak.thresholdVp, bridgeMode]);
+
+  useEffect(() => {
+    if (bridgeMode && (loadOhm ?? minLoadOhm) < minLoadOhm) {
+      void onSetOhms(mac, channel, minLoadOhm);
+    }
+  }, [bridgeMode, loadOhm, minLoadOhm, onSetOhms, mac, channel]);
+
+  const rmsRawThreshold = fromLimiterDisplayVoltage(rmsSliderV, bridgeMode);
+  const peakRawThreshold = fromLimiterDisplayVoltage(peakSliderV, bridgeMode);
 
   // Live power derived from slider draft values
-  const liveRmsPrmsW = Math.round((rmsSliderV * rmsSliderV) / resolvedLoadOhm);
-  const livePeakPpeakW = Math.round(
-    (peakSliderV * peakSliderV) / resolvedLoadOhm,
+  const liveRmsPrmsW = limiterPowerFromDisplayVoltage(
+    rmsSliderV,
+    resolvedLoadOhm,
+  );
+  const livePeakPpeakW = limiterPowerFromDisplayVoltage(
+    peakSliderV,
+    resolvedLoadOhm,
   );
   const limiterCompDb = Math.max(0, Math.min(20, -gr));
   const thresholdLines: { db: number; color: string; label: string }[] = [];
 
   if (rms.enabled) {
-    const d = voltageToMeterDb(rmsSliderV, ratedRmsV);
+    const d = voltageToMeterDb(rmsRawThreshold, ratedRmsV);
     if (d !== null) {
       thresholdLines.push({
         db: d,
@@ -389,7 +424,7 @@ export function LimiterDetailsDialog({
   }
 
   if (peak.enabled) {
-    const d = voltageToMeterDb(peakSliderV, rmsToPeakVoltage(ratedRmsV));
+    const d = voltageToMeterDb(peakRawThreshold, rmsToPeakVoltage(ratedRmsV));
     if (d !== null) {
       thresholdLines.push({
         db: d,
@@ -417,7 +452,12 @@ export function LimiterDetailsDialog({
     if (!Number.isFinite(parsed) || parsed < 0) {
       return;
     }
-    void onSetRmsThreshold(mac, channel, parsed, rmsConfig);
+    void onSetRmsThreshold(
+      mac,
+      channel,
+      fromLimiterDisplayVoltage(parsed, bridgeMode),
+      rmsConfig,
+    );
   };
 
   const commitRmsPower = (nextValue: string) => {
@@ -425,8 +465,13 @@ export function LimiterDetailsDialog({
     if (!Number.isFinite(parsed) || parsed < 0) {
       return;
     }
-    const nextVoltage = limiterVoltageFromPower(parsed, resolvedLoadOhm);
-    void onSetRmsThreshold(mac, channel, nextVoltage, rmsConfig);
+    const nextVoltageDisplay = limiterVoltageFromPower(parsed, resolvedLoadOhm);
+    void onSetRmsThreshold(
+      mac,
+      channel,
+      limiterRawVoltageFromDisplayPower(parsed, resolvedLoadOhm, bridgeMode),
+      rmsConfig,
+    );
   };
 
   const commitRmsAttack = (nextValue: string) => {
@@ -450,7 +495,12 @@ export function LimiterDetailsDialog({
     if (!Number.isFinite(parsed) || parsed < 0) {
       return;
     }
-    void onSetPeakThreshold(mac, channel, parsed, peakConfig);
+    void onSetPeakThreshold(
+      mac,
+      channel,
+      fromLimiterDisplayVoltage(parsed, bridgeMode),
+      peakConfig,
+    );
   };
 
   const commitPeakPower = (nextValue: string) => {
@@ -458,8 +508,13 @@ export function LimiterDetailsDialog({
     if (!Number.isFinite(parsed) || parsed < 0) {
       return;
     }
-    const nextVoltage = limiterVoltageFromPower(parsed, resolvedLoadOhm);
-    void onSetPeakThreshold(mac, channel, nextVoltage, peakConfig);
+    const nextVoltageDisplay = limiterVoltageFromPower(parsed, resolvedLoadOhm);
+    void onSetPeakThreshold(
+      mac,
+      channel,
+      limiterRawVoltageFromDisplayPower(parsed, resolvedLoadOhm, bridgeMode),
+      peakConfig,
+    );
   };
 
   const commitPeakHold = (nextValue: string) => {
@@ -481,8 +536,12 @@ export function LimiterDetailsDialog({
   const commitOhms = (nextValue: string) => {
     const parsed = Number.parseFloat(nextValue.replace(",", "."));
     if (!Number.isFinite(parsed) || parsed <= 0) return;
-    void onSetOhms(mac, channel, parsed);
+    void onSetOhms(mac, channel, Math.max(parsed, minLoadOhm));
   };
+
+  if (disabled) {
+    return <>{trigger}</>;
+  }
 
   return (
     <Dialog>
@@ -498,17 +557,25 @@ export function LimiterDetailsDialog({
             <div className="flex flex-1 items-center justify-center py-3">
               <Slider
                 orientation="vertical"
-                min={RMS_LIMITER_THRESHOLD_MIN_VRMS}
+                min={limiterDisplayMinVrms(
+                  RMS_LIMITER_THRESHOLD_MIN_VRMS,
+                  bridgeMode,
+                )}
                 max={maxVrms}
                 step={0.01}
                 value={[rmsSliderV]}
                 disabled={!rms.enabled}
                 onValueChange={([v]) => setRmsSliderV(v!)}
                 onValueCommit={([v]) =>
-                  void onSetRmsThreshold(mac, channel, v!, {
-                    ...rmsConfig,
-                    thresholdVrms: v!,
-                  })
+                  void onSetRmsThreshold(
+                    mac,
+                    channel,
+                    fromLimiterDisplayVoltage(v!, bridgeMode),
+                    {
+                      ...rmsConfig,
+                      thresholdVrms: fromLimiterDisplayVoltage(v!, bridgeMode),
+                    },
+                  )
                 }
               />
             </div>
@@ -577,17 +644,25 @@ export function LimiterDetailsDialog({
             <div className="flex flex-1 items-center justify-center py-3">
               <Slider
                 orientation="vertical"
-                min={PEAK_LIMITER_THRESHOLD_MIN_VP}
+                min={limiterDisplayMinVp(
+                  PEAK_LIMITER_THRESHOLD_MIN_VP,
+                  bridgeMode,
+                )}
                 max={maxVp}
                 step={0.01}
                 value={[peakSliderV]}
                 disabled={!peak.enabled}
                 onValueChange={([v]) => setPeakSliderV(v!)}
                 onValueCommit={([v]) =>
-                  void onSetPeakThreshold(mac, channel, v!, {
-                    ...peakConfig,
-                    thresholdVp: v!,
-                  })
+                  void onSetPeakThreshold(
+                    mac,
+                    channel,
+                    fromLimiterDisplayVoltage(v!, bridgeMode),
+                    {
+                      ...peakConfig,
+                      thresholdVp: fromLimiterDisplayVoltage(v!, bridgeMode),
+                    },
+                  )
                 }
               />
             </div>

@@ -43,6 +43,11 @@ const muteInSchema = baseSchema.extend({
   value: z.boolean(),
 });
 
+const volumeInSchema = baseSchema.extend({
+  action: z.literal("volumeIn"),
+  value: z.number(),
+});
+
 const muteOutSchema = baseSchema.extend({
   action: z.literal("muteOut"),
   value: z.boolean(),
@@ -158,6 +163,17 @@ const powerModeOutSchema = baseSchema.extend({
     .max(2, "powerModeOut must be between 0 and 2"),
 });
 
+const bridgePairSchema = z.object({
+  mac: z.string().trim().min(1, "Missing mac"),
+  action: z.literal("bridgePair"),
+  channel: z
+    .number()
+    .int("bridge pair must be an integer")
+    .min(0, "bridge pair must be 0 or 1")
+    .max(1, "bridge pair must be 0 or 1"),
+  value: z.boolean(),
+});
+
 const crossoverEnabledSchema = baseSchema.extend({
   action: z.literal("crossoverEnabled"),
   value: z.boolean(),
@@ -239,6 +255,7 @@ const eqBandQSchema = baseSchema.extend({
 
 export const ampActionRequestSchema = z.union([
   muteInSchema,
+  volumeInSchema,
   muteOutSchema,
   invertPolarityOutSchema,
   noiseGateOutSchema,
@@ -249,6 +266,7 @@ export const ampActionRequestSchema = z.union([
   delayInSchema,
   delayOutSchema,
   powerModeOutSchema,
+  bridgePairSchema,
   crossoverEnabledSchema,
   crossoverFreqSchema,
   eqBandTypeSchema,

@@ -29,6 +29,7 @@ import { rmsToPeakVoltage } from "@/lib/generic";
 // ---------------------------------------------------------------------------
 
 type Channel = 0 | 1 | 2 | 3;
+type BridgePair = 0 | 1;
 type CrossoverTarget = "input" | "output";
 type CrossoverKind = "hp" | "lp";
 
@@ -45,7 +46,13 @@ type PeakLimiterParams = {
 };
 
 interface AmpActionsHook {
+  setBridgePair: (
+    mac: string,
+    pair: BridgePair,
+    bridged: boolean,
+  ) => Promise<void>;
   muteIn: (mac: string, channel: Channel, muted: boolean) => Promise<void>;
+  setVolumeIn: (mac: string, channel: Channel, db: number) => Promise<void>;
   muteOut: (mac: string, channel: Channel, muted: boolean) => Promise<void>;
   setDelayIn: (mac: string, channel: Channel, ms: number) => Promise<void>;
   setDelayOut: (mac: string, channel: Channel, ms: number) => Promise<void>;
@@ -216,11 +223,31 @@ export function useAmpActions(): AmpActionsHook {
   );
 
   // ---------------------------------------------------------------------------
+  // setBridgePair
+  // ---------------------------------------------------------------------------
+  const setBridgePair = useCallback(
+    async (mac: string, pair: BridgePair, bridged: boolean) => {
+      await send(mac, "bridgePair", pair, bridged);
+    },
+    [send],
+  );
+
+  // ---------------------------------------------------------------------------
   // muteIn
   // ---------------------------------------------------------------------------
   const muteIn = useCallback(
     async (mac: string, channel: Channel, muted: boolean) => {
       await send(mac, "muteIn", channel, muted);
+    },
+    [send],
+  );
+
+  // ---------------------------------------------------------------------------
+  // setVolumeIn
+  // ---------------------------------------------------------------------------
+  const setVolumeIn = useCallback(
+    async (mac: string, channel: Channel, db: number) => {
+      await send(mac, "volumeIn", channel, db);
     },
     [send],
   );
@@ -554,7 +581,9 @@ export function useAmpActions(): AmpActionsHook {
   );
 
   return {
+    setBridgePair,
     muteIn,
+    setVolumeIn,
     muteOut,
     invertPolarityOut,
     noiseGateOut,

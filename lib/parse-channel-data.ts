@@ -224,7 +224,8 @@ const CHANNEL_FIELDS = [
  *
  * Wire encoding: 0 = muted, 1 = unmuted (active-low / inverted).
  */
-const TRAILER_MUTE_IN_OFFSET = 4 * BYTES_PER_CHANNEL + 132; // abs 2192
+const TRAILER_BASE = 4 * BYTES_PER_CHANNEL;
+const TRAILER_MUTE_IN_OFFSET = TRAILER_BASE + 132; // abs 2192
 // Maps channel index → absolute byte offset of its muteIn flag in the trailer
 const MUTE_IN_ABS: Record<number, number> = {
   0: TRAILER_MUTE_IN_OFFSET + 0, // ch0 (A) at rel 132

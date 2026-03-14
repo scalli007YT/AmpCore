@@ -9,7 +9,6 @@ export interface NetworkAdapterConfig {
 export class NetworkAdapter extends EventEmitter {
   private started = false;
   private socket: Socket | null = null;
-  private bindAddress = "0.0.0.0";
   private readonly recvPort: number;
   private readonly sendPort: number;
 
@@ -23,20 +22,20 @@ export class NetworkAdapter extends EventEmitter {
     return this.started;
   }
 
-  async start(bindAddress = "0.0.0.0"): Promise<void> {
-    if (this.started && this.bindAddress === bindAddress) return;
+  async start(): Promise<void> {
+    if (this.started) return;
 
     if (this.started) {
       await this.stop();
     }
 
-    this.bindAddress = bindAddress;
     this.socket = dgram.createSocket("udp4");
 
     this.socket.on("message", (msg, rinfo) => this.emit("message", msg, rinfo));
     this.socket.on("error", (err) => {
+      console.error("error in network adapter " + err);
       this.started = false;
-      this.emit("error", err);
+      this.start();
     });
 
     await new Promise<void>((resolve, reject) => {
@@ -46,15 +45,12 @@ export class NetworkAdapter extends EventEmitter {
       };
 
       this.socket!.once("error", onError);
-      this.socket!.bind(
-        { port: this.recvPort, address: bindAddress, exclusive: false },
-        () => {
-          this.socket?.removeListener("error", onError);
-          this.socket?.setBroadcast(true);
-          this.started = true;
-          resolve();
-        },
-      );
+      this.socket!.bind({ port: this.recvPort, exclusive: false }, () => {
+        this.socket?.removeListener("error", onError);
+        this.socket?.setBroadcast(true);
+        this.started = true;
+        resolve();
+      });
     });
   }
 
@@ -79,60 +75,37 @@ export class NetworkAdapter extends EventEmitter {
     offset: number,
     length: number,
     address: string,
-    broadcast: boolean,
+    broadcast: boolean
   ): Promise<number> {
-    if (!this.started || !this.socket) {
-      throw new Error("NetworkAdapter is not started");
-    }
-
-    this.socket.setBroadcast(broadcast);
+    await this.start();
+    this.socket!.setBroadcast(broadcast);
 
     return new Promise((resolve, reject) => {
-      this.socket!.send(
-        msg,
-        offset,
-        length,
-        this.sendPort,
-        address,
-        (error: Error | null, bytes: number) => {
-          if (error === null) resolve(bytes);
-          else reject(error);
-        },
-      );
+      this.socket!.send(msg, offset, length, this.sendPort, address, (error: Error | null, bytes: number) => {
+        if (error === null) resolve(bytes);
+        else reject(error);
+      });
     });
   }
 
   emit(event: "message", ...args: [Buffer, RemoteInfo]): boolean;
-  emit(event: "error", ...args: [Error]): boolean;
-  emit(event: string, ...args: any[]): boolean {
+  emit(event: string, ...args: any): boolean {
     return super.emit(event, ...args);
   }
 
-  on(
-    event: "message",
-    listener: (msg: Buffer, rinfo: RemoteInfo) => void,
-  ): this;
-  on(event: "error", listener: (err: Error) => void): this;
+  on(event: "message", listener: (msg: Buffer, rinfo: RemoteInfo) => void): this;
   on(event: string, listener: (...args: any[]) => void): this {
     super.on(event, listener);
     return this;
   }
 
-  once(
-    event: "message",
-    listener: (msg: Buffer, rinfo: RemoteInfo) => void,
-  ): this;
-  once(event: "error", listener: (err: Error) => void): this;
+  once(event: "message", listener: (msg: Buffer, rinfo: RemoteInfo) => void): this;
   once(event: string, listener: (...args: any[]) => void): this {
     super.once(event, listener);
     return this;
   }
 
-  removeListener(
-    event: "message",
-    listener: (msg: Buffer, rinfo: RemoteInfo) => void,
-  ): this;
-  removeListener(event: "error", listener: (err: Error) => void): this;
+  removeListener(event: "message", listener: (msg: Buffer, rinfo: RemoteInfo) => void): this;
   removeListener(event: string, listener: (...args: any[]) => void): this {
     super.removeListener(event, listener);
     return this;

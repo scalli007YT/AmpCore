@@ -6,11 +6,10 @@ const AMP_SEND_PORT = 45455;
 // so it never conflicts with the AmpController's persistent bind on 45454.
 // Amps reply to the source port of the incoming request, so this works fine.
 const PC_RECV_PORT = 0;
-// Two distinct flags observed in real captures:
-//   READ  packets (queries/heartbeat): 0x0194d903  (bytes: 03 d9 94 01)
-//   WRITE packets (control commands):  0x0000d903  (bytes: 03 d9 00 00)
-const NETWORK_DATA_FLAG = 0x0194d903; // for queries / heartbeat
-const NETWORK_DATA_FLAG_WRITE = 0x0000d903; // for control commands (statusCode=1)
+// Original C# layout is: data_flag(uint16)=0xd903, machine_mode(int16), then
+// packet counters/state. Bytes like 03 d9 94 01 therefore mean machine_mode
+// = 0x0194, not a different protocol flag.
+const NETWORK_DATA_FLAG = 0xd903;
 const CROSSOVER_COMMIT_PACKET = Buffer.from("03d99401015c0001015a", "hex");
 
 export interface NetworkData {
@@ -104,12 +103,13 @@ export class FuncCode {
 
 function networkDataToBytes(nd: NetworkData): Buffer {
   const buf = Buffer.alloc(10);
-  buf.writeUInt32LE(nd.dataFlag, 0);
+  buf.writeUInt16LE(nd.dataFlag, 0);
+  buf.writeInt16LE(nd.machineMode, 2);
   buf.writeUInt8(nd.packetsCount, 4);
   buf.writeUInt16LE(nd.packetsLastlen, 5);
   buf.writeUInt8(nd.packetsStep, 7);
   buf.writeUInt8(nd.dataState, 8);
-  buf.writeUInt8(nd.machineMode, 9);
+  buf.writeUInt8(0, 9);
   return buf;
 }
 
@@ -214,6 +214,7 @@ export class CvrAmpDevice {
   private async sendRaw(
     header: StructHeader,
     body: Buffer = Buffer.alloc(0),
+    machineMode = 0,
   ): Promise<Buffer> {
     const sock = await this.ensureSocket();
     const inner = Buffer.concat([structHeaderToBytes(header), body]);
@@ -226,7 +227,7 @@ export class CvrAmpDevice {
       packetsLastlen: frame.length,
       packetsStep: 1,
       dataState: 0,
-      machineMode: 0,
+      machineMode,
     };
 
     const packet = Buffer.concat([networkDataToBytes(nd), frame]);
@@ -367,7 +368,7 @@ export class CvrAmpDevice {
     };
 
     // Run sequentially — both share the same socket, parallel use causes interference
-    const basicResponse = await this.sendRaw(basicHeader);
+    const basicResponse = await this.sendRaw(basicHeader, Buffer.alloc(0), 0);
     const snResponse = await this.querySNTable();
 
     return {
@@ -661,7 +662,7 @@ export class CvrAmpDevice {
    *
    * Wire format derived from real packet captures (Python reverse-engineering)
    * and confirmed by reading the original C# source:
-   *   - NetworkData flag: 0x0000d903  (write packets, NOT the 0x0194d903 read flag)
+   *   - NetworkData flag: 0xd903 with machineMode=0
    *   - statusCode: 1  (all write/control commands)
    *   - inOutFlag (byte 9 of StructHeader): 0=input, 1=Output  (C# enum in_out_flag)
    *
@@ -710,7 +711,7 @@ export class CvrAmpDevice {
     const frame = Buffer.concat([inner, checkCode]);
 
     const nd: NetworkData = {
-      dataFlag: NETWORK_DATA_FLAG_WRITE, // 0x0000d903 — write-command flag
+      dataFlag: NETWORK_DATA_FLAG,
       packetsCount: 1,
       packetsLastlen: frame.length,
       packetsStep: 1,
@@ -890,7 +891,7 @@ export function parseHeartbeat(buf: Buffer): HeartbeatData | null {
   // Validate function code = FC=6 (HEARTBEAT)
   if (buf[11] !== FuncCode.HEARTBEAT) return null;
 
-  const machineMode = buf[9];
+  const machineMode = buf.readInt16LE(2);
   const bodyStart = 20; // after NetworkData(10) + StructHeader(10)
   // body ends before the 3 checksum bytes
   const bodyLen = buf.length - bodyStart - 3;

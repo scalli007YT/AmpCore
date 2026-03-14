@@ -4,6 +4,11 @@ import { useEffect } from "react";
 import { useAmpStore } from "@/stores/AmpStore";
 import { parseFC27Channels } from "@/lib/parse-channel-data";
 
+const CHANNEL_DATA_POLL_MS = 250;
+let channelDataTimer: ReturnType<typeof setInterval> | null = null;
+let channelDataSubscribers = 0;
+const inFlightMacs = new Set<string>();
+
 /**
  * useAmpChannelData — Polls channel data for all reachable amps
  *
@@ -13,35 +18,50 @@ import { parseFC27Channels } from "@/lib/parse-channel-data";
  */
 export function useAmpChannelData(): void {
   useEffect(() => {
-    const channelDataTimer = setInterval(() => {
-      const amps = useAmpStore.getState().amps;
-      const reachableAmps = amps.filter((amp) => amp.reachable);
+    channelDataSubscribers++;
 
-      reachableAmps.forEach((amp) => {
-        fetch(`/api/amp-channel-data?mac=${encodeURIComponent(amp.mac)}`)
-          .then((r) => r.json())
-          .then((response) => {
-            if (response.success && response.hex) {
-              const { syncChannelParams } = useAmpStore.getState();
+    if (!channelDataTimer) {
+      channelDataTimer = setInterval(() => {
+        const amps = useAmpStore.getState().amps;
+        const reachableAmps = amps.filter((amp) => amp.reachable);
 
-              // Parse the raw hex into 4 channel configurations
-              const channels = parseFC27Channels(response.hex);
+        reachableAmps.forEach((amp) => {
+          if (inFlightMacs.has(amp.mac)) return;
+          inFlightMacs.add(amp.mac);
 
-              // Sync into ChannelParams for structured access
-              syncChannelParams(amp.mac, channels);
-            }
-          })
-          .catch((err) => {
-            console.error(
-              `[useAmpChannelData] Error fetching data for ${amp.mac}:`,
-              err,
-            );
-          });
-      });
-    }, 250);
+          fetch(`/api/amp-channel-data?mac=${encodeURIComponent(amp.mac)}`)
+            .then((r) => r.json())
+            .then((response) => {
+              if (response.success && response.hex) {
+                const { syncChannelParams } = useAmpStore.getState();
+
+                // Parse the raw hex into 4 channel configurations
+                const channels = parseFC27Channels(response.hex);
+
+                // Sync into ChannelParams for structured access
+                syncChannelParams(amp.mac, channels);
+              }
+            })
+            .catch((err) => {
+              console.error(
+                `[useAmpChannelData] Error fetching data for ${amp.mac}:`,
+                err,
+              );
+            })
+            .finally(() => {
+              inFlightMacs.delete(amp.mac);
+            });
+        });
+      }, CHANNEL_DATA_POLL_MS);
+    }
 
     return () => {
-      clearInterval(channelDataTimer);
+      channelDataSubscribers = Math.max(0, channelDataSubscribers - 1);
+      if (channelDataSubscribers === 0 && channelDataTimer) {
+        clearInterval(channelDataTimer);
+        channelDataTimer = null;
+        inFlightMacs.clear();
+      }
     };
   }, []);
 }

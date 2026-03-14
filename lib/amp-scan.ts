@@ -4,6 +4,7 @@ import { FuncCode } from "./amp-device";
 
 const AMP_PORT = 45455;
 const DISCOVERY_TIMEOUT = 200; // 200ms — amps respond in <50ms on LAN/WiFi
+const NETWORK_DATA_FLAG = 0xd903;
 
 /**
  * Returns the directed broadcast address for every active IPv4 interface
@@ -146,12 +147,13 @@ export async function broadcastDiscovery(): Promise<
 
             // Build NetworkData wrapper (10 bytes)
             const networkData = Buffer.alloc(10);
-            networkData.writeUInt32LE(0x0194d903, 0); // data_flag: protocol identifier
+            networkData.writeUInt16LE(NETWORK_DATA_FLAG, 0);
+            networkData.writeInt16LE(0, 2);
             networkData[4] = 1; // packets_count
             networkData.writeUInt16LE(frame.length, 5); // packets_lastlenth
             networkData[7] = 1; // packets_stepcount
             networkData[8] = 0; // data_state
-            networkData[9] = 0; // machine_mode
+            networkData[9] = 0; // padding_data
 
             const packet = Buffer.concat([networkData, frame]);
 

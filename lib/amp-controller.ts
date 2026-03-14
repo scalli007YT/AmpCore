@@ -25,10 +25,11 @@
  * └─────────────────────────────────────────────────────────────────────────┘
  */
 
-import dgram from "dgram";
+import os from "os";
 import { EventEmitter } from "events";
 import { FuncCode, parseHeartbeat } from "./amp-device";
 import type { HeartbeatData } from "@/stores/AmpStore";
+import { NetworkAdapter } from "@/lib/network/network-adapter";
 
 // ---------------------------------------------------------------------------
 // Constants — matching original C# values exactly
@@ -39,7 +40,8 @@ const BROADCAST_ADDR = "255.255.255.255";
 const HEARTBEAT_MS = 140; // queryT_V_A Thread.Sleep(140)
 const DISCOVERY_MS = 4000; // TimerRefresh.Interval = 4000
 const DISCOVERY_WINDOW_MS = 1000; // MainWindow.Sleep(1000) after broadcast
-const NETWORK_DATA_FLAG = 0x0194d903; // protocol identifier (bytes: 03 d9 94 01)
+const DISCOVERY_PROBE_WINDOW_MS = 220; // initUDP2-style quick per-NIC probe
+const NETWORK_DATA_FLAG = 0xd903; // protocol identifier (bytes: 03 d9)
 const FRAGMENT_SIZE = 450; // max bytes per fragment (C# byteCut chunk)
 // Watchdog: if an amp hasn't sent a heartbeat in this many ms → offline
 const HEARTBEAT_TIMEOUT_MS = 3_500; // 25 × 140 ms
@@ -86,18 +88,55 @@ interface FragmentState {
   packetsCount: number;
 }
 
+function getDirectedBroadcasts(): string[] {
+  const broadcasts: string[] = [];
+  for (const iface of Object.values(os.networkInterfaces())) {
+    if (!iface) continue;
+    for (const addr of iface) {
+      if (addr.family !== "IPv4" || addr.internal) continue;
+      const ip = addr.address.split(".").map(Number);
+      const mask = addr.netmask.split(".").map(Number);
+      const bcast = ip.map((b, i) => (b & mask[i]) | (~mask[i] & 0xff));
+      broadcasts.push(bcast.join("."));
+    }
+  }
+  // Keep limited broadcast as fallback for edge setups.
+  const unique = new Set(broadcasts);
+  unique.add(BROADCAST_ADDR);
+  return Array.from(unique);
+}
+
+function getLocalBindCandidates(): string[] {
+  const out: string[] = [];
+  for (const iface of Object.values(os.networkInterfaces())) {
+    if (!iface) continue;
+    for (const addr of iface) {
+      if (addr.family !== "IPv4" || addr.internal) continue;
+      out.push(addr.address);
+    }
+  }
+  const unique = Array.from(new Set(out));
+  unique.push("0.0.0.0");
+  return Array.from(new Set(unique));
+}
+
 // ---------------------------------------------------------------------------
 // Packet builders
 // ---------------------------------------------------------------------------
 
-function buildNetworkData(frameLen: number, dataState = 0): Buffer {
+function buildNetworkData(
+  frameLen: number,
+  dataState = 0,
+  machineMode = 0,
+): Buffer {
   const buf = Buffer.alloc(10);
-  buf.writeUInt32LE(NETWORK_DATA_FLAG, 0);
+  buf.writeUInt16LE(NETWORK_DATA_FLAG, 0);
+  buf.writeInt16LE(machineMode, 2);
   buf[4] = 1; // packets_count
   buf.writeUInt16LE(frameLen, 5); // packets_lastlenth
   buf[7] = 1; // packets_stepcount
   buf[8] = dataState; // data_state  (0=send, 1=ack)
-  buf[9] = 0; // machine_mode
+  buf[9] = 0; // padding_data
   return buf;
 }
 
@@ -143,7 +182,7 @@ function validateAndStrip(raw: Buffer): Buffer | null {
   // Minimum: NetworkData(10) + StructHeader(10) + checksum(3) = 23 bytes
   if (raw.length < 23) return null;
   if (raw[10] !== 0x55) return null; // head check
-  if (raw.readUInt32LE(0) !== NETWORK_DATA_FLAG) return null;
+  if (raw.readUInt16LE(0) !== NETWORK_DATA_FLAG) return null;
 
   // Extract the inner frame (everything after NetworkData, without checksum)
   const inner = raw.slice(10, raw.length - 3);
@@ -156,57 +195,56 @@ function validateAndStrip(raw: Buffer): Buffer | null {
 }
 
 // ---------------------------------------------------------------------------
-// Discovery parser — FC=0 BASIC_INFO response
-// Body layout after StructHeader:
-//   [0-23]   version string (null-terminated ASCII, 24 bytes)
-//   [8]      padding
-//   [32-55]  device name (null-terminated ASCII, 24 bytes)
-//   [64-69]  MAC address (6 bytes)
+// Discovery parser — FC=0 BASIC_INFO response.
 //
-// In the full raw packet (with NetworkData prepended):
-//   [10-19]  StructHeader
-//   [20-43]  version
-//   [52-75]  name
-//   [84-89]  MAC
+// FC=0 body variants seen in the original software:
+//   75 bytes: Basic_information struct
+//   79 bytes: Basic_information + 4-byte extension (vendor/meta)
+//
+// This parser accepts both. For 79-byte bodies, it trims to the first 75 bytes.
 // ---------------------------------------------------------------------------
 function parseDiscoveryPacket(raw: Buffer, ip: string): DiscoveryEvent | null {
-  if (raw.length < 95) return null;
+  // Minimum valid FC=0 packet: NetworkData(10) + StructHeader(10) + body75 + checksum(3)
+  if (raw.length < 98) return null;
   if (raw[10] !== 0x55) return null;
   if (raw[11] !== FuncCode.BASIC_INFO) return null;
 
-  const macBytes = raw.slice(84, 90);
+  const fullBody = raw.slice(20, raw.length - 3);
+  let body = fullBody;
+
+  if (fullBody.length === 79) {
+    body = fullBody.slice(0, 75);
+  } else if (fullBody.length !== 75) {
+    return null;
+  }
+
+  const macBytes = body.slice(64, 70);
   if (macBytes.reduce((a, b) => a + b, 0) === 0) return null;
 
   const mac = Array.from(macBytes)
     .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
     .join(":");
 
-  const verSlice = raw.slice(20, 44);
+  const verSlice = body.slice(0, 24);
   const verNull = verSlice.indexOf(0);
   const version = verSlice
     .slice(0, verNull === -1 ? 24 : verNull)
     .toString("ascii")
     .trim();
 
-  const nameSlice = raw.slice(52, 76);
+  const nameSlice = body.slice(32, 56);
   const nameNull = nameSlice.indexOf(0);
   const name = nameSlice
     .slice(0, nameNull === -1 ? 24 : nameNull)
     .toString("ascii")
     .trim();
 
-  // BASIC_INFO struct fields inside body (body starts at absolute offset 20)
-  //   +70 Gain_max
-  //   +71 Analog_signal_Input_chx
-  //   +72 Digital_signal_input_chx
-  //   +73 Output_chx
-  //   +74 Machine_state
-  const bodyStart = 20;
-  const gainMax = raw[bodyStart + 70] ?? 0;
-  const analogSignalInputChx = raw[bodyStart + 71] ?? 0;
-  const digitalSignalInputChx = raw[bodyStart + 72] ?? 0;
-  const outputChx = raw[bodyStart + 73] ?? 0;
-  const machineState = raw[bodyStart + 74] ?? 0;
+  // Basic_information struct tail bytes.
+  const gainMax = body[70] ?? 0;
+  const analogSignalInputChx = body[71] ?? 0;
+  const digitalSignalInputChx = body[72] ?? 0;
+  const outputChx = body[73] ?? 0;
+  const machineState = body[74] ?? 0;
 
   const basicInfo: BasicInfoSnapshot = {
     Gain_max: gainMax,
@@ -223,7 +261,10 @@ function parseDiscoveryPacket(raw: Buffer, ip: string): DiscoveryEvent | null {
 // AmpController
 // ---------------------------------------------------------------------------
 class AmpController extends EventEmitter {
-  private socket: dgram.Socket | null = null;
+  private readonly network = new NetworkAdapter({
+    recvPort: PC_RECV_PORT,
+    sendPort: AMP_PORT,
+  });
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private discoveryTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -258,6 +299,21 @@ class AmpController extends EventEmitter {
   private fragmentBuffers = new Map<string, FragmentState>(); // key = ip
 
   private running = false;
+  private bindingInProgress = false;
+  private boundAddress = "0.0.0.0";
+  private controlTargetIp: string | null = null;
+
+  private readonly pendingFc27ByIp = new Map<
+    string,
+    {
+      frames: Buffer[];
+      timeout: ReturnType<typeof setTimeout>;
+      settleTimer: ReturnType<typeof setTimeout> | null;
+      resolve: (value: Buffer) => void;
+      reject: (error: Error) => void;
+    }
+  >();
+  private readonly fc27QueueByIp = new Map<string, Promise<Buffer>>();
 
   // Promise that resolves once the UDP socket is successfully bound.
   // triggerDiscovery awaits this so it never fires into a null socket.
@@ -274,25 +330,28 @@ class AmpController extends EventEmitter {
   // Public API
   // -------------------------------------------------------------------------
 
+  constructor() {
+    super();
+    this.network.on("message", (msg, rinfo) => {
+      this._onPacket(msg, rinfo.address);
+    });
+    this.network.on("error", (err) => {
+      this._handleNetworkError(err);
+    });
+  }
+
   start(): void {
     if (this.running) return;
     this.running = true;
     // Reset the ready promise for a fresh bind cycle
     this._socketReady = new Promise((res) => (this._socketReadyResolve = res));
-    this._bindSocket();
+    void this._bindAndStart();
   }
 
   stop(): void {
     this.running = false;
     this._clearTimers();
-    if (this.socket) {
-      try {
-        this.socket.close();
-      } catch {
-        /* ignore */
-      }
-      this.socket = null;
-    }
+    void this.network.stop();
   }
 
   /** Pause heartbeat loop during a user command (mirrors isRefresh = false) */
@@ -302,6 +361,26 @@ class AmpController extends EventEmitter {
   /** Resume heartbeat loop after a user command (mirrors isRefresh = true) */
   resumeHeartbeat(): void {
     this.isRefresh = true;
+  }
+
+  /**
+   * Enter focused control mode for one amp (original setSendIP + setIsBroadcast(false)).
+   * Heartbeat becomes unicast and periodic discovery timer is paused.
+   */
+  setControlTargetIp(ip: string | null): void {
+    this.controlTargetIp = ip && ip.trim().length > 0 ? ip.trim() : null;
+
+    if (this.controlTargetIp) {
+      if (this.discoveryTimer) {
+        clearInterval(this.discoveryTimer);
+        this.discoveryTimer = null;
+      }
+      return;
+    }
+
+    if (this.running) {
+      this._startDiscoveryTimer();
+    }
   }
 
   /**
@@ -323,7 +402,7 @@ class AmpController extends EventEmitter {
     body: Buffer,
     inOutFlag = 0,
   ): void {
-    if (!this.socket) {
+    if (!this.network.isStarted) {
       console.warn("[AmpController] sendCommand: socket not ready");
       return;
     }
@@ -342,7 +421,11 @@ class AmpController extends EventEmitter {
       const inner = Buffer.concat([h, body]);
       const frame = Buffer.concat([inner, calcCheckCode(inner)]);
       const packet = Buffer.concat([buildNetworkData(frame.length), frame]);
-      this.socket.send(packet, 0, packet.length, AMP_PORT, ip);
+      void this.network
+        .send(packet, 0, packet.length, ip, false)
+        .catch((err) => {
+          console.error("[AmpController] sendCommand send error:", err);
+        });
     } catch (err) {
       console.error("[AmpController] sendCommand error:", err);
     }
@@ -370,118 +453,94 @@ class AmpController extends EventEmitter {
       throw new Error(`Amp ${mac} not found or not yet discovered`);
     }
 
-    if (!this.socket) {
+    if (!this.network.isStarted) {
       throw new Error("Socket not initialized");
     }
 
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error(`FC=27 request for ${mac}:${channel} timed out`));
-      }, 5000);
+    const previous =
+      this.fc27QueueByIp.get(ip) ?? Promise.resolve(Buffer.alloc(0));
+    const queued = previous
+      .catch(() => Buffer.alloc(0))
+      .then(() => this._sendAndAwaitFC27(ip, channel));
 
-      // Accumulator for multi-frame responses
-      const frames: Buffer[] = [];
+    this.fc27QueueByIp.set(ip, queued);
 
-      // Build a one-time handler to capture the FC=27 response for this channel
-      const originalDispatch = this._dispatchFC.bind(this);
-      let captured = false;
-
-      const tempDispatch = (
-        fc: number,
-        body: Buffer,
-        srcIp: string,
-        machineMode: number,
-        rawAssembled: Buffer,
-      ) => {
-        // Only intercept FC=27 responses from the target IP
-        if (fc === 27 && srcIp === ip && !captured) {
-          // Accept the response regardless of channel — the amp sends all channel data
-          // in a single multi-packet response
-          frames.push(Buffer.from(body));
-
-          // Mark as captured and start the final wait window
-          if (!captured) {
-            captured = true;
-            setTimeout(() => {
-              clearTimeout(timeout);
-              (this as any)._dispatchFC = originalDispatch;
-
-              // Concatenate all frames
-              const complete = Buffer.concat(frames);
-              resolve(complete);
-            }, 100); // Wait 100ms for any remaining fragments
-          }
-          return;
-        }
-
-        // Pass through to normal dispatch
-        originalDispatch(fc, body, srcIp, machineMode, rawAssembled);
-      };
-
-      // Temporarily replace dispatch handler
-      (this as any)._dispatchFC = tempDispatch;
-
-      // Build and send the FC=27 request
-      try {
-        const sock = this.socket;
-        if (!sock) throw new Error("Socket lost");
-
-        const header = buildStructHeader(27, 2, channel);
-        const inner = Buffer.concat([header]);
-        const frame = Buffer.concat([inner, calcCheckCode(inner)]);
-        const packet = Buffer.concat([buildNetworkData(frame.length), frame]);
-
-        sock.send(packet, 0, packet.length, AMP_PORT, ip);
-      } catch (err) {
-        clearTimeout(timeout);
-        (this as any)._dispatchFC = originalDispatch;
-        reject(err);
+    return queued.finally(() => {
+      if (this.fc27QueueByIp.get(ip) === queued) {
+        this.fc27QueueByIp.delete(ip);
       }
     });
   }
 
   // -------------------------------------------------------------------------
-  // Socket — Receive_Thread equivalent
+  // Socket bootstrap — initUDP2-style NIC fallback probing
   // -------------------------------------------------------------------------
-  private _bindSocket(): void {
-    const sock = dgram.createSocket("udp4");
-    this.socket = sock;
+  private async _bindAndStart(): Promise<void> {
+    if (this.bindingInProgress || !this.running) return;
+    this.bindingInProgress = true;
+    this._clearTimers();
 
-    sock.on("error", (err) => {
-      console.error("[AmpController] Socket error:", err.message);
-      this._clearTimers();
-      try {
-        sock.close();
-      } catch {
-        /* ignore */
+    const candidates = getLocalBindCandidates();
+    let chosenAddress: string | null = null;
+
+    try {
+      for (let i = 0; i < candidates.length && this.running; i++) {
+        const bindAddress = candidates[i];
+        try {
+          await this.network.start(bindAddress);
+        } catch (err) {
+          continue;
+        }
+
+        const found = await this._probeDiscoveryWindow();
+        const isLast = i === candidates.length - 1;
+
+        if (found || isLast) {
+          chosenAddress = bindAddress;
+          console.log(
+            `[AmpController] Socket bound on ${bindAddress}:${PC_RECV_PORT} — starting loops`,
+          );
+          break;
+        }
       }
-      this.socket = null;
-      // mirrors the C# "goto IL_00" restart
+
+      if (!this.running || !chosenAddress) return;
+      this.boundAddress = chosenAddress;
+
+      // Resolve the ready promise so triggerDiscovery() can proceed
+      this._socketReadyResolve?.();
+      this._socketReadyResolve = null;
+
+      this._startHeartbeatLoop();
+      this._startDiscoveryTimer();
+    } finally {
+      this.bindingInProgress = false;
+    }
+  }
+
+  private _probeDiscoveryWindow(): Promise<boolean> {
+    return new Promise((resolve) => {
+      let seen = false;
+      const listener = () => {
+        seen = true;
+      };
+
+      this.on("discovery", listener);
+      this._sendDiscovery();
+
       setTimeout(() => {
-        if (this.running) this._bindSocket();
-      }, 500);
+        this.off("discovery", listener);
+        resolve(seen);
+      }, DISCOVERY_PROBE_WINDOW_MS);
     });
+  }
 
-    sock.on("message", (msg: Buffer, rinfo: dgram.RemoteInfo) => {
-      this._onPacket(msg, rinfo.address);
-    });
-
-    sock.bind(
-      { port: PC_RECV_PORT, address: "0.0.0.0", exclusive: false },
-      () => {
-        sock.setBroadcast(true);
-        console.log(
-          `[AmpController] Socket bound on 0.0.0.0:${PC_RECV_PORT} — starting loops`,
-        );
-        // Resolve the ready promise so triggerDiscovery() can proceed
-        this._socketReadyResolve?.();
-        this._socketReadyResolve = null;
-        this._startHeartbeatLoop();
-        this._startDiscoveryTimer();
-        // Immediate broadcast on startup (mirrors initUDP2 → Sendrefrash)
-        this._sendDiscovery();
-      },
-    );
+  private _handleNetworkError(err: Error): void {
+    console.error("[AmpController] Socket error:", err.message);
+    this._clearTimers();
+    setTimeout(() => {
+      if (this.running) void this._bindAndStart();
+    }, 500);
   }
 
   // -------------------------------------------------------------------------
@@ -497,14 +556,14 @@ class AmpController extends EventEmitter {
     if (raw.length < 10) return;
 
     // --- Step 1: validate data_flag ---
-    if (raw.readUInt32LE(0) !== NETWORK_DATA_FLAG) return;
+    if (raw.readUInt16LE(0) !== NETWORK_DATA_FLAG) return;
 
     // Parse NetworkData header
     const packetsCount = raw[4];
     const packetsLastlen = raw.readUInt16LE(5);
     const packetsStep = raw[7]; // 1-based fragment index
     const dataState = raw[8];
-    const machineMode = raw[9];
+    const machineMode = raw.readInt16LE(2);
 
     // data_state=1 means this is an ACK we sent ourselves, reflected back — ignore
     if (dataState === 1) return;
@@ -570,15 +629,13 @@ class AmpController extends EventEmitter {
   // with data_state flipped to 1 as the handshake acknowledgement.
   // -------------------------------------------------------------------------
   private _sendAck(ip: string, originalPacket: Buffer): void {
-    if (!this.socket) return;
-    try {
-      // Build a 10-byte ACK: copy original NetworkData, flip data_state to 1
-      const ack = Buffer.from(originalPacket.slice(0, 10));
-      ack[8] = 1; // data_state = 1 (ACK)
-      this.socket.send(ack, 0, ack.length, AMP_PORT, ip);
-    } catch {
+    if (!this.network.isStarted) return;
+    // Build a 10-byte ACK: copy original NetworkData, flip data_state to 1
+    const ack = Buffer.from(originalPacket.slice(0, 10));
+    ack[8] = 1; // data_state = 1 (ACK)
+    void this.network.send(ack, 0, ack.length, ip, false).catch(() => {
       /* ignore */
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -623,7 +680,7 @@ class AmpController extends EventEmitter {
       case FuncCode.HEARTBEAT: {
         // Reconstruct the full raw packet for parseHeartbeat (expects NetworkData prefix)
         const withNd = Buffer.concat([
-          buildNetworkData(rawAssembled.length, machineMode),
+          buildNetworkData(rawAssembled.length, 0, machineMode),
           rawAssembled,
         ]);
 
@@ -651,6 +708,24 @@ class AmpController extends EventEmitter {
         break;
       }
 
+      case FuncCode.SYNC_DATA: {
+        const pending = this.pendingFc27ByIp.get(ip);
+        if (!pending) break;
+
+        pending.frames.push(Buffer.from(body));
+        if (pending.settleTimer) {
+          clearTimeout(pending.settleTimer);
+        }
+
+        pending.settleTimer = setTimeout(() => {
+          if (pending.settleTimer) clearTimeout(pending.settleTimer);
+          clearTimeout(pending.timeout);
+          this.pendingFc27ByIp.delete(ip);
+          pending.resolve(Buffer.concat(pending.frames));
+        }, 100);
+        break;
+      }
+
       default:
         // Other FCs (presets, vol, mute, …) will be handled by CvrAmpDevice
         // unicast methods on the same socket — ignore here.
@@ -669,22 +744,37 @@ class AmpController extends EventEmitter {
     if (this.heartbeatTimer) return;
 
     this.heartbeatTimer = setInterval(() => {
-      if (!this.socket || !this.isRefresh) {
+      if (!this.network.isStarted || !this.isRefresh) {
         this.heartbeatCount = 0;
         return;
       }
 
-      // Broadcast — every amp on the network replies independently.
-      try {
-        this.socket.send(
-          this.heartbeatPacket,
-          0,
-          this.heartbeatPacket.length,
-          AMP_PORT,
-          BROADCAST_ADDR,
-        );
-      } catch {
-        /* ignore */
+      if (this.controlTargetIp) {
+        // Focused control mode: unicast heartbeat to selected amp.
+        void this.network
+          .send(
+            this.heartbeatPacket,
+            0,
+            this.heartbeatPacket.length,
+            this.controlTargetIp,
+            false,
+          )
+          .catch(() => {
+            /* ignore */
+          });
+      } else {
+        // Default mode: broadcast heartbeat to all amps.
+        void this.network
+          .send(
+            this.heartbeatPacket,
+            0,
+            this.heartbeatPacket.length,
+            BROADCAST_ADDR,
+            true,
+          )
+          .catch(() => {
+            /* ignore */
+          });
       }
 
       this.heartbeatCount++;
@@ -747,17 +837,20 @@ class AmpController extends EventEmitter {
   }
 
   private _sendDiscovery(): void {
-    if (!this.socket) return;
-    try {
-      this.socket.send(
-        this.discoveryPacket,
-        0,
-        this.discoveryPacket.length,
-        AMP_PORT,
-        BROADCAST_ADDR,
-      );
-    } catch (err) {
-      console.error("[AmpController] _sendDiscovery error:", err);
+    if (!this.network.isStarted) return;
+    const targets = getDirectedBroadcasts();
+    for (const target of targets) {
+      void this.network
+        .send(
+          this.discoveryPacket,
+          0,
+          this.discoveryPacket.length,
+          target,
+          true,
+        )
+        .catch((err) => {
+          console.error("[AmpController] _sendDiscovery error:", err);
+        });
     }
   }
 
@@ -793,6 +886,44 @@ class AmpController extends EventEmitter {
       if (entry.ip === ip) return mac;
     }
     return null;
+  }
+
+  private _sendAndAwaitFC27(ip: string, channel: number): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        const pending = this.pendingFc27ByIp.get(ip);
+        if (pending) {
+          if (pending.settleTimer) clearTimeout(pending.settleTimer);
+          this.pendingFc27ByIp.delete(ip);
+        }
+        reject(new Error(`FC=27 request for ${ip}:${channel} timed out`));
+      }, 5000);
+
+      this.pendingFc27ByIp.set(ip, {
+        frames: [],
+        timeout,
+        settleTimer: null,
+        resolve,
+        reject,
+      });
+
+      const header = buildStructHeader(27, 2, channel);
+      const inner = Buffer.concat([header]);
+      const frame = Buffer.concat([inner, calcCheckCode(inner)]);
+      const packet = Buffer.concat([buildNetworkData(frame.length), frame]);
+
+      void this.network
+        .send(packet, 0, packet.length, ip, false)
+        .catch((err) => {
+          const pending = this.pendingFc27ByIp.get(ip);
+          if (pending) {
+            clearTimeout(pending.timeout);
+            if (pending.settleTimer) clearTimeout(pending.settleTimer);
+            this.pendingFc27ByIp.delete(ip);
+          }
+          reject(err instanceof Error ? err : new Error(String(err)));
+        });
+    });
   }
 
   /**

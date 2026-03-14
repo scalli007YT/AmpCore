@@ -29,6 +29,7 @@ import os from "os";
 import { EventEmitter } from "events";
 import { FuncCode, parseHeartbeat } from "./amp-device";
 import type { HeartbeatData } from "@/stores/AmpStore";
+import type { BridgeReadback } from "@/stores/AmpStore";
 import { NetworkAdapter } from "@/lib/network/network-adapter";
 
 // ---------------------------------------------------------------------------
@@ -71,6 +72,7 @@ export interface HeartbeatEvent {
   name: string;
   version: string;
   heartbeat: HeartbeatData;
+  bridgePairs?: BridgeReadback[];
 }
 
 export interface OfflineEvent {
@@ -314,6 +316,8 @@ class AmpController extends EventEmitter {
     }
   >();
   private readonly fc27QueueByIp = new Map<string, Promise<Buffer>>();
+  private readonly bridgePairsByMac = new Map<string, BridgeReadback[]>();
+  private bridgePollTick = 0;
 
   // Promise that resolves once the UDP socket is successfully bound.
   // triggerDiscovery awaits this so it never fires into a null socket.
@@ -704,7 +708,35 @@ class AmpController extends EventEmitter {
           name: known?.name ?? "",
           version: known?.version ?? "",
           heartbeat,
+          bridgePairs: this.bridgePairsByMac.get(mac),
         } satisfies HeartbeatEvent);
+        break;
+      }
+
+      case FuncCode.BRIDGE: {
+        const mac = this._macFromIp(ip);
+        if (!mac) break;
+
+        const pair = rawAssembled[3];
+        if (pair !== 0 && pair !== 1) break;
+
+        const raw = body.length > 0 ? body[0] : null;
+        const current = this.bridgePairsByMac.get(mac) ?? [
+          { pair: 0, raw: null, bridged: null },
+          { pair: 1, raw: null, bridged: null },
+        ];
+
+        const next = current.map((entry) =>
+          entry.pair === pair
+            ? {
+                pair: entry.pair,
+                raw,
+                bridged: raw === null ? null : raw === 0,
+              }
+            : entry,
+        );
+
+        this.bridgePairsByMac.set(mac, next);
         break;
       }
 
@@ -778,11 +810,17 @@ class AmpController extends EventEmitter {
       }
 
       this.heartbeatCount++;
+      this.bridgePollTick++;
 
       // Every 25 ticks (~3.5 s) — run the connection watchdog
       if (this.heartbeatCount >= 25) {
         this.heartbeatCount = 0;
         this._judgeOnline();
+      }
+
+      if (this.bridgePollTick >= 5) {
+        this.bridgePollTick = 0;
+        this._pollBridgePairs();
       }
     }, HEARTBEAT_MS);
   }
@@ -830,6 +868,7 @@ class AmpController extends EventEmitter {
           console.log(`[AmpController] Offline (missed 2 cycles): ${mac}`);
           this.knownMacs.delete(mac);
           this.lastHeartbeatAt.delete(mac);
+          this.bridgePairsByMac.delete(mac);
           this.emit("offline", { mac } satisfies OfflineEvent);
         }
       });
@@ -873,6 +912,7 @@ class AmpController extends EventEmitter {
         this.knownMacs.delete(mac);
         this.lastHeartbeatAt.delete(mac);
         this.currentWindowMacs.delete(mac);
+        this.bridgePairsByMac.delete(mac);
         this.emit("offline", { mac } satisfies OfflineEvent);
       }
     });
@@ -886,6 +926,29 @@ class AmpController extends EventEmitter {
       if (entry.ip === ip) return mac;
     }
     return null;
+  }
+
+  private _pollBridgePairs(): void {
+    if (!this.network.isStarted || !this.isRefresh) return;
+
+    const targetIps = this.controlTargetIp
+      ? [this.controlTargetIp]
+      : Array.from(this.knownMacs.values()).map((entry) => entry.ip);
+
+    for (const ip of targetIps) {
+      for (const pair of [0, 1] as const) {
+        const header = buildStructHeader(FuncCode.BRIDGE, 2, pair);
+        const inner = Buffer.concat([header]);
+        const frame = Buffer.concat([inner, calcCheckCode(inner)]);
+        const packet = Buffer.concat([buildNetworkData(frame.length), frame]);
+
+        void this.network
+          .send(packet, 0, packet.length, ip, false)
+          .catch(() => {
+            /* ignore */
+          });
+      }
+    }
   }
 
   private _sendAndAwaitFC27(ip: string, channel: number): Promise<Buffer> {

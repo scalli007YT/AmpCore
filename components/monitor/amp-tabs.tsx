@@ -55,6 +55,14 @@ export function AmpTabs() {
 
   const onlineCount = amps.filter((amp) => amp.reachable).length;
   const selectedAmp = amps.find((a) => a.mac === selectedMac);
+  const mergedPreferenceChannels = selectedAmp?.channelParams?.channels.map(
+    (channel) => ({
+      ...channel,
+      ...(selectedAmp.channelFlags?.find(
+        (flag) => flag.channel === channel.channel,
+      ) ?? {}),
+    }),
+  );
 
   useEffect(() => {
     if (
@@ -199,6 +207,7 @@ export function AmpTabs() {
                     mac={selectedAmp.mac}
                     ratedRmsV={selectedAmp.ratedRmsV}
                     channelParams={selectedAmp.channelParams}
+                    bridgePairs={selectedAmp.bridgePairs}
                   />
                 </div>
               )}
@@ -237,6 +246,7 @@ export function AmpTabs() {
                           channelOhms={selectedAmp.constants.channels.map(
                             (channel) => channel.ohms,
                           )}
+                          bridgePairs={selectedAmp.bridgePairs}
                           heartbeat={selectedAmp.heartbeat}
                           channels={selectedAmp.channelParams.channels}
                           limiters={
@@ -536,11 +546,19 @@ export function AmpTabs() {
                         Channel Data
                       </span>
                     </CollapsibleTrigger>
-                    <CopyJsonButton data={selectedAmp.channelParams.channels} />
+                    <CopyJsonButton
+                      data={
+                        mergedPreferenceChannels ??
+                        selectedAmp.channelParams.channels
+                      }
+                    />
                   </div>
                   <CollapsibleContent>
                     <div className="space-y-2 mt-3">
-                      {selectedAmp.channelParams.channels.map((ch) => (
+                      {(
+                        mergedPreferenceChannels ??
+                        selectedAmp.channelParams.channels
+                      ).map((ch) => (
                         <JsonTree
                           key={ch.channel}
                           label={`Channel ${ch.channel} - ${ch.inputName} -> ${ch.outputName}`}

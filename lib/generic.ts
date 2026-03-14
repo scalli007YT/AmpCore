@@ -90,6 +90,91 @@ export function limiterVoltageFromPower(
   return Math.sqrt(safePower * safeLoad);
 }
 
+/** Bridge mode uses doubled displayed threshold values compared to raw channel values. */
+export function bridgeVoltageMultiplier(bridgeMode: boolean): number {
+  return bridgeMode ? 2 : 1;
+}
+
+/** Clamp load to limiter UI constraints: >= 2 ohm normal, >= 4 ohm bridged. */
+export function normalizeLimiterLoadOhm(
+  loadOhm: number | undefined,
+  bridgeMode: boolean,
+): number {
+  const minLoad = bridgeMode ? 4 : 2;
+  return Math.max(loadOhm ?? minLoad, minLoad);
+}
+
+/** Convert raw threshold voltage to the bridge-aware display domain. */
+export function toLimiterDisplayVoltage(
+  rawVoltage: number,
+  bridgeMode: boolean,
+): number {
+  return rawVoltage * bridgeVoltageMultiplier(bridgeMode);
+}
+
+/** Bridge-aware display minimum for RMS threshold voltage. */
+export function limiterDisplayMinVrms(
+  minVrms: number,
+  bridgeMode: boolean,
+): number {
+  return toLimiterDisplayVoltage(minVrms, bridgeMode);
+}
+
+/** Bridge-aware display minimum for peak threshold voltage. */
+export function limiterDisplayMinVp(
+  minVp: number,
+  bridgeMode: boolean,
+): number {
+  return toLimiterDisplayVoltage(minVp, bridgeMode);
+}
+
+/** Bridge-aware display maximum for RMS threshold voltage. */
+export function limiterDisplayMaxVrms(
+  maxVrmsRaw: number,
+  bridgeMode: boolean,
+): number {
+  return toLimiterDisplayVoltage(maxVrmsRaw, bridgeMode);
+}
+
+/** Bridge-aware display maximum for peak threshold voltage. */
+export function limiterDisplayMaxVp(
+  maxVpRaw: number,
+  bridgeMode: boolean,
+): number {
+  return toLimiterDisplayVoltage(maxVpRaw, bridgeMode);
+}
+
+/** Convert bridge-aware display threshold voltage back to raw channel voltage. */
+export function fromLimiterDisplayVoltage(
+  displayVoltage: number,
+  bridgeMode: boolean,
+): number {
+  return displayVoltage / bridgeVoltageMultiplier(bridgeMode);
+}
+
+/**
+ * Power in the limiter UI is calculated from displayed threshold voltage and load.
+ * This mirrors original bridge behavior where displayed threshold doubles in bridge mode.
+ */
+export function limiterPowerFromDisplayVoltage(
+  displayVoltage: number,
+  loadOhm: number,
+): number {
+  return Math.round(
+    (displayVoltage * displayVoltage) / Math.max(loadOhm, Number.EPSILON),
+  );
+}
+
+/** Convert displayed limiter power back to raw threshold voltage for writes. */
+export function limiterRawVoltageFromDisplayPower(
+  powerW: number,
+  loadOhm: number,
+  bridgeMode: boolean,
+): number {
+  const displayVoltage = limiterVoltageFromPower(powerW, loadOhm);
+  return fromLimiterDisplayVoltage(displayVoltage, bridgeMode);
+}
+
 /**
  * Convert a voltage to the output meter scale used by the original CVR app.
  *

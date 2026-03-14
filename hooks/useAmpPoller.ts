@@ -6,6 +6,7 @@ import { usePollingStore } from "@/stores/PollingStore";
 import { useAmpStore } from "@/stores/AmpStore";
 import type { HeartbeatData } from "@/stores/AmpStore";
 import type { AmpBasicInfo } from "@/stores/AmpStore";
+import type { BridgeReadback } from "@/stores/AmpStore";
 import { smoothHeartbeat, resetSmootherForMac } from "@/lib/heartbeat-smoother";
 import { ratedRmsVFromDeviceName } from "@/lib/amp-model";
 
@@ -28,6 +29,7 @@ interface HeartbeatSseEvent {
   name: string;
   version: string;
   heartbeat: HeartbeatData;
+  bridgePairs?: BridgeReadback[];
 }
 
 interface OfflineSseEvent {
@@ -164,7 +166,7 @@ export function useAmpPoller(): UseAmpPollerReturn {
           // heartbeat — device replied to FC=6 broadcast (live sensor data)
           // ----------------------------------------------------------------
           case "heartbeat": {
-            const { mac, name, version, heartbeat } = event;
+            const { mac, name, version, heartbeat, bridgePairs } = event;
             const amp = findAmp(ampsRef.current, mac);
             if (!amp) return;
 
@@ -193,6 +195,7 @@ export function useAmpPoller(): UseAmpPollerReturn {
               .updateHeartbeat(
                 amp.mac,
                 smoothHeartbeat(amp.mac, heartbeat, maxDb),
+                bridgePairs,
               );
             usePollingStore.getState().setLastUpdated(amp.mac, Date.now());
             break;

@@ -1,12 +1,18 @@
 "use client";
 
-import type { ChannelParams } from "@/stores/AmpStore";
+import type { BridgeReadback, ChannelParams } from "@/stores/AmpStore";
 import { Card, CardContent } from "@/components/ui/card";
 import { useVuMeters } from "@/hooks/useVuMeters";
 import { useAmpActions } from "@/hooks/useAmpActions";
 import { useProjectStore } from "@/stores/ProjectStore";
 import { LimiterDetailsDialog } from "@/components/dialogs/limiter-details-dialog";
 import type { HeartbeatData } from "@/stores/AmpStore";
+import {
+  bridgeVoltageMultiplier,
+  limiterPowerFromDisplayVoltage,
+  normalizeLimiterLoadOhm,
+  toLimiterDisplayVoltage,
+} from "@/lib/generic";
 
 const CH_LABELS = ["A", "B", "C", "D"];
 
@@ -14,6 +20,7 @@ export function LimiterBlock({
   mac,
   ratedRmsV,
   channelOhms,
+  bridgePairs,
   heartbeat,
   channels,
   limiters,
@@ -22,6 +29,7 @@ export function LimiterBlock({
   mac: string;
   ratedRmsV?: number;
   channelOhms: number[];
+  bridgePairs?: BridgeReadback[];
   heartbeat?: HeartbeatData;
   channels: ChannelParams["channels"];
   limiters: number[];
@@ -56,9 +64,101 @@ export function LimiterBlock({
           const peak = ch.peakLimiter;
           const gr = limiters[i] ?? 0;
           const outputDb = vuOutputDbu[i] ?? null;
+          const pairIndex = Math.floor(i / 2);
+          const pairBridged = bridgePairs?.[pairIndex]?.bridged === true;
+          const isSecondInPair = i % 2 === 1;
+          const disabledByBridge = pairBridged && isSecondInPair;
+          const pairLabel = `${CH_LABELS[pairIndex * 2]}+${CH_LABELS[pairIndex * 2 + 1]}`;
+          const bridgeMaster = pairBridged && !isSecondInPair;
+          const bridgeMultiplier = bridgeVoltageMultiplier(bridgeMaster);
           const enabled = rms.enabled || peak.enabled;
-          const channelName = `Out${CH_LABELS[i]}`;
-          const loadOhm = channelOhms[i];
+          const channelName = bridgeMaster ? pairLabel : `Out${CH_LABELS[i]}`;
+          const loadOhm = pairBridged
+            ? normalizeLimiterLoadOhm(channelOhms[pairIndex * 2], true)
+            : normalizeLimiterLoadOhm(channelOhms[i], false);
+          const displayRmsThreshold = toLimiterDisplayVoltage(
+            rms.thresholdVrms,
+            bridgeMaster,
+          );
+          const displayPeakThreshold = toLimiterDisplayVoltage(
+            peak.thresholdVp,
+            bridgeMaster,
+          );
+          const displayPrmsW = limiterPowerFromDisplayVoltage(
+            displayRmsThreshold,
+            loadOhm,
+          );
+          const displayPpeakW = limiterPowerFromDisplayVoltage(
+            displayPeakThreshold,
+            loadOhm,
+          );
+
+          const triggerCard = (
+            <Card
+              size="sm"
+              className={`relative h-48 w-full overflow-visible transition-colors ${
+                disabledByBridge
+                  ? "cursor-not-allowed opacity-45 grayscale"
+                  : "cursor-pointer hover:bg-muted/10"
+              } ${enabled ? "text-foreground" : "text-muted-foreground"}`}
+            >
+              <CardContent className="flex h-full w-full flex-col justify-center gap-2 py-2 text-center">
+                <div className="space-y-0.5">
+                  <p className="text-[13px] font-semibold leading-tight">
+                    {channelName}
+                  </p>
+                  <p
+                    className={`text-[9px] font-medium uppercase tracking-wider ${
+                      enabled ? "text-primary/80" : "text-muted-foreground"
+                    }`}
+                  >
+                    {disabledByBridge
+                      ? "Bridge Slave"
+                      : enabled
+                        ? "Active"
+                        : "Bypassed"}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="mx-auto grid w-fit grid-cols-[12px_auto] items-center gap-x-1 leading-tight">
+                    <span className="text-[10px] text-muted-foreground">R</span>
+                    <span className="font-mono text-[12px] tabular-nums">
+                      {displayRmsThreshold.toFixed(2)} V
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">P</span>
+                    <span className="font-mono text-[12px] tabular-nums">
+                      {displayPeakThreshold.toFixed(2)} V
+                    </span>
+                  </div>
+                  <div className="mx-auto grid w-fit grid-cols-[12px_auto] items-center gap-x-1 leading-tight">
+                    <span className="text-[10px] text-muted-foreground">R</span>
+                    <span className="font-mono text-[12px] tabular-nums">
+                      {displayPrmsW} W
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">P</span>
+                    <span className="font-mono text-[12px] tabular-nums">
+                      {displayPpeakW} W
+                    </span>
+                  </div>
+                  <div className="mx-auto grid w-fit grid-cols-[12px_auto] items-center gap-x-1 leading-tight">
+                    <span className="text-[10px] text-muted-foreground">R</span>
+                    <span
+                      className={`text-[12px] ${rms.enabled ? "text-green-500" : "text-red-500"}`}
+                    >
+                      {rms.enabled ? "On" : "Off"}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">P</span>
+                    <span
+                      className={`text-[12px] ${peak.enabled ? "text-green-500" : "text-red-500"}`}
+                    >
+                      {peak.enabled ? "On" : "Off"}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
 
           return (
             <LimiterDetailsDialog
@@ -66,6 +166,8 @@ export function LimiterBlock({
               mac={mac}
               channel={i as 0 | 1 | 2 | 3}
               channelName={channelName}
+              bridgeMode={pairBridged && !isSecondInPair}
+              disabled={disabledByBridge}
               ratedRmsV={ratedRmsV}
               loadOhm={loadOhm}
               rms={rms}
@@ -95,78 +197,7 @@ export function LimiterBlock({
               onSetOhms={(ohmsMac, ohmsChannel, ohms) =>
                 updateAmpChannelOhms(ohmsMac, ohmsChannel, ohms)
               }
-              trigger={
-                <Card
-                  size="sm"
-                  className={`relative h-48 w-full cursor-pointer overflow-visible transition-colors hover:bg-muted/10 ${
-                    enabled ? "text-foreground" : "text-muted-foreground"
-                  }`}
-                >
-                  <CardContent className="flex h-full w-full flex-col justify-center gap-2 py-2 text-center">
-                    <div className="space-y-0.5">
-                      <p className="text-[13px] font-semibold leading-tight">
-                        {channelName}
-                      </p>
-                      <p
-                        className={`text-[9px] font-medium uppercase tracking-wider ${
-                          enabled ? "text-primary/80" : "text-muted-foreground"
-                        }`}
-                      >
-                        {enabled ? "Active" : "Bypassed"}
-                      </p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="mx-auto grid w-fit grid-cols-[12px_auto] items-center gap-x-1 leading-tight">
-                        <span className="text-[10px] text-muted-foreground">
-                          R
-                        </span>
-                        <span className="font-mono text-[12px] tabular-nums">
-                          {rms.thresholdVrms.toFixed(2)} V
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          P
-                        </span>
-                        <span className="font-mono text-[12px] tabular-nums">
-                          {peak.thresholdVp.toFixed(2)} V
-                        </span>
-                      </div>
-                      <div className="mx-auto grid w-fit grid-cols-[12px_auto] items-center gap-x-1 leading-tight">
-                        <span className="text-[10px] text-muted-foreground">
-                          R
-                        </span>
-                        <span className="font-mono text-[12px] tabular-nums">
-                          {rms.prmsW} W
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          P
-                        </span>
-                        <span className="font-mono text-[12px] tabular-nums">
-                          {peak.ppeakW} W
-                        </span>
-                      </div>
-                      <div className="mx-auto grid w-fit grid-cols-[12px_auto] items-center gap-x-1 leading-tight">
-                        <span className="text-[10px] text-muted-foreground">
-                          R
-                        </span>
-                        <span
-                          className={`text-[12px] ${rms.enabled ? "text-green-500" : "text-red-500"}`}
-                        >
-                          {rms.enabled ? "On" : "Off"}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          P
-                        </span>
-                        <span
-                          className={`text-[12px] ${peak.enabled ? "text-green-500" : "text-red-500"}`}
-                        >
-                          {peak.enabled ? "On" : "Off"}
-                        </span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              }
+              trigger={triggerCard}
             />
           );
         })}

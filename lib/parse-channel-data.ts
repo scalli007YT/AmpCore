@@ -154,7 +154,7 @@ export interface ChannelData {
   volumeIn: number; // dB  (float32)
   muteIn: boolean; // true = muted  (wire: 0=muted, 1=unmuted — inverted)
   delayIn: number; // ms  (float32 @ 86)
-  trimOut: number; // dB  (float32 @ 80) — output trim
+  trimOut: number; // dB  (float32 @ 80) — original 118/IAG path calls this vol_out / VolumeOut
   muteOut: boolean; // true = muted  (wire: 0=muted, 1=unmuted @ 84)
   noiseGateOut: boolean; // true = noise gate enabled  (wire: 0=on, 1=off @ 409)
   delayOut: number; // ms  (float32 @ 90)
@@ -221,7 +221,7 @@ const BYTES_PER_CHANNEL = 515;
 const CHANNEL_FIELDS = [
   { field: "gainIn", type: "int8", offset: 117 },
   { field: "delayIn", type: "float32", offset: 86 },
-  { field: "trimOut", type: "float32", offset: 80 },
+  { field: "trimOut", type: "float32", offset: 80 }, // IAG/118 vol_out float field used by the original output trim UI
   { field: "muteOut", type: "uint8", offset: 84 }, // 0 = muted, 1 = unmuted
   { field: "noiseGateOut", type: "uint8", offset: 409 }, // 0 = enabled, 1 = disabled
   { field: "delayOut", type: "float32", offset: 90 },

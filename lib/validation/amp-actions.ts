@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   MATRIX_GAIN_MAX_DB,
   MATRIX_GAIN_MIN_DB,
+  OUTPUT_TRIM_MIN_DB,
+  OUTPUT_TRIM_MAX_DB,
   DELAY_MIN_MS,
   DELAY_IN_MAX_MS,
   DELAY_OUT_MAX_MS,
@@ -193,6 +195,14 @@ const delayOutSchema = baseSchema.extend({
     .max(DELAY_OUT_MAX_MS, `delayOut must be <= ${DELAY_OUT_MAX_MS} ms`)
 });
 
+const outputTrimSchema = baseSchema.extend({
+  action: z.literal("outputTrim"),
+  value: z
+    .number()
+    .min(OUTPUT_TRIM_MIN_DB, `outputTrim must be >= ${OUTPUT_TRIM_MIN_DB} dB`)
+    .max(OUTPUT_TRIM_MAX_DB, `outputTrim must be <= +${OUTPUT_TRIM_MAX_DB} dB`)
+});
+
 const powerModeOutSchema = baseSchema.extend({
   action: z.literal("powerModeOut"),
   value: z
@@ -293,6 +303,7 @@ export const ampActionRequestSchema = z.union([
   analogTypeSchema,
   delayInSchema,
   delayOutSchema,
+  outputTrimSchema,
   powerModeOutSchema,
   bridgePairSchema,
   crossoverEnabledSchema,

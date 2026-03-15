@@ -88,26 +88,21 @@ export class NetworkAdapter extends EventEmitter {
     });
   }
 
-  emit(event: "message", ...args: [Buffer, RemoteInfo]): boolean;
-  emit(event: string, ...args: any): boolean {
+  emit<K extends keyof NetworkEmitter>(event: K, ...args: NetworkEmitter[K]): boolean {
     return super.emit(event, ...args);
   }
-
-  on(event: "message", listener: (msg: Buffer, rinfo: RemoteInfo) => void): this;
-  on(event: string, listener: (...args: any[]) => void): this {
+  on<K extends keyof NetworkEmitter>(event: K, listener: (...args: NetworkEmitter[K]) => void): this {
     super.on(event, listener);
     return this;
   }
-
-  once(event: "message", listener: (msg: Buffer, rinfo: RemoteInfo) => void): this;
-  once(event: string, listener: (...args: any[]) => void): this {
+  once<K extends keyof NetworkEmitter>(event: K, listener: (...args: NetworkEmitter[K]) => void): this {
     super.once(event, listener);
     return this;
   }
-
-  removeListener(event: "message", listener: (msg: Buffer, rinfo: RemoteInfo) => void): this;
-  removeListener(event: string, listener: (...args: any[]) => void): this {
+  removeListener<K extends keyof NetworkEmitter>(event: K, listener: (...args: NetworkEmitter[K]) => void): this {
     super.removeListener(event, listener);
     return this;
   }
 }
+
+type NetworkEmitter = { message: [Buffer, RemoteInfo] };

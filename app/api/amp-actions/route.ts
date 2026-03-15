@@ -325,6 +325,18 @@ export async function POST(request: Request): Promise<Response> {
       }
 
       // -----------------------------------------------------------------------
+      // Output trim/volume — FC=9, in_out_flag=1 (Output)
+      // On the original 118/IAG controller path this output control is bound to
+      // VolumeOut / vol_out, encoded as float32 dB and read back from FC=27.
+      // -----------------------------------------------------------------------
+      case "outputTrim": {
+        const payload = Buffer.alloc(4);
+        payload.writeFloatLE(value, 0);
+        await device.sendControl(FuncCode.VOL, channel, payload, 1 /* Output */);
+        break;
+      }
+
+      // -----------------------------------------------------------------------
       // Output power mode (Low-Z / 70V / 100V) — FC=49 DZ_DY_data_code
       // Body: DZ_DY { CPCR: byte }
       //   0 = Low-Z

@@ -2,6 +2,10 @@
 export const MATRIX_GAIN_MIN_DB = -80.0;
 export const MATRIX_GAIN_MAX_DB = 18.0;
 
+// Output trim limits (dB)
+export const OUTPUT_TRIM_MIN_DB = -18.0;
+export const OUTPUT_TRIM_MAX_DB = 18.0;
+
 // Delay limits (ms)
 export const DELAY_MIN_MS = 0;
 export const DELAY_IN_MAX_MS = 100;

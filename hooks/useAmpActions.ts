@@ -6,6 +6,8 @@ import { ampActionRequestSchema } from "@/lib/validation/amp-actions";
 import {
   MATRIX_GAIN_MAX_DB,
   MATRIX_GAIN_MIN_DB,
+  OUTPUT_TRIM_MAX_DB,
+  OUTPUT_TRIM_MIN_DB,
   DELAY_MIN_MS,
   DELAY_IN_MAX_MS,
   DELAY_OUT_MAX_MS,
@@ -55,6 +57,7 @@ interface AmpActionsHook {
   muteOut: (mac: string, channel: Channel, muted: boolean) => Promise<void>;
   setDelayIn: (mac: string, channel: Channel, ms: number) => Promise<void>;
   setDelayOut: (mac: string, channel: Channel, ms: number) => Promise<void>;
+  setTrimOut: (mac: string, channel: Channel, db: number) => Promise<void>;
   setPowerModeOut: (mac: string, channel: Channel, mode: number) => Promise<void>;
   setCrossoverEnabled: (
     mac: string,
@@ -448,6 +451,14 @@ export function useAmpActions(): AmpActionsHook {
     [send]
   );
 
+  const setTrimOut = useCallback(
+    async (mac: string, channel: Channel, db: number) => {
+      const clamped = Math.max(OUTPUT_TRIM_MIN_DB, Math.min(OUTPUT_TRIM_MAX_DB, db));
+      await send(mac, "outputTrim", channel, clamped);
+    },
+    [send]
+  );
+
   const setPowerModeOut = useCallback(
     async (mac: string, channel: Channel, mode: number) => {
       const normalized = Number.isInteger(mode) ? mode : 0;
@@ -537,6 +548,7 @@ export function useAmpActions(): AmpActionsHook {
     setAnalogType,
     setDelayIn,
     setDelayOut,
+    setTrimOut,
     setPowerModeOut,
     setCrossoverEnabled,
     setCrossoverFreq,

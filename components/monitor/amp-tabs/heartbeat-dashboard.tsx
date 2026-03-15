@@ -15,11 +15,12 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConfirmActionDialog } from "@/components/dialogs/confirm-action-dialog";
 import { EqBandDialog } from "@/components/monitor/amp-tabs/eq-controls";
 import { VerticalDbMeter } from "@/components/monitor/vertical-db-meter";
 import { COLORS } from "@/lib/colors";
+import { OUTPUT_TRIM_MAX_DB, OUTPUT_TRIM_MIN_DB } from "@/lib/constants";
 import { voltageToMeterDb, rmsToPeakVoltage, formatDbfs } from "@/lib/generic";
 import { getPowerModeName } from "@/lib/parse-channel-data";
 import { useI18n } from "@/components/layout/i18n-provider";
@@ -192,6 +193,99 @@ function VolumePopover({
   );
 }
 
+function DbPopover({
+  valueDb,
+  label,
+  title,
+  minDb,
+  maxDb,
+  onSet
+}: {
+  valueDb: number | undefined;
+  label: string;
+  title: string;
+  minDb: number;
+  maxDb: number;
+  onSet: (db: number) => void | Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [inputVal, setInputVal] = useState("");
+
+  const handleOpen = (next: boolean) => {
+    if (next) {
+      setInputVal(valueDb !== undefined ? valueDb.toLocaleString("en-US", { maximumFractionDigits: 1 }) : "0");
+    }
+    setOpen(next);
+  };
+
+  const commit = () => {
+    const parsed = Number.parseFloat(inputVal.replace(",", "."));
+    if (!Number.isFinite(parsed)) return;
+    void onSet(Math.max(minDb, Math.min(maxDb, parsed)));
+    setOpen(false);
+  };
+
+  const active = valueDb !== undefined && valueDb !== 0;
+
+  return (
+    <Popover open={open} onOpenChange={handleOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={`flex flex-col items-center w-full rounded border px-1.5 py-1 cursor-pointer select-none transition-colors ${
+            valueDb === undefined
+              ? "border-border/30 bg-muted/10 opacity-40 pointer-events-none"
+              : active
+                ? "border-amber-500/60 bg-amber-500/15 hover:bg-amber-500/25"
+                : "border-border/60 bg-muted/30 hover:border-amber-500/40 hover:bg-muted/50"
+          }`}
+        >
+          <span
+            className={`font-mono text-[13px] font-semibold tabular-nums leading-none ${active ? "text-amber-400" : ""}`}
+          >
+            {valueDb !== undefined ? valueDb.toFixed(1) : "~"}
+          </span>
+          <span className="text-[9px] text-muted-foreground mt-0.5">{label}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-44 p-0" side="right" align="center">
+        <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+          <span className="text-xs font-semibold">{title}</span>
+          <span className="text-[10px] text-muted-foreground">
+            {minDb} - {maxDb} dB
+          </span>
+        </div>
+        <div className="px-3 py-3 space-y-2">
+          <div className="flex items-center gap-1.5">
+            <Input
+              autoFocus
+              type="number"
+              min={minDb}
+              max={maxDb}
+              step={0.1}
+              value={inputVal}
+              onChange={(e) => setInputVal(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commit();
+                if (e.key === "Escape") setOpen(false);
+              }}
+              className="h-8 text-sm font-mono tabular-nums"
+            />
+            <span className="text-xs text-muted-foreground shrink-0 w-5">dB</span>
+          </div>
+          <div className="flex gap-1.5">
+            <Button size="sm" className="flex-1 h-7 text-xs" onClick={commit}>
+              Set
+            </Button>
+            <Button size="sm" variant="outline" className="flex-1 h-7 text-xs" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function PowerModePill({
   mode,
   channelLabel,
@@ -319,6 +413,7 @@ export function HeartbeatDashboard({
     setVolumeIn,
     setDelayIn,
     setDelayOut,
+    setTrimOut,
     setPowerModeOut
   } = useAmpActions();
 
@@ -649,6 +744,14 @@ export function HeartbeatDashboard({
                           maxMs={20}
                           label="ms out"
                           onSet={(ms) => setDelayOut(mac, i as 0 | 1 | 2 | 3, ms)}
+                        />
+                        <DbPopover
+                          valueDb={channelParams?.channels[i]?.trimOut}
+                          label="Trim dB"
+                          title="Output Trim"
+                          minDb={OUTPUT_TRIM_MIN_DB}
+                          maxDb={OUTPUT_TRIM_MAX_DB}
+                          onSet={(db) => setTrimOut(mac, i as 0 | 1 | 2 | 3, db)}
                         />
                         <PowerModePill
                           mode={channelParams?.channels[i]?.powerMode}

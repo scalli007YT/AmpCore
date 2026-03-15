@@ -33,8 +33,7 @@ import { NetworkAdapter } from "@/lib/network/network-adapter";
 // ---------------------------------------------------------------------------
 // Constants — matching original C# values exactly
 // ---------------------------------------------------------------------------
-const AMP_PORT = 45455; // port amps listen on
-const PC_RECV_PORT = 45454; // port we bind to receive replies
+
 const BROADCAST_ADDR = "255.255.255.255";
 const HEARTBEAT_MS = 140; // queryT_V_A Thread.Sleep(140)
 const DISCOVERY_MS = 4000; // TimerRefresh.Interval = 4000
@@ -88,9 +87,9 @@ interface FragmentState {
   packetsCount: number;
 }
 
-function getDirectedBroadcasts(): string[] {
+async function getDirectedBroadcasts(): Promise<string[]> {
   const broadcasts: string[] = [];
-  for (const iface of Object.values(ampController.network.getNetworkInterfaces())) {
+  for (const iface of Object.values(await ampController.network.getNetworkInterfaces())) {
     if (!iface) continue;
     for (const addr of iface) {
       if (addr.family !== "IPv4" || addr.internal) continue;
@@ -106,9 +105,9 @@ function getDirectedBroadcasts(): string[] {
   return Array.from(unique);
 }
 
-function getLocalBindCandidates(): string[] {
+async function getLocalBindCandidates(): Promise<string[]> {
   const out: string[] = [];
-  for (const iface of Object.values(ampController.network.getNetworkInterfaces())) {
+  for (const iface of Object.values(await ampController.network.getNetworkInterfaces())) {
     if (!iface) continue;
     for (const addr of iface) {
       if (addr.family !== "IPv4" || addr.internal) continue;
@@ -159,27 +158,6 @@ function buildQueryPacket(functionCode: number, statusCode: number, body = Buffe
   const inner = Buffer.concat([header, body]);
   const frame = Buffer.concat([inner, calcCheckCode(inner)]);
   return Buffer.concat([buildNetworkData(frame.length), frame]);
-}
-
-// ---------------------------------------------------------------------------
-// Fix #6 — isSelfData() equivalent: validate head byte + checksum
-// Returns the assembled inner frame (StructHeader + body, no checksum)
-// or null if the packet is invalid / incomplete.
-// ---------------------------------------------------------------------------
-function validateAndStrip(raw: Buffer): Buffer | null {
-  // Minimum: NetworkData(10) + StructHeader(10) + checksum(3) = 23 bytes
-  if (raw.length < 23) return null;
-  if (raw[10] !== 0x55) return null; // head check
-  if (raw.readUInt16LE(0) !== NETWORK_DATA_FLAG) return null;
-
-  // Extract the inner frame (everything after NetworkData, without checksum)
-  const inner = raw.slice(10, raw.length - 3);
-  const expected = calcCheckCode(inner);
-  // Verify last 2 bytes of checksum (mirrors isSelfData: checkCode[1] and [2])
-  if (expected[1] !== raw[raw.length - 2]) return null;
-  if (expected[2] !== raw[raw.length - 1]) return null;
-
-  return inner; // validated StructHeader(10) + body
 }
 
 // ---------------------------------------------------------------------------
@@ -249,10 +227,7 @@ function parseDiscoveryPacket(raw: Buffer, ip: string): DiscoveryEvent | null {
 // AmpController
 // ---------------------------------------------------------------------------
 class AmpController extends EventEmitter {
-  readonly network = new NetworkAdapter({
-    recvPort: PC_RECV_PORT,
-    sendPort: AMP_PORT
-  });
+  readonly network = new NetworkAdapter();
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private discoveryTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -330,78 +305,7 @@ class AmpController extends EventEmitter {
   }
 
   stop(): void {
-    this.running = false;
-    this._clearTimers();
     void this.network.stop();
-  }
-
-  /** Pause heartbeat loop during a user command (mirrors isRefresh = false) */
-  pauseHeartbeat(): void {
-    this.isRefresh = false;
-  }
-  /** Resume heartbeat loop after a user command (mirrors isRefresh = true) */
-  resumeHeartbeat(): void {
-    this.isRefresh = true;
-  }
-
-  /**
-   * Enter focused control mode for one amp (original setSendIP + setIsBroadcast(false)).
-   * Heartbeat becomes unicast and periodic discovery timer is paused.
-   */
-  setControlTargetIp(ip: string | null): void {
-    this.controlTargetIp = ip && ip.trim().length > 0 ? ip.trim() : null;
-
-    if (this.controlTargetIp) {
-      if (this.discoveryTimer) {
-        clearInterval(this.discoveryTimer);
-        this.discoveryTimer = null;
-      }
-      return;
-    }
-
-    if (this.running) {
-      this._startDiscoveryTimer();
-    }
-  }
-
-  /**
-   * Fire-and-forget command via the shared persistent socket.
-   *
-   * Uses the same socket that receives heartbeats — no ephemeral port needed.
-   * The amp will ACK back (data_state=1) which we already ignore in _onPacket.
-   *
-   * @param ip         Target amp IP
-   * @param fc         Function code (e.g. FuncCode.MUTE = 10)
-   * @param chx        Channel index 0–3
-   * @param body       Command payload bytes
-   * @param inOutFlag  StructHeader byte 5: 0=input, 1=output (default 0)
-   */
-  sendCommand(ip: string, fc: number, chx: number, body: Buffer, inOutFlag = 0): void {
-    if (!this.network.isStarted) {
-      console.warn("[AmpController] sendCommand: socket not ready");
-      return;
-    }
-    try {
-      const h = Buffer.alloc(10);
-      h[0] = 0x55;
-      h[1] = fc;
-      h[2] = 3; // statusCode=3 (write/response)
-      h[3] = chx;
-      h[4] = 0; // link
-      h[5] = inOutFlag;
-      h[6] = 0; // segment
-      h[7] = 0;
-      h[8] = 0;
-      h[9] = 0;
-      const inner = Buffer.concat([h, body]);
-      const frame = Buffer.concat([inner, calcCheckCode(inner)]);
-      const packet = Buffer.concat([buildNetworkData(frame.length), frame]);
-      void this.network.send(packet, 0, packet.length, ip, false).catch((err) => {
-        console.error("[AmpController] sendCommand send error:", err);
-      });
-    } catch (err) {
-      console.error("[AmpController] sendCommand error:", err);
-    }
   }
 
   /** Returns the last known IP for a given MAC, or null if not yet discovered. */
@@ -419,16 +323,8 @@ class AmpController extends EventEmitter {
    * Times out after 5 seconds if no response.
    */
   public async requestFC27(mac: string, channel: number): Promise<Buffer> {
-    await this._socketReady;
-
     const ip = this.getIpForMac(mac);
-    if (!ip) {
-      throw new Error(`Amp ${mac} not found or not yet discovered`);
-    }
-
-    if (!this.network.isStarted) {
-      throw new Error("Socket not initialized");
-    }
+    if (!ip) throw new Error(`Amp ${mac} not found or not yet discovered`);
 
     const previous = this.fc27QueueByIp.get(ip) ?? Promise.resolve(Buffer.alloc(0));
     const queued = previous.catch(() => Buffer.alloc(0)).then(() => this._sendAndAwaitFC27(ip, channel));
@@ -450,7 +346,7 @@ class AmpController extends EventEmitter {
     this.bindingInProgress = true;
     this._clearTimers();
 
-    const candidates = getLocalBindCandidates();
+    const candidates = await getLocalBindCandidates();
     let chosenAddress: string | null = null;
 
     try {
@@ -463,7 +359,7 @@ class AmpController extends EventEmitter {
 
         if (found || isLast) {
           chosenAddress = bindAddress;
-          console.log(`[AmpController] Socket bound on ${bindAddress}:${PC_RECV_PORT} — starting loops`);
+          console.log(`[AmpController] Socket bound on ${bindAddress} — starting loops`);
           break;
         }
       }
@@ -496,14 +392,6 @@ class AmpController extends EventEmitter {
         resolve(seen);
       }, DISCOVERY_PROBE_WINDOW_MS);
     });
-  }
-
-  private _handleNetworkError(err: Error): void {
-    console.error("[AmpController] Socket error:", err.message);
-    this._clearTimers();
-    setTimeout(() => {
-      if (this.running) void this._bindAndStart();
-    }, 500);
   }
 
   // -------------------------------------------------------------------------
@@ -592,13 +480,9 @@ class AmpController extends EventEmitter {
   // with data_state flipped to 1 as the handshake acknowledgement.
   // -------------------------------------------------------------------------
   private _sendAck(ip: string, originalPacket: Buffer): void {
-    if (!this.network.isStarted) return;
-    // Build a 10-byte ACK: copy original NetworkData, flip data_state to 1
     const ack = Buffer.from(originalPacket.slice(0, 10));
     ack[8] = 1; // data_state = 1 (ACK)
-    void this.network.send(ack, 0, ack.length, ip, false).catch(() => {
-      /* ignore */
-    });
+    this.network.sendRaw_shouldBeReplacedWithSendPacket(ack, 0, ack.length, ip, false);
   }
 
   // -------------------------------------------------------------------------
@@ -616,7 +500,6 @@ class AmpController extends EventEmitter {
         if (!event) return;
 
         this.currentWindowMacs.add(event.mac);
-        const isNew = !this.knownMacs.has(event.mac);
         this.knownMacs.set(event.mac, {
           ip,
           name: event.name,
@@ -624,7 +507,7 @@ class AmpController extends EventEmitter {
           basicInfo: event.basicInfo
         });
 
-        if (isNew) {
+        if (!this.knownMacs.has(event.mac)) {
           console.log(`[AmpController] Discovered: ${event.name} (${event.mac}) @ ${ip}`);
         }
         this.emit("discovery", event satisfies DiscoveryEvent);
@@ -724,7 +607,7 @@ class AmpController extends EventEmitter {
     if (this.heartbeatTimer) return;
 
     this.heartbeatTimer = setInterval(() => {
-      if (!this.network.isStarted || !this.isRefresh) {
+      if (!this.isRefresh) {
         this.heartbeatCount = 0;
         return;
       }
@@ -732,15 +615,29 @@ class AmpController extends EventEmitter {
       if (this.controlTargetIp) {
         // Focused control mode: unicast heartbeat to selected amp.
         void this.network
-          .send(this.heartbeatPacket, 0, this.heartbeatPacket.length, this.controlTargetIp, false)
+          .sendRaw_shouldBeReplacedWithSendPacket(
+            this.heartbeatPacket,
+            0,
+            this.heartbeatPacket.length,
+            this.controlTargetIp,
+            false
+          )
           .catch(() => {
             /* ignore */
           });
       } else {
         // Default mode: broadcast heartbeat to all amps.
-        void this.network.send(this.heartbeatPacket, 0, this.heartbeatPacket.length, BROADCAST_ADDR, true).catch(() => {
-          /* ignore */
-        });
+        void this.network
+          .sendRaw_shouldBeReplacedWithSendPacket(
+            this.heartbeatPacket,
+            0,
+            this.heartbeatPacket.length,
+            BROADCAST_ADDR,
+            true
+          )
+          .catch(() => {
+            /* ignore */
+          });
       }
 
       this.heartbeatCount++;
@@ -809,13 +706,13 @@ class AmpController extends EventEmitter {
     }, DISCOVERY_WINDOW_MS);
   }
 
-  private _sendDiscovery(): void {
-    if (!this.network.isStarted) return;
-    const targets = getDirectedBroadcasts();
-    for (const target of targets) {
-      void this.network.send(this.discoveryPacket, 0, this.discoveryPacket.length, target, true).catch((err) => {
-        console.error("[AmpController] _sendDiscovery error:", err);
-      });
+  private async _sendDiscovery(): Promise<void> {
+    for (const target of await getDirectedBroadcasts()) {
+      void this.network
+        .sendRaw_shouldBeReplacedWithSendPacket(this.discoveryPacket, 0, this.discoveryPacket.length, target, true)
+        .catch((err) => {
+          console.error("[AmpController] _sendDiscovery error:", err);
+        });
     }
   }
 
@@ -853,7 +750,7 @@ class AmpController extends EventEmitter {
   }
 
   private _pollBridgePairs(): void {
-    if (!this.network.isStarted || !this.isRefresh) return;
+    if (!this.isRefresh) return;
 
     const targetIps = this.controlTargetIp
       ? [this.controlTargetIp]
@@ -866,9 +763,7 @@ class AmpController extends EventEmitter {
         const frame = Buffer.concat([inner, calcCheckCode(inner)]);
         const packet = Buffer.concat([buildNetworkData(frame.length), frame]);
 
-        void this.network.send(packet, 0, packet.length, ip, false).catch(() => {
-          /* ignore */
-        });
+        void this.network.sendRaw_shouldBeReplacedWithSendPacket(packet, 0, packet.length, ip, false);
       }
     }
   }
@@ -897,7 +792,7 @@ class AmpController extends EventEmitter {
       const frame = Buffer.concat([inner, calcCheckCode(inner)]);
       const packet = Buffer.concat([buildNetworkData(frame.length), frame]);
 
-      void this.network.send(packet, 0, packet.length, ip, false).catch((err) => {
+      void this.network.sendRaw_shouldBeReplacedWithSendPacket(packet, 0, packet.length, ip, false).catch((err) => {
         const pending = this.pendingFc27ByIp.get(ip);
         if (pending) {
           clearTimeout(pending.timeout);

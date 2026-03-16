@@ -61,10 +61,10 @@ function MatrixCell({
             text-xs font-medium border gap-0.5 select-none transition-colors
             ${
               disabled
-                ? "bg-muted/30 border-border text-muted-foreground/60 cursor-not-allowed"
+                ? "bg-muted/30 border-border text-muted-foreground/60"
                 : active
-                  ? "bg-card border-primary text-foreground"
-                  : "bg-card border-border text-muted-foreground cursor-pointer"
+                  ? "bg-card border-primary text-foreground hover:shadow-md"
+                  : "bg-card border-border text-muted-foreground hover:bg-muted/30 hover:border-primary/40"
             }
           `}
         >

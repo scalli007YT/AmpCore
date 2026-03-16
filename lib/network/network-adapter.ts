@@ -1,5 +1,15 @@
 import dgram, { RemoteInfo, Socket } from "dgram";
 import { EventEmitter } from "events";
+import {
+  UdpFragmentReassembler,
+  buildAckPacket,
+  buildProtocolPacket,
+  decodeAssembledFrame,
+  parseNetworkDataHeader,
+  type AssembledFrame,
+  type NetworkDataHeader,
+  type ProtocolPacketParams
+} from "./protocol";
 
 export interface NetworkAdapterConfig {
   recvPort: number;
@@ -10,6 +20,7 @@ export class NetworkAdapter extends EventEmitter {
   private started = false;
   private socket: Socket | null = null;
   private bindAddress = "0.0.0.0";
+  private readonly reassembler = new UdpFragmentReassembler();
   private readonly recvPort: number;
   private readonly sendPort: number;
 
@@ -90,6 +101,30 @@ export class NetworkAdapter extends EventEmitter {
         else reject(error);
       });
     });
+  }
+
+  buildProtocolPacket(params: ProtocolPacketParams): Buffer {
+    return buildProtocolPacket(params);
+  }
+
+  parseNetworkData(raw: Buffer): NetworkDataHeader | null {
+    return parseNetworkDataHeader(raw);
+  }
+
+  buildAck(rawPacket: Buffer): Buffer | null {
+    return buildAckPacket(rawPacket);
+  }
+
+  pushFragment(ip: string, rawPacket: Buffer): Buffer | null {
+    return this.reassembler.push(ip, rawPacket);
+  }
+
+  decodeAssembled(assembled: Buffer): AssembledFrame | null {
+    return decodeAssembledFrame(assembled);
+  }
+
+  clearFragments(ip?: string): void {
+    this.reassembler.clear(ip);
   }
 
   emit(event: "message", ...args: [Buffer, RemoteInfo]): boolean;

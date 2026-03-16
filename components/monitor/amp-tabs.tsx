@@ -19,8 +19,11 @@ import { MatrixGrid } from "@/components/monitor/amp-tabs/matrix-grid";
 import { SourceConfigDialog } from "@/components/dialogs/source-config-dialog";
 import { CopyJsonButton, JsonTree, type JsonValue } from "@/components/monitor/amp-tabs/json-viewer";
 import { useI18n } from "@/components/layout/i18n-provider";
+import { PRESET_SLOT_MAX } from "@/lib/constants";
+import { AmpUnreachableCard } from "@/components/custom/amp-unreachable-card";
 
 type AmpSection = "main" | "matrix" | "preferences";
+type PresetFilter = "all" | "used" | "empty";
 
 export function AmpTabs() {
   const dict = useI18n();
@@ -41,9 +44,27 @@ export function AmpTabs() {
   const [recallDialogOpen, setRecallDialogOpen] = useState(false);
   const [storeDialogOpen, setStoreDialogOpen] = useState(false);
   const [storePresetName, setStorePresetName] = useState("");
+  const [presetFilter, setPresetFilter] = useState<PresetFilter>("used");
 
   const onlineCount = amps.filter((amp) => amp.reachable).length;
   const selectedAmp = amps.find((a) => a.mac === selectedMac);
+  const presetNameBySlot = new Map<number, string>((selectedAmp?.presets ?? []).map((p) => [p.slot, p.name]));
+  const presetSlots: AmpPreset[] =
+    selectedAmp?.presets !== undefined
+      ? Array.from({ length: PRESET_SLOT_MAX }, (_, i) => {
+          const slot = i + 1;
+          return {
+            slot,
+            name: presetNameBySlot.get(slot) ?? ""
+          };
+        })
+      : [];
+  const usedPresetCount = (selectedAmp?.presets ?? []).filter((p) => p.name.trim().length > 0).length;
+  const shownPresetSlots = presetSlots.filter((preset) => {
+    if (presetFilter === "used") return preset.name.trim().length > 0;
+    if (presetFilter === "empty") return preset.name.trim().length === 0;
+    return true;
+  });
   const preferenceChannelTrees = selectedAmp?.channelParams?.channels.map((channel) => {
     const flags = selectedAmp.channelFlags?.find((flag) => flag.channel === channel.channel) ?? null;
 
@@ -150,7 +171,15 @@ export function AmpTabs() {
         </div>
       </aside>
 
-      {selectedAmp && (
+      {selectedAmp && !selectedAmp.reachable && (
+        <AmpUnreachableCard
+          ampName={getDisplayName(selectedAmp)}
+          ip={selectedAmp.ip}
+          message={dict.monitor.ampTabs.ampUnreachable}
+        />
+      )}
+
+      {selectedAmp && selectedAmp.reachable && (
         <div className="min-w-0 overflow-hidden rounded-lg border border-border/50 bg-card/20">
           <Tabs
             value={activeSection}
@@ -190,9 +219,7 @@ export function AmpTabs() {
             </div>
 
             <TabsContent value="main" className="p-4 mt-0">
-              {!selectedAmp.reachable ? (
-                <p className="text-sm text-muted-foreground">{dict.monitor.ampTabs.ampUnreachable}</p>
-              ) : !selectedAmp.heartbeat ? (
+              {!selectedAmp.heartbeat ? (
                 <p className="text-sm text-muted-foreground animate-pulse">{dict.monitor.ampTabs.waitingForData}</p>
               ) : (
                 <div className="overflow-hidden rounded-md border border-border/50 bg-background/30 p-2.5">
@@ -214,10 +241,10 @@ export function AmpTabs() {
                 <div className="overflow-hidden rounded-md border border-border/50 bg-background/30 p-2.5">
                   <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] xl:gap-3">
                     <section className="flex min-h-[360px] flex-col gap-2">
-                      <h3 className="text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                        {dict.monitor.ampTabs.matrix}
-                      </h3>
-                      <div className="flex justify-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                          {dict.monitor.ampTabs.matrix}
+                        </h3>
                         <SourceConfigDialog
                           channels={selectedAmp.channelParams.channels}
                           mac={selectedAmp.mac}
@@ -336,13 +363,21 @@ export function AmpTabs() {
                     activePreset
                       ? dict.dialogs.presets.recallDescription
                           .replace("{slot}", String(activePreset.slot))
-                          .replace("{name}", activePreset.name)
+                          .replace(
+                            "{name}",
+                            activePreset.name.trim().length > 0 ? activePreset.name : `Slot ${activePreset.slot}`
+                          )
                       : dict.dialogs.presets.recallFallbackDescription
                   }
                   confirmLabel={
                     recallingSlot === activePreset?.slot ? dict.dialogs.presets.recalling : dict.dialogs.presets.recall
                   }
-                  confirmDisabled={!selectedAmp?.reachable || activePreset === null || recallingSlot !== null}
+                  confirmDisabled={
+                    !selectedAmp?.reachable ||
+                    activePreset === null ||
+                    activePreset.name.trim().length === 0 ||
+                    recallingSlot !== null
+                  }
                   onConfirm={async () => {
                     if (!selectedAmp || !activePreset) return;
                     const ok = await recallPreset(selectedAmp.mac, activePreset.slot, activePreset.name);
@@ -398,10 +433,36 @@ export function AmpTabs() {
                   )}
                   {!fetching && selectedAmp.presets !== undefined && (
                     <span className="text-xs text-muted-foreground">
-                      {dict.monitor.ampTabs.usedCount.replace("{count}", String(selectedAmp.presets.length))}
+                      {dict.monitor.ampTabs.usedCount.replace("{count}", String(usedPresetCount))}
                     </span>
                   )}
                 </div>
+
+                {selectedAmp.presets !== undefined && (
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant={presetFilter === "all" ? "default" : "outline"}
+                      onClick={() => setPresetFilter("all")}
+                    >
+                      {dict.monitor.ampTabs.filterAll}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={presetFilter === "used" ? "default" : "outline"}
+                      onClick={() => setPresetFilter("used")}
+                    >
+                      {dict.monitor.ampTabs.filterUsed}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={presetFilter === "empty" ? "default" : "outline"}
+                      onClick={() => setPresetFilter("empty")}
+                    >
+                      {dict.monitor.ampTabs.filterEmpty}
+                    </Button>
+                  </div>
+                )}
 
                 {presetsError && <p className="text-xs text-destructive mb-2">{presetsError}</p>}
 
@@ -413,60 +474,44 @@ export function AmpTabs() {
                   </p>
                 )}
 
-                {selectedAmp.presets?.length === 0 && (
-                  <p className="text-xs text-muted-foreground">{dict.monitor.ampTabs.noPresetsSaved}</p>
-                )}
-
-                {selectedAmp.presets && selectedAmp.presets.length > 0 && (
-                  <ul className="space-y-1">
-                    {selectedAmp.presets.map((preset) => (
-                      <li key={preset.slot} className="list-none">
+                {selectedAmp.presets !== undefined && (
+                  <ul className="space-y-1 max-h-[360px] overflow-y-auto pr-2 -mr-2">
+                    {shownPresetSlots.map((preset) => (
+                      <li key={preset.slot} className="list-none group">
                         <div
-                          role="button"
-                          tabIndex={selectedAmp.reachable ? 0 : -1}
-                          onClick={() => {
-                            if (!selectedAmp.reachable) return;
-                            setActivePreset((current) => (current?.slot === preset.slot ? null : preset));
-                            setStorePresetName(preset.name);
-                          }}
-                          onKeyDown={(e) => {
-                            if (!selectedAmp.reachable) return;
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setActivePreset((current) => (current?.slot === preset.slot ? null : preset));
-                              setStorePresetName(preset.name);
-                            }
-                          }}
-                          className={`flex w-full items-center gap-3 rounded-md border px-3 py-1.5 text-sm text-left transition-colors ${
-                            activePreset?.slot === preset.slot ? "border-primary/40 bg-accent" : "hover:bg-accent"
-                          } ${!selectedAmp.reachable ? "pointer-events-none opacity-50" : "cursor-pointer"}`}
+                          className={`flex w-full items-center gap-3 rounded-md border px-3 py-1.5 text-sm text-left transition-colors select-none ${"hover:bg-accent hover:border-primary/30"} ${!selectedAmp.reachable ? "pointer-events-none opacity-50" : ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60`}
                         >
                           <span className="w-6 text-center text-xs font-mono text-muted-foreground">{preset.slot}</span>
-                          <span className="font-medium flex-1 min-w-0 truncate">{preset.name}</span>
-                          {activePreset?.slot === preset.slot && (
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setStorePresetName(preset.name);
-                                  setStoreDialogOpen(true);
-                                }}
-                              >
-                                {dict.dialogs.presets.store}
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setRecallDialogOpen(true);
-                                }}
-                              >
-                                {dict.dialogs.presets.recall}
-                              </Button>
-                            </div>
-                          )}
+                          <span
+                            className={`font-medium flex-1 min-w-0 truncate ${preset.name.trim().length === 0 ? "text-muted-foreground" : ""}`}
+                          >
+                            {preset.name.trim().length > 0 ? preset.name : dict.monitor.ampTabs.emptySlotLabel}
+                          </span>
+                          <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActivePreset(preset);
+                                setStorePresetName(preset.name);
+                                setStoreDialogOpen(true);
+                              }}
+                            >
+                              {dict.dialogs.presets.store}
+                            </Button>
+                            <Button
+                              size="sm"
+                              disabled={preset.name.trim().length === 0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActivePreset(preset);
+                                setRecallDialogOpen(true);
+                              }}
+                            >
+                              {dict.dialogs.presets.recall}
+                            </Button>
+                          </div>
                         </div>
                       </li>
                     ))}

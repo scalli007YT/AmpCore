@@ -29,7 +29,7 @@ function JsonNode({ value, depth = 0 }: { value: JsonValue; depth?: number }) {
     <span>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer select-none"
+        className="inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground transition-colors select-none"
       >
         <span className="text-[10px] w-3 text-center">{open ? "▾" : "▸"}</span>
         <span className="text-foreground/60">{preview}</span>
@@ -57,7 +57,7 @@ export function JsonTree({ label, value }: { label: string; value: JsonValue }) 
     <div className="rounded border border-border/60 bg-muted/40 text-[11px] font-mono">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-1.5 px-3 py-2 text-left hover:bg-muted/60 transition-colors cursor-pointer"
+        className="flex w-full items-center gap-1.5 px-3 py-2 text-left hover:bg-muted/60 transition-colors"
       >
         <span className="text-muted-foreground text-[10px]">{open ? "▾" : "▸"}</span>
         <span className="font-semibold text-foreground/80">{label}</span>

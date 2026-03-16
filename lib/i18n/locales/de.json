@@ -45,6 +45,10 @@
       "loadingPresets": "Lade Presets...",
       "presetsUnavailable": "Verstärker ist nicht erreichbar - Presets nicht verfügbar.",
       "noPresetsSaved": "Keine Presets auf diesem Gerät gespeichert.",
+      "filterAll": "Alle",
+      "filterUsed": "Belegt",
+      "filterEmpty": "Leer",
+      "emptySlotLabel": "(leer)",
       "channelData": "Kanaldaten",
       "channelLabel": "Kanal {channel} - {input} -> {output}"
     }

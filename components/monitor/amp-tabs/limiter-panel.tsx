@@ -81,44 +81,75 @@ export function LimiterBlock({
           const triggerCard = (
             <Card
               size="sm"
-              className={`relative h-48 w-full overflow-visible transition-colors ${
-                disabledByBridge ? "cursor-not-allowed opacity-45 grayscale" : "cursor-pointer hover:bg-muted/10"
+              className={`relative w-full overflow-visible transition-all ${
+                disabledByBridge ? "opacity-40 grayscale" : "hover:bg-muted/20 hover:border-primary/50 hover:shadow-sm"
               } ${enabled ? "text-foreground" : "text-muted-foreground"}`}
             >
-              <CardContent className="flex h-full w-full flex-col justify-center gap-2 py-2 text-center">
-                <div className="space-y-0.5">
-                  <p className="text-[13px] font-semibold leading-tight">{channelName}</p>
-                  <p
-                    className={`text-[9px] font-medium uppercase tracking-wider ${
-                      enabled ? "text-primary/80" : "text-muted-foreground"
+              <CardContent className="flex w-full flex-col gap-2.5 py-2.5 px-2 select-none">
+                {/* Header */}
+                <div className="flex items-baseline justify-between gap-1 min-w-0">
+                  <p className="text-xs font-bold leading-tight truncate">{channelName}</p>
+                  <div
+                    className={`h-2 w-2 flex-shrink-0 rounded-full ${
+                      disabledByBridge ? "bg-amber-600" : enabled ? "bg-green-500" : "bg-slate-400"
                     }`}
-                  >
-                    {disabledByBridge ? "Bridge Slave" : enabled ? "Active" : "Bypassed"}
-                  </p>
+                  />
                 </div>
 
-                <div className="space-y-1">
-                  <div className="mx-auto grid w-fit grid-cols-[12px_auto] items-center gap-x-1 leading-tight">
-                    <span className="text-[10px] text-muted-foreground">R</span>
-                    <span className="font-mono text-[12px] tabular-nums">{displayRmsThreshold.toFixed(2)} V</span>
-                    <span className="text-[10px] text-muted-foreground">P</span>
-                    <span className="font-mono text-[12px] tabular-nums">{displayPeakThreshold.toFixed(2)} V</span>
+                {/* Two-column layout: RMS | Peak */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {/* RMS Column */}
+                  <div className="space-y-1.5 border-r border-border/30 pr-1.5">
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-semibold uppercase text-muted-foreground">RMS</p>
+                      <div className="space-y-0.5">
+                        <div className="flex items-baseline gap-0.5">
+                          <span className="font-mono text-[10px] tabular-nums leading-none">
+                            {displayRmsThreshold.toFixed(2)}
+                          </span>
+                          <span className="text-[8px] text-muted-foreground">V</span>
+                        </div>
+                        <div className="flex items-baseline gap-0.5">
+                          <span className="font-mono text-[10px] tabular-nums leading-none">{displayPrmsW}</span>
+                          <span className="text-[8px] text-muted-foreground">W</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${
+                          rms.enabled ? "bg-green-500" : "bg-red-500"
+                        }`}
+                      />
+                      <span className="text-[10px]">{rms.enabled ? "On" : "Off"}</span>
+                    </div>
                   </div>
-                  <div className="mx-auto grid w-fit grid-cols-[12px_auto] items-center gap-x-1 leading-tight">
-                    <span className="text-[10px] text-muted-foreground">R</span>
-                    <span className="font-mono text-[12px] tabular-nums">{displayPrmsW} W</span>
-                    <span className="text-[10px] text-muted-foreground">P</span>
-                    <span className="font-mono text-[12px] tabular-nums">{displayPpeakW} W</span>
-                  </div>
-                  <div className="mx-auto grid w-fit grid-cols-[12px_auto] items-center gap-x-1 leading-tight">
-                    <span className="text-[10px] text-muted-foreground">R</span>
-                    <span className={`text-[12px] ${rms.enabled ? "text-green-500" : "text-red-500"}`}>
-                      {rms.enabled ? "On" : "Off"}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">P</span>
-                    <span className={`text-[12px] ${peak.enabled ? "text-green-500" : "text-red-500"}`}>
-                      {peak.enabled ? "On" : "Off"}
-                    </span>
+
+                  {/* Peak Column */}
+                  <div className="space-y-1.5 pl-1.5">
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-semibold uppercase text-muted-foreground">Peak</p>
+                      <div className="space-y-0.5">
+                        <div className="flex items-baseline gap-0.5">
+                          <span className="font-mono text-[10px] tabular-nums leading-none">
+                            {displayPeakThreshold.toFixed(2)}
+                          </span>
+                          <span className="text-[8px] text-muted-foreground">V</span>
+                        </div>
+                        <div className="flex items-baseline gap-0.5">
+                          <span className="font-mono text-[10px] tabular-nums leading-none">{displayPpeakW}</span>
+                          <span className="text-[8px] text-muted-foreground">W</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${
+                          peak.enabled ? "bg-green-500" : "bg-red-500"
+                        }`}
+                      />
+                      <span className="text-[10px]">{peak.enabled ? "On" : "Off"}</span>
+                    </div>
                   </div>
                 </div>
               </CardContent>

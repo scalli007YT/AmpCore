@@ -79,7 +79,7 @@ function DelayPopover({
           onMouseLeave={onButtonMouseLeave}
           onFocus={onButtonFocus}
           onBlur={onButtonBlur}
-          className={`flex flex-col items-center w-full rounded border px-1.5 py-1 cursor-pointer select-none transition-colors ${
+          className={`flex flex-col items-center w-full rounded border px-1.5 py-1 select-none transition-colors ${
             delayMs === undefined
               ? "border-border/30 bg-muted/10 opacity-40 pointer-events-none"
               : active
@@ -176,7 +176,7 @@ function VolumePopover({
           onMouseLeave={onButtonMouseLeave}
           onFocus={onButtonFocus}
           onBlur={onButtonBlur}
-          className={`flex flex-col items-center w-full rounded border px-1.5 py-1 cursor-pointer select-none transition-colors ${
+          className={`flex flex-col items-center w-full rounded border px-1.5 py-1 select-none transition-colors ${
             volumeDb === undefined
               ? "border-border/30 bg-muted/10 opacity-40 pointer-events-none"
               : "border-border/60 bg-muted/30 hover:border-primary/40 hover:bg-muted/50"
@@ -275,7 +275,7 @@ function DbPopover({
           onMouseLeave={onButtonMouseLeave}
           onFocus={onButtonFocus}
           onBlur={onButtonBlur}
-          className={`flex flex-col items-center w-full rounded border px-1.5 py-1 cursor-pointer select-none transition-colors ${
+          className={`flex flex-col items-center w-full rounded border px-1.5 py-1 select-none transition-colors ${
             valueDb === undefined
               ? "border-border/30 bg-muted/10 opacity-40 pointer-events-none"
               : active

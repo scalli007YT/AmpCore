@@ -1,5 +1,5 @@
 import dgram from "dgram";
-import type { HeartbeatData } from "@/stores/AmpStore";
+import { buildProtocolPacket, type StructHeaderFields } from "@/lib/network/protocol";
 
 const AMP_SEND_PORT = 45455;
 // CvrAmpDevice uses an ephemeral port (0) for short-lived unicast commands
@@ -9,36 +9,7 @@ const PC_RECV_PORT = 0;
 // Original C# layout is: data_flag(uint16)=0xd903, machine_mode(int16), then
 // packet counters/state. Bytes like 03 d9 94 01 therefore mean machine_mode
 // = 0x0194, not a different protocol flag.
-const NETWORK_DATA_FLAG = 0xd903;
 const CROSSOVER_COMMIT_PACKET = Buffer.from("03d99401015c0001015a", "hex");
-
-export interface NetworkData {
-  dataFlag: number;
-  packetsCount: number;
-  packetsLastlen: number;
-  packetsStep: number;
-  dataState: number;
-  machineMode: number;
-}
-
-export interface StructHeader {
-  head: number;
-  functionCode: number;
-  statusCode: number;
-  chx: number;
-  /** Segment byte (offset 4 in header) */
-  segment: number;
-  /** Link number as 32-bit LE integer (offsets 5-8 in header) */
-  link: number;
-  /**
-   * in_out_flag (offset 9 in header) — from C# enum:
-   *   0 = input
-   *   1 = Output
-   *   2 = factory_mode
-   *   3 = user_mode
-   */
-  inOutFlag: number;
-}
 
 export interface AmpDeviceInfo {
   name: string;
@@ -100,43 +71,6 @@ export class FuncCode {
   static ANALOG_TYPE = 79;
   static POWER_ALLOT = 81;
   static CH_NAME = 0x4d; // 77
-}
-
-function networkDataToBytes(nd: NetworkData): Buffer {
-  const buf = Buffer.alloc(10);
-  buf.writeUInt16LE(nd.dataFlag, 0);
-  buf.writeInt16LE(nd.machineMode, 2);
-  buf.writeUInt8(nd.packetsCount, 4);
-  buf.writeUInt16LE(nd.packetsLastlen, 5);
-  buf.writeUInt8(nd.packetsStep, 7);
-  buf.writeUInt8(nd.dataState, 8);
-  buf.writeUInt8(0, 9);
-  return buf;
-}
-
-function structHeaderToBytes(sh: StructHeader): Buffer {
-  const buf = Buffer.alloc(10);
-  buf[0] = sh.head;
-  buf[1] = sh.functionCode;
-  buf[2] = sh.statusCode;
-  buf[3] = sh.chx;
-  buf[4] = sh.segment; // Segment (1 byte)
-  buf.writeInt32LE(sh.link, 5); // Link (4-byte LE int, offsets 5-8)
-  buf[9] = sh.inOutFlag; // in_out_flag (0=input, 1=Output)
-  return buf;
-}
-
-function getCheckCode(frame: Buffer): Buffer {
-  const length = frame.length;
-  const num = length + 3;
-  let sum = frame.reduce((acc, byte) => acc + byte, 0);
-  sum += num + (num >> 8);
-
-  const hi = (num >> 8) & 0xff;
-  const lo = num & 0xff;
-  const chk = sum & 0xff;
-
-  return Buffer.from([hi, lo, chk]);
 }
 
 export class CvrAmpDevice {
@@ -206,22 +140,16 @@ export class CvrAmpDevice {
     });
   }
 
-  private async sendRaw(header: StructHeader, body: Buffer = Buffer.alloc(0), machineMode = 0): Promise<Buffer> {
+  private async sendRaw(header: StructHeaderFields, body: Buffer = Buffer.alloc(0), machineMode = 0): Promise<Buffer> {
     const sock = await this.ensureSocket();
-    const inner = Buffer.concat([structHeaderToBytes(header), body]);
-    const checkCode = getCheckCode(inner);
-    const frame = Buffer.concat([inner, checkCode]);
-
-    const nd: NetworkData = {
-      dataFlag: NETWORK_DATA_FLAG,
-      packetsCount: 1,
-      packetsLastlen: frame.length,
-      packetsStep: 1,
+    const packet = buildProtocolPacket({
+      ...header,
+      body,
+      machineMode,
       dataState: 0,
-      machineMode
-    };
-
-    const packet = Buffer.concat([networkDataToBytes(nd), frame]);
+      packetsCount: 1,
+      packetsStep: 1
+    });
 
     return new Promise((resolve, reject) => {
       let responded = false;
@@ -279,8 +207,7 @@ export class CvrAmpDevice {
   }
 
   private async querySNTable(): Promise<Buffer> {
-    const header: StructHeader = {
-      head: 0x55,
+    const header: StructHeaderFields = {
       functionCode: FuncCode.SN_TABLE,
       statusCode: 2,
       chx: 0,
@@ -290,17 +217,14 @@ export class CvrAmpDevice {
     };
 
     const sock = await this.ensureSocket();
-    const inner = Buffer.concat([structHeaderToBytes(header)]);
-    const frame = Buffer.concat([inner, getCheckCode(inner)]);
-    const nd: NetworkData = {
-      dataFlag: NETWORK_DATA_FLAG,
-      packetsCount: 1,
-      packetsLastlen: frame.length,
-      packetsStep: 1,
+    const packet = buildProtocolPacket({
+      ...header,
+      body: Buffer.alloc(0),
+      machineMode: 0,
       dataState: 0,
-      machineMode: 0
-    };
-    const packet = Buffer.concat([networkDataToBytes(nd), frame]);
+      packetsCount: 1,
+      packetsStep: 1
+    });
 
     // The device sends two responses: a 10-byte ack first, then the real 116-byte payload.
     // We collect for 200ms and return the largest packet.
@@ -337,8 +261,7 @@ export class CvrAmpDevice {
   }
 
   async queryBasicInfo(): Promise<AmpDeviceInfo> {
-    const basicHeader: StructHeader = {
-      head: 0x55,
+    const basicHeader: StructHeaderFields = {
       functionCode: FuncCode.BASIC_INFO,
       statusCode: 2,
       chx: 0,
@@ -390,8 +313,7 @@ export class CvrAmpDevice {
    * Returns an array of { slot: number; name: string } for non-empty slots.
    */
   async queryPresets(): Promise<{ slot: number; name: string }[]> {
-    const header: StructHeader = {
-      head: 0x55,
+    const header: StructHeaderFields = {
       functionCode: FuncCode.SAVE_RECALL, // 59
       statusCode: 2, // Request
       chx: 0,
@@ -404,17 +326,14 @@ export class CvrAmpDevice {
     const body = Buffer.alloc(34, 0);
 
     const sock = await this.ensureSocket();
-    const inner = Buffer.concat([structHeaderToBytes(header), body]);
-    const frame = Buffer.concat([inner, getCheckCode(inner)]);
-    const nd: NetworkData = {
-      dataFlag: NETWORK_DATA_FLAG,
-      packetsCount: 1,
-      packetsLastlen: frame.length,
-      packetsStep: 1,
+    const packet = buildProtocolPacket({
+      ...header,
+      body,
+      machineMode: 0,
       dataState: 0,
-      machineMode: 0
-    };
-    const packet = Buffer.concat([networkDataToBytes(nd), frame]);
+      packetsCount: 1,
+      packetsStep: 1
+    });
 
     // Device may send multiple packets — collect for 400ms and pick the largest response
     return new Promise((resolve) => {
@@ -517,8 +436,7 @@ export class CvrAmpDevice {
      * Returns real-time device status (~115 bytes)
      * Much faster and more efficient than BASIC_INFO + SN_TABLE
      */
-    const header: StructHeader = {
-      head: 0x55,
+    const header: StructHeaderFields = {
       functionCode: FuncCode.HEARTBEAT,
       statusCode: 2, // Request status
       chx: 0,
@@ -633,8 +551,7 @@ export class CvrAmpDevice {
    * @param segment    StructHeader byte 4 (Segment): segment selector (default 0)
    */
   async sendControl(fc: number, chx: number, body: Buffer, inOutFlag = 0, link = 0, segment = 0): Promise<void> {
-    const header: StructHeader = {
-      head: 0x55,
+    const header: StructHeaderFields = {
       functionCode: fc,
       statusCode: 1, // Write/control — confirmed from captured packets
       chx,
@@ -651,20 +568,14 @@ export class CvrAmpDevice {
       });
     });
 
-    const inner = Buffer.concat([structHeaderToBytes(header), body]);
-    const checkCode = getCheckCode(inner);
-    const frame = Buffer.concat([inner, checkCode]);
-
-    const nd: NetworkData = {
-      dataFlag: NETWORK_DATA_FLAG,
-      packetsCount: 1,
-      packetsLastlen: frame.length,
-      packetsStep: 1,
+    const packet = buildProtocolPacket({
+      ...header,
+      body,
+      machineMode: 0,
       dataState: 0,
-      machineMode: 0
-    };
-
-    const packet = Buffer.concat([networkDataToBytes(nd), frame]);
+      packetsCount: 1,
+      packetsStep: 1
+    });
 
     await new Promise<void>((resolve, reject) => {
       sock.send(packet, 0, packet.length, AMP_SEND_PORT, this.ampIp, (err) => {
@@ -797,139 +708,6 @@ export class CvrAmpDevice {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Heartbeat parser (FC=6 response)
-// ---------------------------------------------------------------------------
-//
-// Full packet layout:
-//   [0-9]    NetworkData   (10 bytes)  ← machineMode at [9]
-//   [10-19]  StructHeader  (10 bytes)
-//   [20-N]   Body                       (see variants below)
-//   [N+1..3] Checksum      (3 bytes)
-//
-// Body variants (selected by C# via Marshal.SizeOf match):
-//   Heart_Inf_Whole118  — 92 bytes — total packet 115 bytes (DSP-2004, etc.)
-//   Heart_Inf_118Plus   — 96 bytes — total packet 119 bytes (has extra FanV)
-//
-// Body offsets relative to bodyStart (byte 20), same for both variants:
-//   [  0- 19] Ts[5]        5 × float32 LE  — temperatures (CH1–4 + PSU)
-//   [ 20- 35] Vs[4]        4 × float32 LE  — output voltages
-//   [ 36- 51] As[4]        4 × float32 LE  — output currents
-//   [ 52- 55] States[4]    4 × uint8        — output channel states
-//   [ 56- 71] Vs_In[4]     4 × float32 LE  — input voltages
-//   [ 72- 87] limiters[4]  4 × float32 LE  — limiter thresholds (negate for dB display)
-//   [ 88- 91] InStates[4]  4 × int8         — input states (0=signal, >0=absent, <0=fault)
-//   [ 92- 95] FanV         1 × float32 LE  — fan % (118Plus only)
-
 // Re-export for server-side callers that already import from this module.
 export { maxDbFromDeviceName } from "./amp-model";
-
-export function parseHeartbeat(buf: Buffer): HeartbeatData | null {
-  // Packet layout: NetworkData(10) + StructHeader(10) + body + checksum(3)
-  // Whole118 body = 92 bytes → total = 115 bytes  (DSP-2004 and similar)
-  // 118Plus  body = 96 bytes → total = 119 bytes  (has extra FanV float)
-  // Accept ≥ 105 (smallest valid: 10+10+82+3) to be safe.
-  if (buf.length < 105) return null;
-
-  // Validate head byte at StructHeader offset
-  if (buf[10] !== 0x55) return null;
-  // Validate function code = FC=6 (HEARTBEAT)
-  if (buf[11] !== FuncCode.HEARTBEAT) return null;
-
-  const machineMode = buf.readInt16LE(2);
-  const bodyStart = 20; // after NetworkData(10) + StructHeader(10)
-  // body ends before the 3 checksum bytes
-  const bodyLen = buf.length - bodyStart - 3;
-  const bodyEnd = bodyStart + bodyLen; // exclusive, checksum starts here
-
-  const readFloats = (offset: number, count: number): number[] => {
-    const out: number[] = [];
-    for (let i = 0; i < count; i++) {
-      const abs = bodyStart + offset + i * 4;
-      if (abs + 4 > bodyEnd) {
-        out.push(0);
-        continue;
-      }
-      out.push(buf.readFloatLE(abs));
-    }
-    return out;
-  };
-
-  const readBytes = (offset: number, count: number): number[] => {
-    const out: number[] = [];
-    for (let i = 0; i < count; i++) {
-      const abs = bodyStart + offset + i;
-      out.push(abs < bodyEnd ? buf[abs] : 0);
-    }
-    return out;
-  };
-
-  const readSBytes = (offset: number, count: number): number[] => {
-    const out: number[] = [];
-    for (let i = 0; i < count; i++) {
-      const abs = bodyStart + offset + i;
-      if (abs >= bodyEnd) {
-        out.push(0);
-        continue;
-      }
-      // Interpret as signed byte
-      const v = buf[abs];
-      out.push(v > 127 ? v - 256 : v);
-    }
-    return out;
-  };
-
-  // Offsets relative to bodyStart — identical for Whole118 and 118Plus:
-  // Ts[5]       @ 0   (20 bytes)
-  // Vs[4]       @ 20  (16 bytes)
-  // As[4]       @ 36  (16 bytes)
-  // States[4]   @ 52  ( 4 bytes)
-  // Vs_In[4]    @ 56  (16 bytes)
-  // limiters[4] @ 72  (16 bytes)
-  // InStates[4] @ 88  ( 4 bytes) — total 92 bytes (Whole118 ends here)
-  // FanV        @ 92  ( 4 bytes) — only present in 118Plus (96 bytes body)
-  const temperatures = readFloats(0, 5);
-  const outputVoltages = readFloats(20, 4);
-  const outputCurrents = readFloats(36, 4);
-  const outputStates = readBytes(52, 4);
-  const inputVoltages = readFloats(56, 4);
-  const limiters = readFloats(72, 4);
-  const inputStates = readSBytes(88, 4);
-
-  // FanV only exists in 118Plus (bodyLen=96); Whole118 (bodyLen=92) has no FanV
-  const fanAbs = bodyStart + 92;
-  const fanVoltage = bodyLen >= 96 && fanAbs + 4 <= bodyEnd ? buf.readFloatLE(fanAbs) : 0;
-
-  // Derived fields — mirrors C# RD_44.setHeart_Inf118 calculations
-  // Output impedance: CHZ = round(Vs[i] / As[i]) — 0 when idle
-  const outputImpedance = outputVoltages.map((v, i) => {
-    const a = outputCurrents[i];
-    return a > 0 ? Math.round(v / a) : 0;
-  });
-
-  // Output meter dB is intentionally left as floor values here.
-  // The real computation happens in MedianSmoother.smooth() using the
-  // already-smoothed outputVoltages, so spike samples never reach the VU targets.
-  const outputDbu = outputVoltages.map(() => -100);
-
-  // Input dBFS: 20 * log10(Vs_In[i]) — null when no signal (0 V)
-  const inputDbfs: (number | null)[] = inputVoltages.map((v) =>
-    v > 0 ? Math.round(Math.log10(v) * 20 * 10) / 10 : null
-  );
-
-  return {
-    temperatures,
-    outputVoltages,
-    outputCurrents,
-    outputImpedance,
-    outputDbu,
-    outputStates,
-    inputVoltages,
-    inputDbfs,
-    limiters,
-    inputStates,
-    fanVoltage,
-    machineMode,
-    receivedAt: Date.now()
-  };
-}
+export { parseHeartbeat } from "./network/heartbeat-parser";

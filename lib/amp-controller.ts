@@ -30,6 +30,7 @@ import { EventEmitter } from "events";
 import { FuncCode, parseHeartbeat } from "./amp-device";
 import type { BridgeReadback, HeartbeatData } from "@/stores/AmpStore";
 import { NetworkAdapter } from "@/lib/network/network-adapter";
+import { prependNetworkHeaderToAssembled } from "@/lib/network/protocol";
 
 // ---------------------------------------------------------------------------
 // Constants — matching original C# values exactly
@@ -41,8 +42,6 @@ const HEARTBEAT_MS = 140; // queryT_V_A Thread.Sleep(140)
 const DISCOVERY_MS = 4000; // TimerRefresh.Interval = 4000
 const DISCOVERY_WINDOW_MS = 1000; // MainWindow.Sleep(1000) after broadcast
 const DISCOVERY_PROBE_WINDOW_MS = 220; // initUDP2-style quick per-NIC probe
-const NETWORK_DATA_FLAG = 0xd903; // protocol identifier (bytes: 03 d9)
-const FRAGMENT_SIZE = 450; // max bytes per fragment (C# byteCut chunk)
 // Watchdog: if an amp hasn't sent a heartbeat in this many ms → offline
 const HEARTBEAT_TIMEOUT_MS = 3_500; // 25 × 140 ms
 
@@ -78,17 +77,6 @@ export interface OfflineEvent {
   mac: string;
 }
 
-// ---------------------------------------------------------------------------
-// Fragment reassembly state per sender IP
-// mirrors handleReceivedata() / Receivedata buffer in the original
-// ---------------------------------------------------------------------------
-interface FragmentState {
-  data: Buffer; // pre-allocated full-size buffer
-  totalLen: number; // (packets_count-1)*450 + packets_lastlenth
-  receivedSteps: Set<number>;
-  packetsCount: number;
-}
-
 function getDirectedBroadcasts(): string[] {
   const broadcasts: string[] = [];
   for (const iface of Object.values(os.networkInterfaces())) {
@@ -119,68 +107,6 @@ function getLocalBindCandidates(): string[] {
   const unique = Array.from(new Set(out));
   unique.push("0.0.0.0");
   return Array.from(new Set(unique));
-}
-
-// ---------------------------------------------------------------------------
-// Packet builders
-// ---------------------------------------------------------------------------
-
-function buildNetworkData(frameLen: number, dataState = 0, machineMode = 0): Buffer {
-  const buf = Buffer.alloc(10);
-  buf.writeUInt16LE(NETWORK_DATA_FLAG, 0);
-  buf.writeInt16LE(machineMode, 2);
-  buf[4] = 1; // packets_count
-  buf.writeUInt16LE(frameLen, 5); // packets_lastlenth
-  buf[7] = 1; // packets_stepcount
-  buf[8] = dataState; // data_state  (0=send, 1=ack)
-  buf[9] = 0; // padding_data
-  return buf;
-}
-
-function buildStructHeader(functionCode: number, statusCode: number, chx = 0): Buffer {
-  const h = Buffer.alloc(10);
-  h[0] = 0x55;
-  h[1] = functionCode;
-  h[2] = statusCode;
-  h[3] = chx;
-  return h;
-}
-
-function calcCheckCode(frame: Buffer): Buffer {
-  const num = frame.length + 3;
-  const hi = (num >> 8) & 0xff;
-  const lo = num & 0xff;
-  let sum = hi + lo;
-  for (const b of frame) sum += b;
-  return Buffer.from([hi, lo, sum & 0xff]);
-}
-
-function buildQueryPacket(functionCode: number, statusCode: number, body = Buffer.alloc(0)): Buffer {
-  const header = buildStructHeader(functionCode, statusCode);
-  const inner = Buffer.concat([header, body]);
-  const frame = Buffer.concat([inner, calcCheckCode(inner)]);
-  return Buffer.concat([buildNetworkData(frame.length), frame]);
-}
-
-// ---------------------------------------------------------------------------
-// Fix #6 — isSelfData() equivalent: validate head byte + checksum
-// Returns the assembled inner frame (StructHeader + body, no checksum)
-// or null if the packet is invalid / incomplete.
-// ---------------------------------------------------------------------------
-function validateAndStrip(raw: Buffer): Buffer | null {
-  // Minimum: NetworkData(10) + StructHeader(10) + checksum(3) = 23 bytes
-  if (raw.length < 23) return null;
-  if (raw[10] !== 0x55) return null; // head check
-  if (raw.readUInt16LE(0) !== NETWORK_DATA_FLAG) return null;
-
-  // Extract the inner frame (everything after NetworkData, without checksum)
-  const inner = raw.slice(10, raw.length - 3);
-  const expected = calcCheckCode(inner);
-  // Verify last 2 bytes of checksum (mirrors isSelfData: checkCode[1] and [2])
-  if (expected[1] !== raw[raw.length - 2]) return null;
-  if (expected[2] !== raw[raw.length - 1]) return null;
-
-  return inner; // validated StructHeader(10) + body
 }
 
 // ---------------------------------------------------------------------------
@@ -281,9 +207,6 @@ class AmpController extends EventEmitter {
   /** Heartbeat tick counter — triggers judgeOnline every 25 ticks */
   private heartbeatCount = 0;
 
-  // Fix #2 — per-sender fragment reassembly buffers (mirrors Receivedata + handleReceivedata)
-  private fragmentBuffers = new Map<string, FragmentState>(); // key = ip
-
   private running = false;
   private bindingInProgress = false;
   private boundAddress = "0.0.0.0";
@@ -309,8 +232,16 @@ class AmpController extends EventEmitter {
   private _socketReady: Promise<void> = new Promise((res) => (this._socketReadyResolve = res));
 
   // Pre-built query packets (re-used every tick, immutable)
-  private readonly heartbeatPacket = buildQueryPacket(FuncCode.HEARTBEAT, 2);
-  private readonly discoveryPacket = buildQueryPacket(FuncCode.BASIC_INFO, 2);
+  private readonly heartbeatPacket = this.network.buildProtocolPacket({
+    functionCode: FuncCode.HEARTBEAT,
+    statusCode: 2,
+    chx: 0
+  });
+  private readonly discoveryPacket = this.network.buildProtocolPacket({
+    functionCode: FuncCode.BASIC_INFO,
+    statusCode: 2,
+    chx: 0
+  });
 
   // -------------------------------------------------------------------------
   // Public API
@@ -387,20 +318,15 @@ class AmpController extends EventEmitter {
       return;
     }
     try {
-      const h = Buffer.alloc(10);
-      h[0] = 0x55;
-      h[1] = fc;
-      h[2] = 3; // statusCode=3 (write/response)
-      h[3] = chx;
-      h[4] = 0; // link
-      h[5] = inOutFlag;
-      h[6] = 0; // segment
-      h[7] = 0;
-      h[8] = 0;
-      h[9] = 0;
-      const inner = Buffer.concat([h, body]);
-      const frame = Buffer.concat([inner, calcCheckCode(inner)]);
-      const packet = Buffer.concat([buildNetworkData(frame.length), frame]);
+      const packet = this.network.buildProtocolPacket({
+        functionCode: fc,
+        statusCode: 3,
+        chx,
+        body,
+        segment: 0,
+        link: 0,
+        inOutFlag
+      });
       void this.network.send(packet, 0, packet.length, ip, false).catch((err) => {
         console.error("[AmpController] sendCommand send error:", err);
       });
@@ -526,74 +452,24 @@ class AmpController extends EventEmitter {
   //   4. If all fragments have arrived: validate checksum, dispatch FC handler
   // -------------------------------------------------------------------------
   private _onPacket(raw: Buffer, ip: string): void {
-    if (raw.length < 10) return;
-
-    // --- Step 1: validate data_flag ---
-    if (raw.readUInt16LE(0) !== NETWORK_DATA_FLAG) return;
-
-    // Parse NetworkData header
-    const packetsCount = raw[4];
-    const packetsLastlen = raw.readUInt16LE(5);
-    const packetsStep = raw[7]; // 1-based fragment index
-    const dataState = raw[8];
-    const machineMode = raw.readInt16LE(2);
+    const nd = this.network.parseNetworkData(raw);
+    if (!nd) return;
 
     // data_state=1 means this is an ACK we sent ourselves, reflected back — ignore
-    if (dataState === 1) return;
+    if (nd.dataState === 1) return;
 
     // --- Step 2: ACK back to sender (Fix #1) ---
     // mirrors: networkData.data_state = 1; UDP_Receive.Send(SendData, ..., ACK_IP)
     // We echo the NetworkData header with data_state=1, no body.
     this._sendAck(ip, raw);
 
-    // --- Step 3: Multi-packet reassembly (Fix #2) ---
-    // mirrors handleReceivedata():
-    //   totalLen = (packets_count - 1) * 450 + packets_lastlenth
-    //   Receivedata[( step-1)*450 .. ] = body chunk
-    const body = raw.slice(10); // everything after NetworkData
-    const totalLen = (packetsCount - 1) * FRAGMENT_SIZE + packetsLastlen;
+    const assembled = this.network.pushFragment(ip, raw);
+    if (!assembled) return;
 
-    if (totalLen <= 0) return;
+    const decoded = this.network.decodeAssembled(assembled);
+    if (!decoded) return;
 
-    let state = this.fragmentBuffers.get(ip);
-    if (!state || state.totalLen !== totalLen) {
-      // New message or different message size — reset buffer
-      state = {
-        data: Buffer.alloc(totalLen),
-        totalLen,
-        receivedSteps: new Set(),
-        packetsCount
-      };
-      this.fragmentBuffers.set(ip, state);
-    }
-
-    const offset = (packetsStep - 1) * FRAGMENT_SIZE;
-    const chunk = body.slice(0, Math.min(body.length, FRAGMENT_SIZE));
-    chunk.copy(state.data, offset);
-    state.receivedSteps.add(packetsStep);
-
-    // Not yet complete — wait for remaining fragments
-    if (state.receivedSteps.size < packetsCount) return;
-
-    // All fragments received — take the assembled buffer and clear the slot
-    const assembled = Buffer.from(state.data);
-    this.fragmentBuffers.delete(ip);
-
-    // --- Step 4: checksum validation + dispatch (Fix #6) ---
-    // assembled = StructHeader(10) + body + checksum(3)
-    if (assembled.length < 13) return;
-    if (assembled[0] !== 0x55) return;
-
-    const innerFrame = assembled.slice(0, assembled.length - 3);
-    const expectedChk = calcCheckCode(innerFrame);
-    if (expectedChk[1] !== assembled[assembled.length - 2]) return;
-    if (expectedChk[2] !== assembled[assembled.length - 1]) return;
-
-    // Strip StructHeader and checksum → pure body
-    const fc = assembled[1];
-    const body2 = assembled.slice(10, assembled.length - 3);
-
-    this._dispatchFC(fc, body2, ip, machineMode, assembled);
+    this._dispatchFC(decoded.functionCode, decoded.body, ip, nd.machineMode, decoded.rawAssembled);
   }
 
   // -------------------------------------------------------------------------
@@ -603,9 +479,8 @@ class AmpController extends EventEmitter {
   // -------------------------------------------------------------------------
   private _sendAck(ip: string, originalPacket: Buffer): void {
     if (!this.network.isStarted) return;
-    // Build a 10-byte ACK: copy original NetworkData, flip data_state to 1
-    const ack = Buffer.from(originalPacket.slice(0, 10));
-    ack[8] = 1; // data_state = 1 (ACK)
+    const ack = this.network.buildAck(originalPacket);
+    if (!ack) return;
     void this.network.send(ack, 0, ack.length, ip, false).catch(() => {
       /* ignore */
     });
@@ -621,7 +496,7 @@ class AmpController extends EventEmitter {
       case FuncCode.BASIC_INFO: {
         // parseDiscoveryPacket needs the full raw packet with NetworkData header
         // re-prepend a synthetic NetworkData so offsets are correct
-        const withNd = Buffer.concat([Buffer.alloc(10), rawAssembled]);
+        const withNd = prependNetworkHeaderToAssembled(rawAssembled, machineMode);
         const event = parseDiscoveryPacket(withNd, ip);
         if (!event) return;
 
@@ -644,7 +519,7 @@ class AmpController extends EventEmitter {
       // FC=6 HEARTBEAT — device replied to our heartbeat unicast
       case FuncCode.HEARTBEAT: {
         // Reconstruct the full raw packet for parseHeartbeat (expects NetworkData prefix)
-        const withNd = Buffer.concat([buildNetworkData(rawAssembled.length, 0, machineMode), rawAssembled]);
+        const withNd = prependNetworkHeaderToAssembled(rawAssembled, machineMode);
 
         const mac = this._macFromIp(ip);
         if (!mac) {
@@ -871,10 +746,11 @@ class AmpController extends EventEmitter {
 
     for (const ip of targetIps) {
       for (const pair of [0, 1] as const) {
-        const header = buildStructHeader(FuncCode.BRIDGE, 2, pair);
-        const inner = Buffer.concat([header]);
-        const frame = Buffer.concat([inner, calcCheckCode(inner)]);
-        const packet = Buffer.concat([buildNetworkData(frame.length), frame]);
+        const packet = this.network.buildProtocolPacket({
+          functionCode: FuncCode.BRIDGE,
+          statusCode: 2,
+          chx: pair
+        });
 
         void this.network.send(packet, 0, packet.length, ip, false).catch(() => {
           /* ignore */
@@ -902,10 +778,11 @@ class AmpController extends EventEmitter {
         reject
       });
 
-      const header = buildStructHeader(27, 2, channel);
-      const inner = Buffer.concat([header]);
-      const frame = Buffer.concat([inner, calcCheckCode(inner)]);
-      const packet = Buffer.concat([buildNetworkData(frame.length), frame]);
+      const packet = this.network.buildProtocolPacket({
+        functionCode: FuncCode.SYNC_DATA,
+        statusCode: 2,
+        chx: channel
+      });
 
       void this.network.send(packet, 0, packet.length, ip, false).catch((err) => {
         const pending = this.pendingFc27ByIp.get(ip);

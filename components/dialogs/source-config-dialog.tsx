@@ -24,6 +24,7 @@ import {
   DialogTrigger
 } from "@/components/ui/dialog";
 import { useI18n } from "@/components/layout/i18n-provider";
+import { SlidersHorizontalIcon } from "lucide-react";
 
 type SourceKey = "analog" | "dante" | "aes3" | "backup";
 
@@ -106,7 +107,8 @@ export function SourceConfigDialog({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="h-7 text-xs">
+        <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs hover:bg-primary/10 hover:text-primary">
+          <SlidersHorizontalIcon className="size-3.5" />
           {dict.dialogs.sourceConfig.trigger}
         </Button>
       </DialogTrigger>
@@ -151,9 +153,7 @@ export function SourceConfigDialog({
                         key={`${channel.channel}-${source.key}`}
                         className={`rounded-md border p-2 transition-opacity ${
                           source.selected ? "border-primary/70 bg-primary/10" : "border-border/60 bg-background"
-                        } ${enabled ? "opacity-100" : "opacity-45"} ${
-                          canActivateByCard ? "cursor-pointer" : "cursor-default"
-                        }`}
+                        } ${enabled ? "opacity-100" : "opacity-45"}`}
                         aria-disabled={!enabled}
                         role={canActivateByCard ? "button" : undefined}
                         tabIndex={canActivateByCard ? 0 : -1}

@@ -120,7 +120,7 @@ function CrossoverBandCell({
         value={currentType}
         disabled={pending}
         onChange={(e) => handleTypeChange(Number.parseInt(e.target.value, 10))}
-        className="mb-1 w-full rounded border border-input bg-background px-1 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-50"
+        className="mb-1 w-full rounded border border-input bg-background px-1 py-0.5 text-[10px] disabled:opacity-50"
       >
         {HPLP_TYPE_OPTIONS.map((opt) => (
           <option key={opt.value} value={opt.value}>
@@ -155,7 +155,7 @@ function CrossoverBandCell({
       <button
         disabled={pending}
         onClick={toggleEnabled}
-        className={`mt-0.5 w-full rounded-sm py-0.5 text-[9px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        className={`mt-0.5 w-full rounded-sm py-0.5 text-[9px] font-bold transition-colors disabled:opacity-50 ${
           enabled
             ? "bg-muted/60 text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive"
             : "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20"
@@ -278,7 +278,7 @@ function EqBandCell({
         value={band.type}
         disabled={pending}
         onChange={(e) => handleTypeChange(Number.parseInt(e.target.value, 10))}
-        className="mb-1 w-full rounded border border-input bg-background px-1 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-50"
+        className="mb-1 w-full rounded border border-input bg-background px-1 py-0.5 text-[10px] disabled:opacity-50"
       >
         {EQ_TYPE_OPTIONS.map((opt) => (
           <option key={opt.value} value={opt.value}>
@@ -361,7 +361,7 @@ function EqBandCell({
       <button
         disabled={pending}
         onClick={toggleBypass}
-        className={`mt-0.5 w-full rounded-sm py-0.5 text-[9px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        className={`mt-0.5 w-full rounded-sm py-0.5 text-[9px] font-bold transition-colors disabled:opacity-50 ${
           band.bypass
             ? "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20"
             : "bg-muted/60 text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive"

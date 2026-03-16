@@ -45,6 +45,10 @@
       "loadingPresets": "Loading presets...",
       "presetsUnavailable": "Amp is unreachable - presets unavailable.",
       "noPresetsSaved": "No presets saved on this device.",
+      "filterAll": "All",
+      "filterUsed": "Used",
+      "filterEmpty": "Empty",
+      "emptySlotLabel": "(empty)",
       "channelData": "Channel Data",
       "channelLabel": "Channel {channel} - {input} -> {output}"
     }

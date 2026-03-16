@@ -581,7 +581,7 @@ export function HeartbeatDashboard({
                 {channelLabels.map((_, i) => {
                   const dbfsVal = vuInputDbfs[i];
                   const hasSignal = hb.inputStates[i] === 0;
-                  const isClip = dbfsVal !== null && dbfsVal > -1;
+                  const isLimit = dbfsVal !== null && dbfsVal > -1;
                   return (
                     <div key={i} className="flex flex-col items-center gap-0" style={{ width: COL_W }}>
                       <div
@@ -601,7 +601,7 @@ export function HeartbeatDashboard({
                         value={dbfsVal}
                         dbTop={IN_DB_TOP}
                         dbBottom={IN_DB_BOT}
-                        clip={isClip}
+                        limit={isLimit}
                         width={BAR_W}
                         height={METER_H}
                       />
@@ -737,7 +737,7 @@ export function HeartbeatDashboard({
                   const a = hb.outputCurrents[i];
                   const dbu = vuOutputDbu[i];
                   const temp = hb.temperatures[i] ?? 0;
-                  const isClip = st === 5;
+                  const isLimit = st === 5;
                   const isActive = st === 0 || st === 8;
                   const isDisabledByBridge = isBridgedSecondColumn(i);
                   const dbuVal = dbu === null || dbu <= OUT_DB_BOT ? null : Math.min(dbu, OUT_DB_TOP);
@@ -797,17 +797,17 @@ export function HeartbeatDashboard({
                         value={dbuVal}
                         dbTop={OUT_DB_TOP}
                         dbBottom={OUT_DB_BOT}
-                        clip={isClip}
+                        limit={isLimit}
                         width={BAR_W}
                         height={METER_H}
                         thresholdLines={thresholdLines}
                       />
                       <div
                         className={`mt-1 rounded px-1 py-0.5 text-[9px] font-semibold w-full text-center ${
-                          isClip ? "bg-red-500 text-white" : "bg-muted/30 text-muted-foreground/60"
+                          isLimit ? "bg-red-500 text-white" : "bg-muted/30 text-muted-foreground/60"
                         }`}
                       >
-                        Clip
+                        Limit
                       </div>
                       <div className="flex flex-col items-stretch gap-1.5 mt-3 w-full">
                         <div

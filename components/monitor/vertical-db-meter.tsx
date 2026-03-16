@@ -7,7 +7,7 @@ export function VerticalDbMeter({
   value,
   dbTop,
   dbBottom,
-  clip,
+  limit: clip,
   width = 24,
   height = 220,
   fillDirection = "bottom-up",
@@ -16,7 +16,7 @@ export function VerticalDbMeter({
   value: number | null;
   dbTop: number;
   dbBottom: number;
-  clip?: boolean;
+  limit?: boolean;
   width?: number;
   height?: number;
   fillDirection?: "bottom-up" | "top-down";

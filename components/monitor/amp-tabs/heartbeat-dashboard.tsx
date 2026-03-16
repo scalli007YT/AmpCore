@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { HeartbeatData, ChannelParams, BridgeReadback } from "@/stores/AmpStore";
 import { useAmpActions } from "@/hooks/useAmpActions";
 import { useVuMeters } from "@/hooks/useVuMeters";
+import { getStoredAmpLinkConfig, useAmpActionLinkStore } from "@/stores/AmpActionLinkStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -21,24 +22,35 @@ import { EqBandDialog } from "@/components/monitor/amp-tabs/eq-controls";
 import { VerticalDbMeter } from "@/components/monitor/vertical-db-meter";
 import { COLORS } from "@/lib/colors";
 import { OUTPUT_TRIM_MAX_DB, OUTPUT_TRIM_MIN_DB } from "@/lib/constants";
+import { getLinkedChannels, type LinkScope } from "@/lib/amp-action-linking";
+import { getChannelLabels } from "@/lib/channel-labels";
 import { voltageToMeterDb, rmsToPeakVoltage, formatDbfs } from "@/lib/generic";
 import { getPowerModeName } from "@/lib/parse-channel-data";
 import { useI18n } from "@/components/layout/i18n-provider";
 
-const CH_LABELS = ["A", "B", "C", "D"];
 const POWER_MODE_OPTIONS = [0, 1, 2] as const;
-type BridgePair = 0 | 1;
+type BridgePair = number;
 
 function DelayPopover({
   delayMs,
   maxMs,
   label,
-  onSet
+  onSet,
+  buttonClassName,
+  onButtonMouseEnter,
+  onButtonMouseLeave,
+  onButtonFocus,
+  onButtonBlur
 }: {
   delayMs: number | undefined;
   maxMs: number;
   label: string;
   onSet: (ms: number) => void | Promise<void>;
+  buttonClassName?: string;
+  onButtonMouseEnter?: () => void;
+  onButtonMouseLeave?: () => void;
+  onButtonFocus?: () => void;
+  onButtonBlur?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [inputVal, setInputVal] = useState("");
@@ -63,13 +75,17 @@ function DelayPopover({
     <Popover open={open} onOpenChange={handleOpen}>
       <PopoverTrigger asChild>
         <button
+          onMouseEnter={onButtonMouseEnter}
+          onMouseLeave={onButtonMouseLeave}
+          onFocus={onButtonFocus}
+          onBlur={onButtonBlur}
           className={`flex flex-col items-center w-full rounded border px-1.5 py-1 cursor-pointer select-none transition-colors ${
             delayMs === undefined
               ? "border-border/30 bg-muted/10 opacity-40 pointer-events-none"
               : active
                 ? "border-sky-500/60 bg-sky-500/15 hover:bg-sky-500/25"
                 : "border-border/60 bg-muted/30 hover:border-sky-500/40 hover:bg-muted/50"
-          }`}
+          } ${buttonClassName ?? ""}`}
         >
           <span
             className={`font-mono text-[13px] font-semibold tabular-nums leading-none ${active ? "text-sky-400" : ""}`}
@@ -119,11 +135,21 @@ function DelayPopover({
 function VolumePopover({
   volumeDb,
   label,
-  onSet
+  onSet,
+  buttonClassName,
+  onButtonMouseEnter,
+  onButtonMouseLeave,
+  onButtonFocus,
+  onButtonBlur
 }: {
   volumeDb: number | undefined;
   label: string;
   onSet: (db: number) => void | Promise<void>;
+  buttonClassName?: string;
+  onButtonMouseEnter?: () => void;
+  onButtonMouseLeave?: () => void;
+  onButtonFocus?: () => void;
+  onButtonBlur?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [inputVal, setInputVal] = useState("");
@@ -146,11 +172,15 @@ function VolumePopover({
     <Popover open={open} onOpenChange={handleOpen}>
       <PopoverTrigger asChild>
         <button
+          onMouseEnter={onButtonMouseEnter}
+          onMouseLeave={onButtonMouseLeave}
+          onFocus={onButtonFocus}
+          onBlur={onButtonBlur}
           className={`flex flex-col items-center w-full rounded border px-1.5 py-1 cursor-pointer select-none transition-colors ${
             volumeDb === undefined
               ? "border-border/30 bg-muted/10 opacity-40 pointer-events-none"
               : "border-border/60 bg-muted/30 hover:border-primary/40 hover:bg-muted/50"
-          }`}
+          } ${buttonClassName ?? ""}`}
         >
           <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
             {volumeDb !== undefined ? volumeDb.toFixed(1) : "~"}
@@ -199,7 +229,12 @@ function DbPopover({
   title,
   minDb,
   maxDb,
-  onSet
+  onSet,
+  buttonClassName,
+  onButtonMouseEnter,
+  onButtonMouseLeave,
+  onButtonFocus,
+  onButtonBlur
 }: {
   valueDb: number | undefined;
   label: string;
@@ -207,6 +242,11 @@ function DbPopover({
   minDb: number;
   maxDb: number;
   onSet: (db: number) => void | Promise<void>;
+  buttonClassName?: string;
+  onButtonMouseEnter?: () => void;
+  onButtonMouseLeave?: () => void;
+  onButtonFocus?: () => void;
+  onButtonBlur?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [inputVal, setInputVal] = useState("");
@@ -231,13 +271,17 @@ function DbPopover({
     <Popover open={open} onOpenChange={handleOpen}>
       <PopoverTrigger asChild>
         <button
+          onMouseEnter={onButtonMouseEnter}
+          onMouseLeave={onButtonMouseLeave}
+          onFocus={onButtonFocus}
+          onBlur={onButtonBlur}
           className={`flex flex-col items-center w-full rounded border px-1.5 py-1 cursor-pointer select-none transition-colors ${
             valueDb === undefined
               ? "border-border/30 bg-muted/10 opacity-40 pointer-events-none"
               : active
                 ? "border-amber-500/60 bg-amber-500/15 hover:bg-amber-500/25"
                 : "border-border/60 bg-muted/30 hover:border-amber-500/40 hover:bg-muted/50"
-          }`}
+          } ${buttonClassName ?? ""}`}
         >
           <span
             className={`font-mono text-[13px] font-semibold tabular-nums leading-none ${active ? "text-amber-400" : ""}`}
@@ -289,11 +333,21 @@ function DbPopover({
 function PowerModePill({
   mode,
   channelLabel,
-  onConfirm
+  onConfirm,
+  triggerClassName,
+  onTriggerMouseEnter,
+  onTriggerMouseLeave,
+  onTriggerFocus,
+  onTriggerBlur
 }: {
   mode: number | undefined;
   channelLabel: string;
   onConfirm: (mode: number) => void | Promise<void>;
+  triggerClassName?: string;
+  onTriggerMouseEnter?: () => void;
+  onTriggerMouseLeave?: () => void;
+  onTriggerFocus?: () => void;
+  onTriggerBlur?: () => void;
 }) {
   const dict = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -331,11 +385,15 @@ function PowerModePill({
             size="sm"
             variant="outline"
             disabled={mode === undefined}
+            onMouseEnter={onTriggerMouseEnter}
+            onMouseLeave={onTriggerMouseLeave}
+            onFocus={onTriggerFocus}
+            onBlur={onTriggerBlur}
             className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
               mode === undefined
                 ? "border-border/30 bg-muted/10 text-muted-foreground/30"
                 : "border-border/40 bg-muted/20 text-muted-foreground/80 hover:border-primary/40 hover:text-foreground"
-            }`}
+            } ${triggerClassName ?? ""}`}
           >
             {mode === undefined ? dict.dialogs.heartbeat.powerMode : getPowerModeName(currentMode)}
           </Button>
@@ -400,6 +458,8 @@ export function HeartbeatDashboard({
   bridgePairs?: BridgeReadback[];
 }) {
   const dict = useI18n();
+  const byMac = useAmpActionLinkStore((state) => state.byMac);
+  const linkConfig = getStoredAmpLinkConfig(byMac, mac);
   const f1 = (n: number) => n.toFixed(1);
   const f0 = (n: number) => n.toFixed(0);
 
@@ -426,11 +486,35 @@ export function HeartbeatDashboard({
   const COL_W = 64;
   const LABEL_H = 24;
   const pairWidth = COL_W * 2 + 12;
-  const outputPairCount = Math.ceil(CH_LABELS.length / 2);
+  const channelCount = Math.max(
+    channelParams?.channels.length ?? 0,
+    hb.outputStates.length,
+    hb.inputStates.length,
+    hb.outputVoltages.length,
+    hb.inputDbfs.length
+  );
+  const channelLabels = getChannelLabels(channelCount);
+  const outputPairCount = Math.ceil(channelLabels.length / 2);
   const [bridgeConfirmOpen, setBridgeConfirmOpen] = useState(false);
   const [bridgeBusy, setBridgeBusy] = useState(false);
   const [pendingBridgePair, setPendingBridgePair] = useState<BridgePair | null>(null);
   const [pendingBridgeNext, setPendingBridgeNext] = useState<boolean | null>(null);
+  const [hoveredLink, setHoveredLink] = useState<{ scope: LinkScope; channel: number } | null>(null);
+
+  const getLinkHoverProps = (scope: LinkScope, channel: number) => ({
+    onMouseEnter: () => setHoveredLink({ scope, channel }),
+    onMouseLeave: () => setHoveredLink(null),
+    onFocus: () => setHoveredLink({ scope, channel }),
+    onBlur: () => setHoveredLink(null)
+  });
+
+  const isLinkedHovered = (scope: LinkScope, channel: number) => {
+    if (!hoveredLink || hoveredLink.scope !== scope) return false;
+    return getLinkedChannels(linkConfig, scope, hoveredLink.channel).includes(channel);
+  };
+
+  const linkedHoverClass = (scope: LinkScope, channel: number, hoverClass: string) =>
+    isLinkedHovered(scope, channel) ? hoverClass : "";
 
   const pairBridgeState = (pair: number) => bridgePairs?.[pair]?.bridged ?? null;
 
@@ -443,7 +527,6 @@ export function HeartbeatDashboard({
   };
 
   const requestBridgeToggle = (pairIndex: number) => {
-    if (pairIndex !== 0 && pairIndex !== 1) return;
     const currentState = effectivePairBridgeState(pairIndex);
     if (currentState === null) return;
 
@@ -495,10 +578,10 @@ export function HeartbeatDashboard({
                 <ScaleColumn ticks={IN_SCALE} height={METER_H} width={28} />
               </div>
               <div className="flex gap-3 items-start">
-                {CH_LABELS.map((_, i) => {
+                {channelLabels.map((_, i) => {
                   const dbfsVal = vuInputDbfs[i];
                   const hasSignal = hb.inputStates[i] === 0;
-                  const isClip = dbfsVal !== null && dbfsVal > -1;
+                  const isLimit = dbfsVal !== null && dbfsVal > -1;
                   return (
                     <div key={i} className="flex flex-col items-center gap-0" style={{ width: COL_W }}>
                       <div
@@ -518,7 +601,7 @@ export function HeartbeatDashboard({
                         value={dbfsVal}
                         dbTop={IN_DB_TOP}
                         dbBottom={IN_DB_BOT}
-                        clip={isClip}
+                        limit={isLimit}
                         width={BAR_W}
                         height={METER_H}
                       />
@@ -538,7 +621,12 @@ export function HeartbeatDashboard({
                         <VolumePopover
                           volumeDb={channelParams?.channels[i]?.volumeIn}
                           label="Vol dB"
-                          onSet={(db) => setVolumeIn(mac, i as 0 | 1 | 2 | 3, db)}
+                          buttonClassName={linkedHoverClass("volumeIn", i, "border-primary/40 bg-muted/50")}
+                          onButtonMouseEnter={getLinkHoverProps("volumeIn", i).onMouseEnter}
+                          onButtonMouseLeave={getLinkHoverProps("volumeIn", i).onMouseLeave}
+                          onButtonFocus={getLinkHoverProps("volumeIn", i).onFocus}
+                          onButtonBlur={getLinkHoverProps("volumeIn", i).onBlur}
+                          onSet={(db) => setVolumeIn(mac, i, db)}
                         />
                         <div className="flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1">
                           <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
@@ -550,7 +638,7 @@ export function HeartbeatDashboard({
                           delayMs={channelParams?.channels[i]?.delayIn}
                           maxMs={100}
                           label="ms in"
-                          onSet={(ms) => setDelayIn(mac, i as 0 | 1 | 2 | 3, ms)}
+                          onSet={(ms) => setDelayIn(mac, i, ms)}
                         />
                         {(() => {
                           const muted = channelParams?.channels[i]?.muteIn;
@@ -559,14 +647,15 @@ export function HeartbeatDashboard({
                             <Button
                               disabled={!canClick}
                               size="sm"
-                              onClick={() => canClick && void muteIn(mac, i as 0 | 1 | 2 | 3, !muted)}
+                              {...getLinkHoverProps("muteIn", i)}
+                              onClick={() => canClick && void muteIn(mac, i, !muted)}
                               className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
                                 muted === true
                                   ? "border-orange-500/60 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 hover:text-orange-400"
                                   : muted === false
                                     ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-orange-500/40 hover:text-orange-400/70"
                                     : "border-border/30 bg-muted/10 text-muted-foreground/30"
-                              }`}
+                              } ${linkedHoverClass("muteIn", i, muted === false ? "border-orange-500/40 text-orange-400/70" : "")}`}
                               variant="outline"
                             >
                               {muted === true ? "MUTED" : "Mute In"}
@@ -575,9 +664,14 @@ export function HeartbeatDashboard({
                         })()}
                         <EqBandDialog
                           triggerLabel="EQ In"
-                          title={`Input EQ - Ch ${CH_LABELS[i]}`}
+                          title={`Input EQ - Ch ${channelLabels[i] ?? i + 1}`}
+                          triggerClassName={linkedHoverClass("inputEq", i, "border-border/60 text-foreground/70")}
+                          onTriggerMouseEnter={getLinkHoverProps("inputEq", i).onMouseEnter}
+                          onTriggerMouseLeave={getLinkHoverProps("inputEq", i).onMouseLeave}
+                          onTriggerFocus={getLinkHoverProps("inputEq", i).onFocus}
+                          onTriggerBlur={getLinkHoverProps("inputEq", i).onBlur}
                           mac={mac}
-                          channel={i as 0 | 1 | 2 | 3}
+                          channel={i}
                           target="input"
                           bands={channelParams?.channels[i]?.eqIn}
                         />
@@ -621,7 +715,8 @@ export function HeartbeatDashboard({
                         }`}
                         style={{ width: pairWidth }}
                       >
-                        {CH_LABELS[firstChannel]} / {CH_LABELS[secondChannel]} - {statusLabel}
+                        {channelLabels[firstChannel] ?? firstChannel + 1} /{" "}
+                        {channelLabels[secondChannel] ?? secondChannel + 1} - {statusLabel}
                       </Button>
                     );
                   })}
@@ -636,13 +731,13 @@ export function HeartbeatDashboard({
                   <ScaleColumn ticks={OUT_SCALE} height={METER_H} width={32} />
                 </div>
 
-                {CH_LABELS.map((ch, i) => {
+                {channelLabels.map((ch, i) => {
                   const st = hb.outputStates[i] ?? 0;
                   const v = hb.outputVoltages[i];
                   const a = hb.outputCurrents[i];
                   const dbu = vuOutputDbu[i];
                   const temp = hb.temperatures[i] ?? 0;
-                  const isClip = st === 5;
+                  const isLimit = st === 5;
                   const isActive = st === 0 || st === 8;
                   const isDisabledByBridge = isBridgedSecondColumn(i);
                   const dbuVal = dbu === null || dbu <= OUT_DB_BOT ? null : Math.min(dbu, OUT_DB_TOP);
@@ -702,17 +797,17 @@ export function HeartbeatDashboard({
                         value={dbuVal}
                         dbTop={OUT_DB_TOP}
                         dbBottom={OUT_DB_BOT}
-                        clip={isClip}
+                        limit={isLimit}
                         width={BAR_W}
                         height={METER_H}
                         thresholdLines={thresholdLines}
                       />
                       <div
                         className={`mt-1 rounded px-1 py-0.5 text-[9px] font-semibold w-full text-center ${
-                          isClip ? "bg-red-500 text-white" : "bg-muted/30 text-muted-foreground/60"
+                          isLimit ? "bg-red-500 text-white" : "bg-muted/30 text-muted-foreground/60"
                         }`}
                       >
-                        Clip
+                        Limit
                       </div>
                       <div className="flex flex-col items-stretch gap-1.5 mt-3 w-full">
                         <div
@@ -743,7 +838,18 @@ export function HeartbeatDashboard({
                           delayMs={channelParams?.channels[i]?.delayOut}
                           maxMs={20}
                           label="ms out"
-                          onSet={(ms) => setDelayOut(mac, i as 0 | 1 | 2 | 3, ms)}
+                          buttonClassName={linkedHoverClass(
+                            "delayOut",
+                            i,
+                            (channelParams?.channels[i]?.delayOut ?? 0) > 0
+                              ? "bg-sky-500/25"
+                              : "border-sky-500/40 bg-muted/50"
+                          )}
+                          onButtonMouseEnter={getLinkHoverProps("delayOut", i).onMouseEnter}
+                          onButtonMouseLeave={getLinkHoverProps("delayOut", i).onMouseLeave}
+                          onButtonFocus={getLinkHoverProps("delayOut", i).onFocus}
+                          onButtonBlur={getLinkHoverProps("delayOut", i).onBlur}
+                          onSet={(ms) => setDelayOut(mac, i, ms)}
                         />
                         <DbPopover
                           valueDb={channelParams?.channels[i]?.trimOut}
@@ -751,12 +857,23 @@ export function HeartbeatDashboard({
                           title="Output Trim"
                           minDb={OUTPUT_TRIM_MIN_DB}
                           maxDb={OUTPUT_TRIM_MAX_DB}
-                          onSet={(db) => setTrimOut(mac, i as 0 | 1 | 2 | 3, db)}
+                          buttonClassName={linkedHoverClass(
+                            "trimOut",
+                            i,
+                            (channelParams?.channels[i]?.trimOut ?? 0) !== 0
+                              ? "bg-amber-500/25"
+                              : "border-amber-500/40 bg-muted/50"
+                          )}
+                          onButtonMouseEnter={getLinkHoverProps("trimOut", i).onMouseEnter}
+                          onButtonMouseLeave={getLinkHoverProps("trimOut", i).onMouseLeave}
+                          onButtonFocus={getLinkHoverProps("trimOut", i).onFocus}
+                          onButtonBlur={getLinkHoverProps("trimOut", i).onBlur}
+                          onSet={(db) => setTrimOut(mac, i, db)}
                         />
                         <PowerModePill
                           mode={channelParams?.channels[i]?.powerMode}
-                          channelLabel={`Out${CH_LABELS[i]}`}
-                          onConfirm={(mode) => setPowerModeOut(mac, i as 0 | 1 | 2 | 3, mode)}
+                          channelLabel={`Out${channelLabels[i] ?? i + 1}`}
+                          onConfirm={(mode) => setPowerModeOut(mac, i, mode)}
                         />
                         {(() => {
                           const muted = channelParams?.channels[i]?.muteOut;
@@ -765,14 +882,15 @@ export function HeartbeatDashboard({
                             <Button
                               disabled={!canClick}
                               size="sm"
-                              onClick={() => canClick && void muteOut(mac, i as 0 | 1 | 2 | 3, !muted)}
+                              {...getLinkHoverProps("muteOut", i)}
+                              onClick={() => canClick && void muteOut(mac, i, !muted)}
                               className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
                                 muted === true
                                   ? "border-orange-500/60 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 hover:text-orange-400"
                                   : muted === false
                                     ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-orange-500/40 hover:text-orange-400/70"
                                     : "border-border/30 bg-muted/10 text-muted-foreground/30"
-                              }`}
+                              } ${linkedHoverClass("muteOut", i, muted === false ? "border-orange-500/40 text-orange-400/70" : "")}`}
                               variant="outline"
                             >
                               {muted === true ? "MUTED" : "Mute Out"}
@@ -787,14 +905,15 @@ export function HeartbeatDashboard({
                               disabled={!canClick}
                               size="sm"
                               variant="outline"
-                              onClick={() => canClick && void noiseGateOut(mac, i as 0 | 1 | 2 | 3, !ng)}
+                              {...getLinkHoverProps("noiseGateOut", i)}
+                              onClick={() => canClick && void noiseGateOut(mac, i, !ng)}
                               className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
                                 ng === true
                                   ? "border-sky-500/60 bg-sky-500/20 text-sky-400"
                                   : ng === false
                                     ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-sky-500/40 hover:text-sky-400/70"
                                     : "border-border/30 bg-muted/10 text-muted-foreground/30"
-                              }`}
+                              } ${linkedHoverClass("noiseGateOut", i, ng === false ? "border-sky-500/40 text-sky-400/70" : "")}`}
                             >
                               {ng === true ? "GATE ON" : "Gate"}
                             </Button>
@@ -808,14 +927,15 @@ export function HeartbeatDashboard({
                               disabled={!canClick}
                               size="sm"
                               variant="outline"
-                              onClick={() => canClick && void invertPolarityOut(mac, i as 0 | 1 | 2 | 3, !inverted)}
+                              {...getLinkHoverProps("polarityOut", i)}
+                              onClick={() => canClick && void invertPolarityOut(mac, i, !inverted)}
                               className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
                                 inverted === true
                                   ? "border-primary/60 bg-primary/20 text-primary hover:bg-primary/25"
                                   : inverted === false
                                     ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-primary/40 hover:text-primary/80"
                                     : "border-border/30 bg-muted/10 text-muted-foreground/30"
-                              }`}
+                              } ${linkedHoverClass("polarityOut", i, inverted === false ? "border-primary/40 text-primary/80" : "")}`}
                             >
                               {inverted === true ? "INVERTED" : "Polarity"}
                             </Button>
@@ -823,9 +943,14 @@ export function HeartbeatDashboard({
                         })()}
                         <EqBandDialog
                           triggerLabel="EQ Out"
-                          title={`Output EQ - Ch ${CH_LABELS[i]}`}
+                          title={`Output EQ - Ch ${channelLabels[i] ?? i + 1}`}
+                          triggerClassName={linkedHoverClass("outputEq", i, "border-border/60 text-foreground/70")}
+                          onTriggerMouseEnter={getLinkHoverProps("outputEq", i).onMouseEnter}
+                          onTriggerMouseLeave={getLinkHoverProps("outputEq", i).onMouseLeave}
+                          onTriggerFocus={getLinkHoverProps("outputEq", i).onFocus}
+                          onTriggerBlur={getLinkHoverProps("outputEq", i).onBlur}
                           mac={mac}
-                          channel={i as 0 | 1 | 2 | 3}
+                          channel={i}
                           target="output"
                           bands={channelParams?.channels[i]?.eqOut}
                         />
@@ -864,8 +989,8 @@ export function HeartbeatDashboard({
                   "{state}",
                   pendingBridgeNext ? dict.dialogs.limiterDetails.on : dict.dialogs.limiterDetails.off
                 )
-                .replace("{pairA}", CH_LABELS[pendingBridgePair * 2])
-                .replace("{pairB}", CH_LABELS[pendingBridgePair * 2 + 1])
+                .replace("{pairA}", channelLabels[pendingBridgePair * 2] ?? String(pendingBridgePair * 2 + 1))
+                .replace("{pairB}", channelLabels[pendingBridgePair * 2 + 1] ?? String(pendingBridgePair * 2 + 2))
             : dict.dialogs.heartbeat.changeBridgeModeFallback
         }
         confirmLabel={bridgeBusy ? dict.dialogs.heartbeat.applying : dict.dialogs.heartbeat.applyBridgeChange}

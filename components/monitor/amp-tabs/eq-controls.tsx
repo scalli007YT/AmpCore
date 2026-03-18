@@ -499,10 +499,37 @@ export function EqBandDialog({
   onTriggerBlur?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [previewBands, setPreviewBands] = useState<EqBand[] | null>(null);
   const { copyEq, pasteEq, canPasteEq, lastError } = useClipboardStore();
   const dict = useI18n();
   const { setEqBandType, setEqBandFreq, setEqBandGain, setEqBandQ, setCrossoverEnabled, setCrossoverFreq } =
     useAmpActions();
+  const isDraggingRef = useRef(false);
+  const clearPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!bands) {
+      setPreviewBands(null);
+      return;
+    }
+    if (!isDraggingRef.current) {
+      setPreviewBands((prev) => {
+        if (!prev) return null;
+        return bands.map((band) => ({ ...band }));
+      });
+    }
+  }, [bands]);
+
+  useEffect(() => {
+    return () => {
+      if (clearPreviewTimerRef.current) {
+        clearTimeout(clearPreviewTimerRef.current);
+      }
+    };
+  }, []);
+
+  const displayBands = previewBands ?? bands;
+  const cloneBands = (source: EqBand[]) => source.map((band) => ({ ...band }));
 
   const handleCopy = () => {
     if (bands) {
@@ -546,6 +573,41 @@ export function EqBandDialog({
     });
 
     toast.success("Pasted EQ settings");
+  };
+
+  const handleChartPreviewChange = (bandIdx: number, next: Partial<Pick<EqBand, "freq" | "gain" | "q">>) => {
+    setPreviewBands((prev) => {
+      const source = prev ?? (bands ? cloneBands(bands) : null);
+      if (!source || !source[bandIdx]) return source;
+      const updated = [...source];
+      updated[bandIdx] = {
+        ...updated[bandIdx],
+        ...next
+      };
+      return updated;
+    });
+  };
+
+  const handleChartCommit = (bandIdx: number, next: Partial<Pick<EqBand, "freq" | "gain" | "q">>) => {
+    if (mac === undefined || channel === undefined || target === undefined || !bands || !bands[bandIdx]) return;
+
+    const isHpLp = bandIdx === 0 || bandIdx === 9;
+    if (next.freq !== undefined) {
+      if (isHpLp) {
+        const kind: CrossoverKind = bandIdx === 0 ? "hp" : "lp";
+        void setCrossoverFreq(mac, channel, target, kind, next.freq);
+      } else {
+        void setEqBandFreq(mac, channel, target, bandIdx, next.freq);
+      }
+    }
+
+    if (!isHpLp && next.gain !== undefined) {
+      void setEqBandGain(mac, channel, target, bandIdx, next.gain);
+    }
+
+    if (!isHpLp && next.q !== undefined) {
+      void setEqBandQ(mac, channel, target, bandIdx, next.q);
+    }
   };
 
   return (
@@ -596,13 +658,36 @@ export function EqBandDialog({
         <DialogHeader className="pb-4">
           <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
         </DialogHeader>
-        {bands && (
+        {displayBands && (
           <>
             <div className="px-3">
-              <EqCurveChart bands={bands} />
+              <EqCurveChart
+                bands={displayBands}
+                interactive={mac !== undefined && channel !== undefined && target !== undefined}
+                onBandPreviewChange={handleChartPreviewChange}
+                onBandCommit={handleChartCommit}
+                onDragStart={() => {
+                  isDraggingRef.current = true;
+                  if (clearPreviewTimerRef.current) {
+                    clearTimeout(clearPreviewTimerRef.current);
+                  }
+                  if (bands) {
+                    setPreviewBands(cloneBands(bands));
+                  }
+                }}
+                onDragEnd={() => {
+                  isDraggingRef.current = false;
+                  if (clearPreviewTimerRef.current) {
+                    clearTimeout(clearPreviewTimerRef.current);
+                  }
+                  clearPreviewTimerRef.current = setTimeout(() => {
+                    setPreviewBands(null);
+                  }, 1500);
+                }}
+              />
             </div>
             <div className="overflow-x-auto">
-              <EqParamStrip bands={bands} mac={mac} channel={channel} target={target} />
+              <EqParamStrip bands={displayBands} mac={mac} channel={channel} target={target} />
             </div>
           </>
         )}

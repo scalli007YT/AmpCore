@@ -498,20 +498,48 @@ export function EqBandDialog({
   onTriggerFocus?: () => void;
   onTriggerBlur?: () => void;
 }) {
+  type ChartPatch = Partial<Pick<EqBand, "freq" | "gain" | "q">>;
+
   const [open, setOpen] = useState(false);
   const [previewBands, setPreviewBands] = useState<EqBand[] | null>(null);
+  const [pendingChartPatches, setPendingChartPatches] = useState<Record<number, ChartPatch>>({});
   const { copyEq, pasteEq, canPasteEq, lastError } = useClipboardStore();
   const dict = useI18n();
   const { setEqBandType, setEqBandFreq, setEqBandGain, setEqBandQ, setCrossoverEnabled, setCrossoverFreq } =
     useAmpActions();
   const isDraggingRef = useRef(false);
-  const clearPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const patchAppliedOnBand = (band: EqBand, patch: ChartPatch): boolean => {
+    const matchesFreq = patch.freq === undefined || band.freq === patch.freq;
+    const matchesGain = patch.gain === undefined || Math.abs(band.gain - patch.gain) <= 0.05;
+    const matchesQ = patch.q === undefined || Math.abs(band.q - patch.q) <= 0.005;
+    return matchesFreq && matchesGain && matchesQ;
+  };
 
   useEffect(() => {
     if (!bands) {
       setPreviewBands(null);
+      setPendingChartPatches({});
       return;
     }
+
+    setPendingChartPatches((prev) => {
+      const entries = Object.entries(prev);
+      if (entries.length === 0) return prev;
+      let changed = false;
+      const next: Record<number, ChartPatch> = {};
+      for (const [idxKey, patch] of entries) {
+        const idx = Number(idxKey);
+        const band = bands[idx];
+        if (!band || patchAppliedOnBand(band, patch)) {
+          changed = true;
+          continue;
+        }
+        next[idx] = patch;
+      }
+      return changed ? next : prev;
+    });
+
     if (!isDraggingRef.current) {
       setPreviewBands((prev) => {
         if (!prev) return null;
@@ -520,15 +548,14 @@ export function EqBandDialog({
     }
   }, [bands]);
 
-  useEffect(() => {
-    return () => {
-      if (clearPreviewTimerRef.current) {
-        clearTimeout(clearPreviewTimerRef.current);
-      }
-    };
-  }, []);
-
-  const displayBands = previewBands ?? bands;
+  const baseDisplayBands = previewBands ?? bands;
+  const displayBands =
+    !baseDisplayBands || Object.keys(pendingChartPatches).length === 0
+      ? baseDisplayBands
+      : baseDisplayBands.map((band, idx) => {
+          const patch = pendingChartPatches[idx];
+          return patch ? { ...band, ...patch } : band;
+        });
   const cloneBands = (source: EqBand[]) => source.map((band) => ({ ...band }));
 
   const handleCopy = () => {
@@ -592,7 +619,10 @@ export function EqBandDialog({
     if (mac === undefined || channel === undefined || target === undefined || !bands || !bands[bandIdx]) return;
 
     const isHpLp = bandIdx === 0 || bandIdx === 9;
+    const patch: ChartPatch = {};
+
     if (next.freq !== undefined) {
+      patch.freq = next.freq;
       if (isHpLp) {
         const kind: CrossoverKind = bandIdx === 0 ? "hp" : "lp";
         void setCrossoverFreq(mac, channel, target, kind, next.freq);
@@ -602,11 +632,34 @@ export function EqBandDialog({
     }
 
     if (!isHpLp && next.gain !== undefined) {
+      patch.gain = next.gain;
       void setEqBandGain(mac, channel, target, bandIdx, next.gain);
     }
 
     if (!isHpLp && next.q !== undefined) {
+      patch.q = next.q;
       void setEqBandQ(mac, channel, target, bandIdx, next.q);
+    }
+
+    if (patch.freq !== undefined || patch.gain !== undefined || patch.q !== undefined) {
+      setPendingChartPatches((prev) => ({
+        ...prev,
+        [bandIdx]: {
+          ...(prev[bandIdx] ?? {}),
+          ...patch
+        }
+      }));
+
+      setPreviewBands((prev) => {
+        const source = prev ?? (bands ? cloneBands(bands) : null);
+        if (!source || !source[bandIdx]) return source;
+        const updated = [...source];
+        updated[bandIdx] = {
+          ...updated[bandIdx],
+          ...patch
+        };
+        return updated;
+      });
     }
   };
 
@@ -668,21 +721,13 @@ export function EqBandDialog({
                 onBandCommit={handleChartCommit}
                 onDragStart={() => {
                   isDraggingRef.current = true;
-                  if (clearPreviewTimerRef.current) {
-                    clearTimeout(clearPreviewTimerRef.current);
-                  }
                   if (bands) {
                     setPreviewBands(cloneBands(bands));
                   }
                 }}
                 onDragEnd={() => {
                   isDraggingRef.current = false;
-                  if (clearPreviewTimerRef.current) {
-                    clearTimeout(clearPreviewTimerRef.current);
-                  }
-                  clearPreviewTimerRef.current = setTimeout(() => {
-                    setPreviewBands(null);
-                  }, 1500);
+                  setPreviewBands(null);
                 }}
               />
             </div>

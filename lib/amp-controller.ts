@@ -594,7 +594,7 @@ class AmpController extends EventEmitter {
           clearTimeout(pending.timeout);
           this.pendingFc27ByIp.delete(ip);
           pending.resolve(Buffer.concat(pending.frames));
-        }, 100);
+        }, 20);
         break;
       }
 
@@ -790,7 +790,7 @@ class AmpController extends EventEmitter {
           this.pendingFc27ByIp.delete(ip);
         }
         reject(new Error(`FC=27 request for ${ip}:${channel} timed out`));
-      }, 5000);
+      }, 2000);
 
       this.pendingFc27ByIp.set(ip, {
         frames: [],

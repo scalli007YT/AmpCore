@@ -24,12 +24,36 @@ import { COLORS } from "@/lib/colors";
 import { OUTPUT_TRIM_MAX_DB, OUTPUT_TRIM_MIN_DB, OUTPUT_VOLUME_MAX_DB, OUTPUT_VOLUME_MIN_DB } from "@/lib/constants";
 import { getLinkedChannels, type LinkScope } from "@/lib/amp-action-linking";
 import { getChannelLabels } from "@/lib/channel-labels";
-import { voltageToMeterDb, rmsToPeakVoltage, formatDbfs } from "@/lib/generic";
+import { convertDelayUnits, type DelayUnit, voltageToMeterDb, rmsToPeakVoltage, formatDbfs } from "@/lib/generic";
 import { getPowerModeName } from "@/lib/parse-channel-data";
 import { useI18n } from "@/components/layout/i18n-provider";
 
 const POWER_MODE_OPTIONS = [0, 1, 2] as const;
 type BridgePair = number;
+
+type DelayDraft = {
+  ms: string;
+  meters: string;
+  feet: string;
+};
+
+function formatDelayDraft(ms: number): DelayDraft {
+  const converted = convertDelayUnits(ms, "ms");
+
+  return {
+    ms: converted.ms.toLocaleString("en-US", { maximumFractionDigits: 1 }),
+    meters: converted.meters.toLocaleString("en-US", { maximumFractionDigits: 2 }),
+    feet: converted.feet.toLocaleString("en-US", { maximumFractionDigits: 2 })
+  };
+}
+
+function parseDraftNumber(raw: string): number | null {
+  const normalized = raw.trim().replace(",", ".");
+  if (normalized.length === 0) return null;
+
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 function DelayPopover({
   delayMs,
@@ -53,20 +77,39 @@ function DelayPopover({
   onButtonBlur?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [inputVal, setInputVal] = useState("");
+  const [draft, setDraft] = useState<DelayDraft>(() => formatDelayDraft(delayMs ?? 0));
+
+  const maxDelayUnits = convertDelayUnits(maxMs, "ms");
 
   const handleOpen = (next: boolean) => {
     if (next) {
-      setInputVal(delayMs !== undefined ? delayMs.toLocaleString("en-US", { maximumFractionDigits: 1 }) : "0");
+      setDraft(formatDelayDraft(delayMs ?? 0));
     }
     setOpen(next);
   };
 
   const commit = () => {
-    const parsed = Number.parseFloat(inputVal.replace(",", "."));
-    if (!Number.isFinite(parsed) || parsed < 0) return;
-    void onSet(Math.min(maxMs, parsed));
+    const parsedMs = parseDraftNumber(draft.ms);
+    if (parsedMs === null || parsedMs < 0) return;
+
+    const clampedMs = Math.min(maxMs, parsedMs);
+    setDraft(formatDelayDraft(clampedMs));
+    void onSet(clampedMs);
     setOpen(false);
+  };
+
+  const updateDraft = (unit: DelayUnit, rawValue: string) => {
+    const parsed = parseDraftNumber(rawValue);
+
+    if (parsed === null) {
+      setDraft((prev) => ({ ...prev, [unit]: rawValue }));
+      return;
+    }
+
+    if (parsed < 0) return;
+
+    const nextMs = Math.min(maxMs, convertDelayUnits(parsed, unit).ms);
+    setDraft(formatDelayDraft(nextMs));
   };
 
   const active = delayMs !== undefined && delayMs > 0;
@@ -95,28 +138,62 @@ function DelayPopover({
           <span className="text-[9px] text-muted-foreground mt-0.5">{label}</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-44 p-0" side="right" align="center">
+      <PopoverContent className="w-56 p-0" side="right" align="center">
         <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
           <span className="text-xs font-semibold">Delay</span>
           <span className="text-[10px] text-muted-foreground">0 - {maxMs} ms</span>
         </div>
         <div className="px-3 py-3 space-y-2">
-          <div className="flex items-center gap-1.5">
-            <Input
-              autoFocus
-              type="number"
-              min={0}
-              max={maxMs}
-              step={0.1}
-              value={inputVal}
-              onChange={(e) => setInputVal(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commit();
-                if (e.key === "Escape") setOpen(false);
-              }}
-              className="h-8 text-sm font-mono tabular-nums"
-            />
-            <span className="text-xs text-muted-foreground shrink-0 w-5">ms</span>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Input
+                autoFocus
+                type="number"
+                min={0}
+                max={maxMs}
+                step={0.1}
+                value={draft.ms}
+                onChange={(e) => updateDraft("ms", e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commit();
+                  if (e.key === "Escape") setOpen(false);
+                }}
+                className="h-8 text-sm font-mono tabular-nums"
+              />
+              <span className="text-xs text-muted-foreground shrink-0 w-7">ms</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="number"
+                min={0}
+                max={maxDelayUnits.meters}
+                step={0.01}
+                value={draft.meters}
+                onChange={(e) => updateDraft("meters", e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commit();
+                  if (e.key === "Escape") setOpen(false);
+                }}
+                className="h-8 text-sm font-mono tabular-nums"
+              />
+              <span className="text-xs text-muted-foreground shrink-0 w-7">m</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="number"
+                min={0}
+                max={maxDelayUnits.feet}
+                step={0.01}
+                value={draft.feet}
+                onChange={(e) => updateDraft("feet", e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commit();
+                  if (e.key === "Escape") setOpen(false);
+                }}
+                className="h-8 text-sm font-mono tabular-nums"
+              />
+              <span className="text-xs text-muted-foreground shrink-0 w-7">ft</span>
+            </div>
           </div>
           <div className="flex gap-1.5">
             <Button size="sm" className="flex-1 h-7 text-xs" onClick={commit}>

@@ -4,6 +4,17 @@
  * Shared pure utility functions used across the application.
  */
 
+const SPEED_OF_SOUND_M_PER_S = 343;
+const FEET_PER_METER = 3.280839895013123;
+
+export type DelayUnit = "ms" | "meters" | "feet";
+
+export type DelayUnitValues = {
+  ms: number;
+  meters: number;
+  feet: number;
+};
+
 /**
  * Format a runtime value (in minutes) as a human-readable string.
  * e.g. 125 → "2h 5min"
@@ -12,6 +23,41 @@ export function formatRuntime(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return `${h}h ${m}min`;
+}
+
+/**
+ * Convert delay values between milliseconds, meters, and feet.
+ * Assumes a nominal speed of sound of 343 m/s.
+ */
+export function convertDelayUnits(value: number, unit: DelayUnit): DelayUnitValues {
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  switch (unit) {
+    case "ms": {
+      const meters = (safeValue / 1000) * SPEED_OF_SOUND_M_PER_S;
+      return {
+        ms: safeValue,
+        meters,
+        feet: meters * FEET_PER_METER
+      };
+    }
+    case "meters": {
+      const ms = (safeValue / SPEED_OF_SOUND_M_PER_S) * 1000;
+      return {
+        ms,
+        meters: safeValue,
+        feet: safeValue * FEET_PER_METER
+      };
+    }
+    case "feet": {
+      const meters = safeValue / FEET_PER_METER;
+      return {
+        ms: (meters / SPEED_OF_SOUND_M_PER_S) * 1000,
+        meters,
+        feet: safeValue
+      };
+    }
+  }
 }
 
 /**

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeTheme } = require("electron");
 const path = require("path");
 const http = require("http");
 
@@ -68,10 +68,12 @@ async function startServer() {
 // --- Window ---------------------------------------------------------------
 
 function createWindow() {
+  const isDark = nativeTheme.shouldUseDarkColors;
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    backgroundColor: "#121212",
+    backgroundColor: isDark ? "#121212" : "#f5f5f5",
     show: true,
     title: "CVR AMP Controller",
     autoHideMenuBar: true,

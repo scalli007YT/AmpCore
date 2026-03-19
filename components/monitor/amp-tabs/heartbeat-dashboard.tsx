@@ -804,7 +804,7 @@ export function HeartbeatDashboard({
                       />
                       <div
                         className={`mt-1 rounded px-1 py-0.5 text-[9px] font-semibold w-full text-center ${
-                          isLimit ? "bg-red-500 text-white" : "bg-muted/30 text-muted-foreground/60"
+                          isLimit ? "bg-red-500 text-white" : "bg-muted/40 text-foreground/85"
                         }`}
                       >
                         Limit
@@ -816,7 +816,7 @@ export function HeartbeatDashboard({
                           <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
                             {v > 0.01 ? f1(v) : "0"}
                           </span>
-                          <span className="text-[9px] text-foreground/65 mt-0.5">V</span>
+                          <span className="text-[10px] text-muted-foreground mt-0.5">V</span>
                         </div>
                         <div
                           className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${a <= 0.001 ? "opacity-40" : ""}`}
@@ -824,7 +824,7 @@ export function HeartbeatDashboard({
                           <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
                             {a > 0.001 ? f1(a) : "0"}
                           </span>
-                          <span className="text-[9px] text-foreground/65 mt-0.5">A</span>
+                          <span className="text-[10px] text-muted-foreground mt-0.5">A</span>
                         </div>
                         <div className="flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1">
                           <span
@@ -832,7 +832,7 @@ export function HeartbeatDashboard({
                           >
                             {f0(temp)}
                           </span>
-                          <span className="text-[9px] text-foreground/65 mt-0.5">°C</span>
+                          <span className="text-[10px] text-muted-foreground mt-0.5">°C</span>
                         </div>
                         <VolumePopover
                           volumeDb={channelParams?.channels[i]?.volumeOut}

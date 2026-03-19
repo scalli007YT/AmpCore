@@ -221,7 +221,7 @@ export function AmpTabs() {
               {dict.monitor.ampTabs.devicesCount.replace("{count}", String(amps.length))}
             </p>
           </div>
-          <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-500">
+          <span className="rounded border border-emerald-500/50 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
             {onlineCount} {dict.monitor.online}
           </span>
         </div>

@@ -595,10 +595,10 @@ export function EqCurveChart({
               x={cx}
               y={cy + 22}
               textAnchor="middle"
-              className="fill-muted-foreground transition-opacity duration-200 ease-out"
+              className="fill-foreground/85 transition-opacity duration-200 ease-out"
               opacity={visible ? 0 : 1}
               pointerEvents="none"
-              fontSize={9}
+              fontSize={10}
             >
               {m.label}
             </text>

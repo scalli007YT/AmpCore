@@ -37,7 +37,7 @@ export function MonitorPage({ dictionary }: MonitorPageProps) {
                 </span>
               )}
               {amps.length > 0 && (
-                <span className="rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-500">
+                <span className="rounded-md border border-emerald-500/50 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
                   {online} {dictionary.online}
                 </span>
               )}

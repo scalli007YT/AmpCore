@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +40,7 @@ function normalizeInitialGroups(channelLabels: string[], groups: LinkGroup[]): L
 
 export function LinkingGroupsDialog({
   triggerLabel,
+  triggerIcon,
   triggerMode = "compact",
   title,
   description,
@@ -56,6 +58,7 @@ export function LinkingGroupsDialog({
   onSave
 }: {
   triggerLabel: string;
+  triggerIcon?: ReactNode;
   triggerMode?: "compact" | "card";
   title: string;
   description: string;
@@ -164,7 +167,10 @@ export function LinkingGroupsDialog({
           className="h-auto w-full items-center justify-between gap-3 px-3 py-2 text-left whitespace-normal"
           onClick={() => openDialog(true)}
         >
-          <span className="min-w-0 flex-1 text-sm font-medium leading-tight">{triggerLabel}</span>
+          <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium leading-tight">
+            {triggerIcon ? <span className="shrink-0 text-muted-foreground">{triggerIcon}</span> : null}
+            <span className="min-w-0 flex-1">{triggerLabel}</span>
+          </span>
           <span className="shrink-0 text-xs text-muted-foreground text-right">{status}</span>
         </Button>
       ) : (
@@ -175,6 +181,7 @@ export function LinkingGroupsDialog({
           className="h-6 px-2 text-[10px]"
           onClick={() => openDialog(true)}
         >
+          {triggerIcon ? <span className="shrink-0">{triggerIcon}</span> : null}
           {triggerLabel}: {status}
         </Button>
       )}

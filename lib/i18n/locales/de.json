@@ -41,6 +41,7 @@
       "matrix": "Matrix",
       "limiters": "Limiter",
       "presets": "Presets",
+      "currentPresetLabel": "Aktuelles Preset",
       "loading": "Lade...",
       "usedCount": "{count} belegt",
       "loadingPresets": "Lade Presets...",

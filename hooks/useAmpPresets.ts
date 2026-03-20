@@ -9,6 +9,8 @@ import { presetNameSchema, presetStoreRequestSchema } from "@/lib/validation/pre
 interface UseAmpPresetsReturn {
   /** Fetch preset names from the device and write them into AmpStore. */
   fetchPresets: (mac: string) => Promise<void>;
+  /** Refresh current preset/scenario name from device runtime state. */
+  refreshCurrentPreset: (mac: string) => Promise<void>;
   /** Recall a preset slot on the device. */
   recallPreset: (mac: string, slot: number, name?: string) => Promise<boolean>;
   /** Store current state into a preset slot with a name. */
@@ -39,7 +41,7 @@ interface UseAmpPresetsReturn {
  *   await fetchPresets(amp.mac);
  */
 export function useAmpPresets(): UseAmpPresetsReturn {
-  const { amps, setPresets } = useAmpStore();
+  const { amps, setPresets, updateAmpStatus } = useAmpStore();
   const [fetching, setFetching] = useState(false);
   const [recallingSlot, setRecallingSlot] = useState<number | null>(null);
   const [storingSlot, setStoringSlot] = useState<number | null>(null);
@@ -72,6 +74,21 @@ export function useAmpPresets(): UseAmpPresetsReturn {
 
         if (data.success && data.presets) {
           setPresets(mac, data.presets);
+
+          const currentRes = await fetch("/api/amp-presets/current", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ip: amp.ip, mac })
+          });
+
+          const currentData = (await currentRes.json()) as {
+            success: boolean;
+            currentPreset?: string | null;
+          };
+
+          if (currentRes.ok && currentData.success && typeof currentData.currentPreset === "string") {
+            updateAmpStatus(mac, { current_preset: currentData.currentPreset });
+          }
         } else {
           setError(data.error ?? "Unknown error from server");
         }
@@ -81,7 +98,34 @@ export function useAmpPresets(): UseAmpPresetsReturn {
         setFetching(false);
       }
     },
-    [amps, setPresets]
+    [amps, setPresets, updateAmpStatus]
+  );
+
+  const refreshCurrentPreset = useCallback(
+    async (mac: string) => {
+      const amp = amps.find((a) => a.mac === mac);
+      if (!amp?.ip) return;
+
+      try {
+        const currentRes = await fetch("/api/amp-presets/current", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ip: amp.ip, mac })
+        });
+
+        const currentData = (await currentRes.json()) as {
+          success: boolean;
+          currentPreset?: string | null;
+        };
+
+        if (currentRes.ok && currentData.success && typeof currentData.currentPreset === "string") {
+          updateAmpStatus(mac, { current_preset: currentData.currentPreset });
+        }
+      } catch {
+        // Non-critical background refresh.
+      }
+    },
+    [amps, updateAmpStatus]
   );
 
   const clearError = useCallback(() => setError(null), []);
@@ -116,6 +160,26 @@ export function useAmpPresets(): UseAmpPresetsReturn {
           throw new Error(data.error ?? `HTTP ${res.status}`);
         }
 
+        const currentRes = await fetch("/api/amp-presets/current", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ip: amp.ip, mac })
+        });
+
+        const currentData = (await currentRes.json()) as {
+          success: boolean;
+          currentPreset?: string | null;
+        };
+
+        if (currentRes.ok && currentData.success && typeof currentData.currentPreset === "string") {
+          updateAmpStatus(mac, { current_preset: currentData.currentPreset });
+        } else {
+          const fallbackName = amp.presets?.find((preset) => preset.slot === slot)?.name?.trim() || name?.trim();
+          if (fallbackName) {
+            updateAmpStatus(mac, { current_preset: fallbackName });
+          }
+        }
+
         toast.success(name ? `Recalled preset ${slot}: ${name}` : `Recalled preset ${slot}`);
         return true;
       } catch (err) {
@@ -127,7 +191,7 @@ export function useAmpPresets(): UseAmpPresetsReturn {
         setRecallingSlot(null);
       }
     },
-    [amps]
+    [amps, updateAmpStatus]
   );
 
   const storePreset = useCallback(
@@ -203,6 +267,7 @@ export function useAmpPresets(): UseAmpPresetsReturn {
 
   return {
     fetchPresets,
+    refreshCurrentPreset,
     recallPreset,
     storePreset,
     fetching,

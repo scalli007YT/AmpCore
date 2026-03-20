@@ -33,6 +33,7 @@ export function AmpTabs() {
   const { amps, getDisplayName, updateAmpStatus } = useAmpStore();
   const {
     fetchPresets,
+    refreshCurrentPreset,
     recallPreset,
     storePreset,
     fetching,
@@ -142,6 +143,18 @@ export function AmpTabs() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, selectedMac]);
+
+  useEffect(() => {
+    if (activeSection !== "preferences" || !selectedAmp?.reachable) return;
+
+    void refreshCurrentPreset(selectedAmp.mac);
+
+    const timer = setInterval(() => {
+      void refreshCurrentPreset(selectedAmp.mac);
+    }, 4000);
+
+    return () => clearInterval(timer);
+  }, [activeSection, selectedAmp?.mac, selectedAmp?.reachable, refreshCurrentPreset]);
 
   useEffect(() => {
     setActivePreset(null);
@@ -278,7 +291,7 @@ export function AmpTabs() {
             className="flex flex-col"
           >
             <div className="border-b border-border/50 px-3 pb-2 pt-2">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="relative flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     {selectedAmp.reachable ? dict.monitor.ampTabs.connected : dict.monitor.ampTabs.offline}
@@ -316,6 +329,9 @@ export function AmpTabs() {
                     }}
                   />
                 </div>
+                <span className="pointer-events-none absolute left-1/2 hidden max-w-[40%] -translate-x-1/2 truncate text-center text-xs text-muted-foreground xl:block">
+                  {dict.monitor.ampTabs.currentPresetLabel}: {selectedAmp.current_preset?.trim() || "---"}
+                </span>
                 <div className="flex items-center gap-2 text-[11px]">
                   <Badge variant="outline" className="font-mono">
                     {selectedAmp.ip ?? dict.monitor.ampTabs.noIp}
@@ -571,16 +587,20 @@ export function AmpTabs() {
                   </div>
                 </ConfirmActionDialog>
 
-                <div className="flex items-center gap-2 mb-3">
-                  <h3 className="text-sm font-semibold">{dict.monitor.ampTabs.presets}</h3>
-                  {fetching && (
-                    <span className="text-xs text-muted-foreground animate-pulse">{dict.monitor.ampTabs.loading}</span>
-                  )}
-                  {!fetching && selectedAmp.presets !== undefined && (
-                    <span className="text-xs text-muted-foreground">
-                      {dict.monitor.ampTabs.usedCount.replace("{count}", String(usedPresetCount))}
-                    </span>
-                  )}
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <h3 className="text-sm font-semibold">{dict.monitor.ampTabs.presets}</h3>
+                    {fetching && (
+                      <span className="text-xs text-muted-foreground animate-pulse">
+                        {dict.monitor.ampTabs.loading}
+                      </span>
+                    )}
+                    {!fetching && selectedAmp.presets !== undefined && (
+                      <span className="text-xs text-muted-foreground">
+                        {dict.monitor.ampTabs.usedCount.replace("{count}", String(usedPresetCount))}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {selectedAmp.presets !== undefined && (

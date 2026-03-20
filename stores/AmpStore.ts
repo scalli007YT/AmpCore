@@ -204,6 +204,8 @@ export interface AmpStatus {
   version?: string;
   /** Total runtime in minutes (from SN_TABLE, fetched once). */
   run_time?: number;
+  /** Last known current preset/scenario label reported or selected after recall. */
+  current_preset?: string;
   /** Raw FC=0 BASIC_INFO snapshot from discovery response. */
   basic_info?: AmpBasicInfo;
   /** Convenience mirrors from BASIC_INFO for quick access. */

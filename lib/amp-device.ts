@@ -431,6 +431,88 @@ export class CvrAmpDevice {
     });
   }
 
+  /**
+   * Request current scenario/preset name (Save/Recall FC=59, mode=4).
+   *
+   * Original software handles this as a Save_Recall_data payload with:
+   *   mode (byte) = 4
+   *   ch_x (byte)
+   *   buffers[32] = current scene/preset label
+   */
+  async queryCurrentPresetName(): Promise<string | undefined> {
+    const header: StructHeaderFields = {
+      functionCode: FuncCode.SAVE_RECALL,
+      statusCode: 2,
+      chx: 0,
+      link: 0,
+      inOutFlag: 0,
+      segment: 0
+    };
+
+    const body = Buffer.alloc(34, 0);
+    body.writeUInt8(4, 0);
+
+    const sock = await this.ensureSocket();
+    const packet = buildProtocolPacket({
+      ...header,
+      body,
+      machineMode: 0,
+      dataState: 0,
+      packetsCount: 1,
+      packetsStep: 1
+    });
+
+    return new Promise((resolve) => {
+      const collected: Buffer[] = [];
+
+      const collector = (msg: Buffer, rinfo: dgram.RemoteInfo) => {
+        if (rinfo.address === this.ampIp) {
+          collected.push(Buffer.from(msg));
+        }
+      };
+
+      sock.on("message", collector);
+      sock.send(packet, 0, packet.length, AMP_SEND_PORT, this.ampIp, (err) => {
+        if (err) {
+          sock.removeListener("message", collector);
+          resolve(undefined);
+        }
+      });
+
+      setTimeout(() => {
+        sock.removeListener("message", collector);
+
+        const fragments = collected.filter((p) => p.length > 10);
+        if (fragments.length === 0) {
+          resolve(undefined);
+          return;
+        }
+
+        fragments.sort((a, b) => a[7] - b[7]);
+        const assembledFrame = Buffer.concat(fragments.map((p) => p.slice(10)));
+        if (assembledFrame.length < 13) {
+          resolve(undefined);
+          return;
+        }
+
+        const responseBody = assembledFrame.slice(10, assembledFrame.length - 3);
+        if (responseBody.length < 34 || responseBody.readUInt8(0) !== 4) {
+          resolve(undefined);
+          return;
+        }
+
+        const nameBuf = responseBody.slice(2, 34);
+        const nullIdx = nameBuf.indexOf(0);
+        const currentPreset = nameBuf
+          .slice(0, nullIdx === -1 ? nameBuf.length : nullIdx)
+          .toString("ascii")
+          .trim();
+
+        resolve(currentPreset.length > 0 ? currentPreset : undefined);
+      }, 280);
+    });
+  }
+
   async queryHeartbeat(): Promise<Buffer> {
     /**
      * Lightweight HEARTBEAT query (FC=6)

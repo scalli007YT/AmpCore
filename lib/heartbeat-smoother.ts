@@ -5,7 +5,7 @@
  *
  *  Stage 1 — Median (window=5) on all sensor arrays.
  *             Kills single-frame spikes before they reach the UI.
- *             Applied to: temperatures, outputVoltages, outputCurrents,
+ *             Applied to: temperatures, outputVoltages,
  *             outputImpedance, inputVoltages, limiters, fanVoltage.
  *
  *  Stage 2 — Attack/release EMA on VU-meter channels (outputDbu, inputDbfs).
@@ -106,7 +106,7 @@ class MedianSmoother {
       // Smoothed numerics
       temperatures: arr(w.temperatures, raw.temperatures),
       outputVoltages,
-      outputCurrents: arr(w.outputCurrents, raw.outputCurrents),
+      outputCurrents: raw.outputCurrents,
       outputImpedance: arr(w.outputImpedance, raw.outputImpedance),
       inputVoltages: arr(w.inputVoltages, raw.inputVoltages),
       limiters: arr(w.limiters, raw.limiters),

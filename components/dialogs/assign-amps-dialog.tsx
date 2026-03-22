@@ -42,7 +42,7 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
   const [macInput, setMacInput] = useState("");
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [mode, setMode] = useState<"manual" | "scan">("manual");
+  const [mode, setMode] = useState<"manual" | "scan">("scan");
   const [scannedDevices, setScannedDevices] = useState<ScannedDevice[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState("");
@@ -141,6 +141,14 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
     setOpen(false);
   };
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (nextOpen) {
+      setMode("scan");
+      void handleScan();
+    }
+  };
+
   const totalAmps = currentProject.assigned_amps.length;
   const reachableAmps = currentProject.assigned_amps.filter(
     (a) => amps.find((s) => s.mac === a.mac)?.reachable === true
@@ -155,7 +163,7 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
           : "bg-orange-400";
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger ?? (
           <Button variant="outline" size="sm" className="gap-2">
@@ -169,7 +177,10 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{dict.dialogs.assignAmps.title}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Wifi className="h-4 w-4" />
+            {dict.dialogs.assignAmps.title}
+          </DialogTitle>
           <DialogDescription>{dict.dialogs.assignAmps.description}</DialogDescription>
         </DialogHeader>
 
@@ -244,7 +255,9 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
                 })}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground py-4 text-center">{dict.dialogs.assignAmps.noAmpsAssigned}</p>
+              <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+                {dict.dialogs.assignAmps.noAmpsAssigned}
+              </p>
             )}
           </div>
 
@@ -254,17 +267,6 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
 
             {/* Mode selector */}
             <div className="flex gap-2">
-              <Button
-                variant={mode === "manual" ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setMode("manual");
-                  setScanError("");
-                }}
-                className="flex-1"
-              >
-                {dict.dialogs.assignAmps.manualEntry}
-              </Button>
               <Button
                 variant={mode === "scan" ? "default" : "outline"}
                 size="sm"
@@ -276,6 +278,17 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
               >
                 <Wifi className="h-4 w-4 mr-2" />
                 {dict.dialogs.assignAmps.scanNetwork}
+              </Button>
+              <Button
+                variant={mode === "manual" ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setMode("manual");
+                  setScanError("");
+                }}
+                className="flex-1"
+              >
+                {dict.dialogs.assignAmps.manualEntry}
               </Button>
             </div>
 

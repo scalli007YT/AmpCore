@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useI18n } from "@/components/layout/i18n-provider";
+import { Trash2 } from "lucide-react";
 
 interface DeleteProjectDialogProps {
   project: Project | null;
@@ -47,7 +48,10 @@ export function DeleteProjectDialog({ project, open, onOpenChange }: DeleteProje
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{dict.dialogs.deleteProject.title}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Trash2 className="h-4 w-4" />
+            {dict.dialogs.deleteProject.title}
+          </DialogTitle>
           <DialogDescription>
             {dict.dialogs.deleteProject.confirmPrefix}{" "}
             <span className="font-medium text-foreground">{project?.name}</span>?{" "}

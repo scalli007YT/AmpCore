@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Link2 } from "lucide-react";
 import type { LinkGroup } from "@/lib/amp-action-linking";
 import { normalizeLinkingGroups, validateLinkGroup, type LinkingGroup } from "@/lib/linking-validator";
 
@@ -189,7 +190,10 @@ export function LinkingGroupsDialog({
       <Dialog open={open} onOpenChange={openDialog}>
         <DialogContent className="sm:max-w-sm" showCloseButton={!saving}>
           <DialogHeader>
-            <DialogTitle>{title}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="h-4 w-4" />
+              {title}
+            </DialogTitle>
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
 

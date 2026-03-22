@@ -10,6 +10,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { useI18n } from "@/components/layout/i18n-provider";
+import { CircleAlert } from "lucide-react";
 
 export function ConfirmActionDialog({
   open,
@@ -36,7 +37,10 @@ export function ConfirmActionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <CircleAlert className="h-4 w-4" />
+            {title}
+          </DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         {children}

@@ -116,7 +116,10 @@ export function SourceConfigDialog({
 
       <DialogContent className="sm:max-w-[980px]">
         <DialogHeader>
-          <DialogTitle>{dict.dialogs.sourceConfig.title}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <SlidersHorizontalIcon className="h-4 w-4" />
+            {dict.dialogs.sourceConfig.title}
+          </DialogTitle>
           <DialogDescription>{dict.dialogs.sourceConfig.description}</DialogDescription>
         </DialogHeader>
 

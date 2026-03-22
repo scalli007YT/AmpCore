@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useI18n } from "@/components/layout/i18n-provider";
+import { PencilLine } from "lucide-react";
 
 interface EditProjectDialogProps {
   project: Project | null;
@@ -65,7 +66,10 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{dict.dialogs.editProject.title}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <PencilLine className="h-4 w-4" />
+            {dict.dialogs.editProject.title}
+          </DialogTitle>
           <DialogDescription>{dict.dialogs.editProject.description}</DialogDescription>
         </DialogHeader>
 

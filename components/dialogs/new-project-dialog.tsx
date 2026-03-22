@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useI18n } from "@/components/layout/i18n-provider";
+import { FolderPlus } from "lucide-react";
 
 interface NewProjectDialogProps {
   open: boolean;
@@ -61,7 +62,10 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{dict.dialogs.newProject.title}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <FolderPlus className="h-4 w-4" />
+            {dict.dialogs.newProject.title}
+          </DialogTitle>
           <DialogDescription>{dict.dialogs.newProject.description}</DialogDescription>
         </DialogHeader>
 

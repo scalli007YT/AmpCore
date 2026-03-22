@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { VerticalDbMeter } from "@/components/monitor/vertical-db-meter";
 import { Separator } from "@/components/ui/separator";
-import { Copy, Clipboard } from "lucide-react";
+import { Copy, Clipboard, SlidersVertical } from "lucide-react";
 import { toast } from "sonner";
 import { COLORS } from "@/lib/colors";
 import { useI18n } from "@/components/layout/i18n-provider";
@@ -585,7 +585,10 @@ export function LimiterDetailsDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="sm:max-w-[680px]">
         <DialogHeader className="flex flex-row items-center gap-2">
-          <DialogTitle className="text-center flex-1">{channelName}</DialogTitle>
+          <DialogTitle className="text-center flex flex-1 items-center justify-center gap-2">
+            <SlidersVertical className="h-4 w-4" />
+            {channelName}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-4">

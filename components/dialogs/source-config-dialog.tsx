@@ -94,7 +94,8 @@ export function SourceConfigDialog({
     }
   };
 
-  const analogOptionCount = Math.max(1, Math.min(4, capabilities?.analogInputCount ?? 4));
+  const analogInputCount = capabilities?.analogInputCount ?? channels.length;
+  const analogOptionCount = Math.max(1, Math.min(16, analogInputCount));
 
   const getAnalogSelection = (sourceTypeLabel: string): string => {
     const match = /-(\d+)$/.exec(sourceTypeLabel);

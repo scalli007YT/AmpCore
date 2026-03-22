@@ -12,7 +12,7 @@
  *
  * Source: "Output RMS voltage" column in the official spec sheet.
  * The model substring is matched case-insensitively against the device name
- * returned by BASIC_INFO (e.g. "PASCAL ROSE DSP-2004").
+ * returned by BASIC_INFO (e.g. "DSP-2004").
  *
  * When per-channel RMS_MaxV is parsed from the device, replace this lookup.
  */

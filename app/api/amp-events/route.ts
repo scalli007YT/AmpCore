@@ -18,13 +18,18 @@
 
 import { ampController } from "@/lib/amp-controller";
 import type { DiscoveryEvent, HeartbeatEvent, OfflineEvent } from "@/lib/amp-controller";
+import { getSimulatedDiscoveryEvents, getSimulatedHeartbeatEvents } from "@/lib/simulated-amps";
 
 // Tell Next.js this route must not be statically pre-rendered
 export const dynamic = "force-dynamic";
 
-export async function GET(): Promise<Response> {
-  // Ensure the controller socket is started (idempotent)
-  ampController.start();
+export async function GET(request: Request): Promise<Response> {
+  const projectMode = new URL(request.url).searchParams.get("projectMode") === "demo" ? "demo" : "real";
+
+  // Ensure the controller socket is started (idempotent) for real-device projects.
+  if (projectMode === "real") {
+    ampController.start();
+  }
 
   let closed = false;
 
@@ -48,9 +53,32 @@ export async function GET(): Promise<Response> {
 
       const onOffline = (e: OfflineEvent) => send({ type: "offline", ...e });
 
-      ampController.on("discovery", onDiscovery);
-      ampController.on("heartbeat", onHeartbeat);
-      ampController.on("offline", onOffline);
+      if (projectMode === "real") {
+        ampController.on("discovery", onDiscovery);
+        ampController.on("heartbeat", onHeartbeat);
+        ampController.on("offline", onOffline);
+      }
+
+      const sendSimulatedDiscovery = () => {
+        for (const event of getSimulatedDiscoveryEvents()) {
+          send({ type: "discovery", ...event });
+        }
+      };
+
+      const sendSimulatedHeartbeat = () => {
+        for (const event of getSimulatedHeartbeatEvents()) {
+          send({ type: "heartbeat", ...event });
+        }
+      };
+
+      const demoEnabled = projectMode === "demo";
+      const demoDiscoveryTimer = demoEnabled ? setInterval(sendSimulatedDiscovery, 4_000) : null;
+      const demoHeartbeatTimer = demoEnabled ? setInterval(sendSimulatedHeartbeat, 500) : null;
+
+      if (demoEnabled) {
+        sendSimulatedDiscovery();
+        sendSimulatedHeartbeat();
+      }
 
       // Keepalive ping every 15 s to prevent proxy/browser timeouts
       const pingTimer = setInterval(() => send({ type: "ping" }), 15_000);
@@ -62,9 +90,13 @@ export async function GET(): Promise<Response> {
         if (closed) return;
         closed = true;
         clearInterval(pingTimer);
-        ampController.off("discovery", onDiscovery);
-        ampController.off("heartbeat", onHeartbeat);
-        ampController.off("offline", onOffline);
+        if (demoDiscoveryTimer) clearInterval(demoDiscoveryTimer);
+        if (demoHeartbeatTimer) clearInterval(demoHeartbeatTimer);
+        if (projectMode === "real") {
+          ampController.off("discovery", onDiscovery);
+          ampController.off("heartbeat", onHeartbeat);
+          ampController.off("offline", onOffline);
+        }
         try {
           controller.close();
         } catch {

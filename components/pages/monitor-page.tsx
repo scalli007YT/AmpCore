@@ -5,6 +5,7 @@ import { useProjectStore } from "@/stores/ProjectStore";
 import { useAmpStore } from "@/stores/AmpStore";
 import { useTabStore } from "@/stores/TabStore";
 import { AssignAmpsDialog } from "@/components/dialogs/assign-amps-dialog";
+import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
 import { AmpTabs } from "@/components/monitor/amp-tabs";
 import { NoProjectCard } from "@/components/monitor/no-project-card";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
@@ -41,7 +42,7 @@ export function MonitorPage({ dictionary }: MonitorPageProps) {
                   {online} {dictionary.online}
                 </span>
               )}
-              <AssignAmpsDialog />
+              {selectedProject.projectMode === "demo" ? <AssignDemoAmpsDialog /> : <AssignAmpsDialog />}
             </div>
           </div>
         </section>

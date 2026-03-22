@@ -6,6 +6,7 @@
  */
 
 import { ampController } from "@/lib/amp-controller";
+import { buildSimulatedFc27Hex, isSimulatedMac } from "@/lib/simulated-amps";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,21 @@ export async function GET(request: Request): Promise<Response> {
 
   if (!mac) {
     return Response.json({ error: "Missing mac parameter" }, { status: 400 });
+  }
+
+  if (isSimulatedMac(mac)) {
+    const hex = buildSimulatedFc27Hex(mac);
+    if (!hex) {
+      return Response.json({ success: false, error: `No simulated channel data for ${mac}` }, { status: 404 });
+    }
+
+    return Response.json({
+      success: true,
+      mac,
+      length: hex.length / 2,
+      hex,
+      simulated: true
+    });
   }
 
   try {

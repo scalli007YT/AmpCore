@@ -86,6 +86,7 @@ function fetchRuntime(mac: string): void {
  */
 export function useAmpPoller(): UseAmpPollerReturn {
   const pollingStore = usePollingStore();
+  const selectedProjectMode = useProjectStore((state) => state.selectedProject?.projectMode ?? "real");
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -105,7 +106,7 @@ export function useAmpPoller(): UseAmpPollerReturn {
     const connect = () => {
       if (!active) return;
 
-      const es = new EventSource("/api/amp-events");
+      const es = new EventSource(`/api/amp-events?projectMode=${encodeURIComponent(selectedProjectMode)}`);
       esRef.current = es;
 
       es.onopen = () => {
@@ -234,7 +235,7 @@ export function useAmpPoller(): UseAmpPollerReturn {
       }
       usePollingStore.getState().setIsPolling(false);
     };
-  }, []); // Run once — the SSE connection is long-lived
+  }, [selectedProjectMode]);
 
   return {
     isPolling: pollingStore.isPolling,

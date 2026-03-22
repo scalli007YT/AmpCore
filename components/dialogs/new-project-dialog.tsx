@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useProjectStore } from "@/stores/ProjectStore";
+import type { ProjectMode } from "@/stores/ProjectStore";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,6 +28,7 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
   const dict = useI18n();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [projectMode, setProjectMode] = useState<ProjectMode>("real");
   const [isCreating, setIsCreating] = useState(false);
 
   const handleCreate = async () => {
@@ -34,10 +36,11 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
 
     setIsCreating(true);
     try {
-      await createProject(name.trim(), description.trim());
+      await createProject(name.trim(), description.trim(), projectMode);
       toast.success(dict.dialogs.newProject.toastCreated.replace("{name}", name.trim()));
       setName("");
       setDescription("");
+      setProjectMode("real");
       onOpenChange(false);
     } catch (error) {
       toast.error(
@@ -85,6 +88,28 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
               onKeyDown={handleKeyDown}
               disabled={isCreating}
             />
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Project Mode</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant={projectMode === "real" ? "default" : "outline"}
+                onClick={() => setProjectMode("real")}
+                disabled={isCreating}
+              >
+                Real Amps
+              </Button>
+              <Button
+                type="button"
+                variant={projectMode === "demo" ? "default" : "outline"}
+                onClick={() => setProjectMode("demo")}
+                disabled={isCreating}
+              >
+                Demo Amps
+              </Button>
+            </div>
           </div>
         </div>
 

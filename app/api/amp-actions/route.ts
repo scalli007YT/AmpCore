@@ -46,6 +46,7 @@
 
 import { ampController } from "@/lib/amp-controller";
 import { CvrAmpDevice, FuncCode } from "@/lib/amp-device";
+import { applySimulatedAction, isSimulatedMac } from "@/lib/simulated-amps";
 import { ampActionRequestSchema, type AmpActionRequest } from "@/lib/validation/amp-actions";
 import { AMP_NAME_MAX_LENGTH } from "@/lib/constants";
 
@@ -104,6 +105,11 @@ export async function POST(request: Request): Promise<Response> {
 
   const body: AmpActionRequest = parsed.data;
   const { mac, action, channel, value } = body;
+
+  if (isSimulatedMac(mac)) {
+    applySimulatedAction(mac, body);
+    return Response.json({ ok: true, mac, action, channel, value, simulated: true });
+  }
 
   // Ensure controller is started
   ampController.start();

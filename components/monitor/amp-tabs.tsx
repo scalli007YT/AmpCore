@@ -431,7 +431,7 @@ export function AmpTabs() {
                           bridgePairs={selectedAmp.bridgePairs}
                           heartbeat={selectedAmp.heartbeat}
                           channels={selectedAmp.channelParams.channels}
-                          limiters={selectedAmp.heartbeat?.limiters ?? [0, 0, 0, 0]}
+                          limiters={selectedAmp.heartbeat?.limiters ?? selectedAmp.channelParams.channels.map(() => 0)}
                           showTitle={false}
                         />
                       </div>

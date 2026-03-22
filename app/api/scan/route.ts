@@ -1,9 +1,23 @@
 ﻿import { CvrAmpDevice } from "@/lib/amp-device";
 import { ampController } from "@/lib/amp-controller";
+import { getSimulatedScanDevices } from "@/lib/simulated-amps";
 import { NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const url = new URL(request.url);
+    const projectMode = url.searchParams.get("projectMode") === "demo" ? "demo" : "real";
+
+    if (projectMode === "demo") {
+      const devices = getSimulatedScanDevices();
+      return NextResponse.json({
+        success: devices.length > 0,
+        devicesCount: devices.length,
+        devices,
+        error: devices.length === 0 ? "No AMP devices found" : undefined
+      });
+    }
+
     let devices;
     try {
       // Use the AmpController's already-bound socket so we don't create a
@@ -13,10 +27,6 @@ export async function GET() {
       devices = await ampController.triggerDiscovery(1200);
     } catch (err) {
       throw err;
-    }
-
-    if (devices.length === 0) {
-      return NextResponse.json({ success: false, error: "No AMP devices found", devices: [] }, { status: 200 });
     }
 
     const foundDevices = devices.map((device) => ({
@@ -49,6 +59,10 @@ export async function GET() {
           }`
         );
       }
+    }
+
+    if (foundDevices.length === 0) {
+      return NextResponse.json({ success: false, error: "No AMP devices found", devices: [] }, { status: 200 });
     }
 
     return NextResponse.json({

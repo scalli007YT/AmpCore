@@ -679,7 +679,6 @@ export class CvrAmpDevice {
 
   private parseDeviceName(response: Buffer): string {
     // Device name: fixed offset 52, max 32 bytes, null-terminated ASCII
-    // e.g. "PASCAL ROSE DSP-2004"
     try {
       if (response.length >= 53) {
         const end = Math.min(52 + 32, response.length);

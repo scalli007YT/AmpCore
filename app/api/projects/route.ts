@@ -63,6 +63,7 @@ interface Project {
   id: string;
   name: string;
   description: string;
+  projectMode: "real" | "demo";
   updatedAt: string;
   assigned_amps: Array<{
     id: string;
@@ -74,8 +75,11 @@ interface Project {
 }
 
 function normalizeProject(project: Project): Project {
+  const projectMode = project.projectMode === "demo" ? "demo" : "real";
+
   return {
     ...project,
+    projectMode,
     assigned_amps: project.assigned_amps.map((amp) => {
       const fallbackOhms = amp.loadOhm ?? DEFAULT_CHANNEL_OHMS;
       const linking = normalizeAmpLinkConfig(amp.constants?.linking);
@@ -187,6 +191,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       name: string;
       description?: string;
+      projectMode?: "real" | "demo";
     };
 
     if (!body.name?.trim()) {
@@ -201,6 +206,7 @@ export async function POST(request: Request) {
       id,
       name: body.name.trim(),
       description: body.description?.trim() ?? "",
+      projectMode: body.projectMode === "demo" ? "demo" : "real",
       updatedAt: new Date().toISOString(),
       assigned_amps: []
     };

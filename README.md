@@ -43,6 +43,27 @@ Run Next.js + Electron together (desktop dev mode):
 pnpm electron:dev
 ```
 
+### Demo Simulation Mode
+
+When creating a project, choose `Demo Amps` as project mode.
+
+Demo projects use simulated amps only, while real projects use real discovered amps only.
+
+In demo projects, the app uses simulated amps for:
+
+- `/api/scan` (discoverable demo devices)
+- `/api/amp-events` (live discovery + heartbeat SSE)
+- `/api/amp-channel-data` (synthetic FC=27 payload)
+- `/api/amp-actions` (stateful simulated command handling)
+- `/api/amp-runtime/[mac]` (synthetic runtime minutes)
+
+Current default simulated models:
+
+- DSP-1002 (2 analog in, 2 out)
+- DSP-1004 (4 analog in, 4 out)
+- DSP-1002D (2 analog in, 2 out, 2 dante in)
+- DSP-1004D (4 analog in, 4 out, 4 dante in)
+
 ## Build
 
 Build the Next.js app:

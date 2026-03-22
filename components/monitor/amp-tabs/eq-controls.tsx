@@ -17,12 +17,12 @@ import {
   EQ_FILTER_TYPE_NAMES,
   getEqFilterTypeCapabilities
 } from "@/lib/parse-channel-data";
-import { EQ_BAND_LABELS, formatFreqFull } from "@/lib/eq";
+import { computeEqCurve, EQ_BAND_LABELS, formatFreqFull } from "@/lib/eq";
 import {
   CROSSOVER_FREQ_MIN_HZ,
   CROSSOVER_FREQ_MAX_HZ,
-  EQ_BAND_GAIN_MIN_DB,
   EQ_BAND_GAIN_MAX_DB,
+  EQ_BAND_GAIN_MIN_DB,
   EQ_BAND_Q_MIN,
   EQ_BAND_Q_MAX
 } from "@/lib/constants";
@@ -495,6 +495,77 @@ function EqParamStrip({
   );
 }
 
+function EqPreviewTriggerButton({
+  bands,
+  label,
+  subLabel,
+  className,
+  ...props
+}: React.ComponentProps<"button"> & {
+  bands?: EqBand[];
+  label: string;
+  subLabel?: string;
+}) {
+  const curve = bands ? computeEqCurve(bands, 40) : null;
+  const width = 64;
+  const height = 18;
+  const yMin = -18;
+  const yMax = 18;
+  const baselineY = ((yMax - 0) / (yMax - yMin)) * height;
+
+  const path =
+    curve && curve.length > 1
+      ? curve
+          .map((point, index) => {
+            const x = (index / (curve.length - 1)) * width;
+            const clampedGain = Math.max(yMin, Math.min(yMax, point.gain));
+            const y = ((yMax - clampedGain) / (yMax - yMin)) * height;
+            return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+          })
+          .join(" ")
+      : `M0,${baselineY.toFixed(2)} L${width},${baselineY.toFixed(2)}`;
+
+  const hasActiveCurve =
+    bands?.some(
+      (band, index) =>
+        !band.bypass &&
+        ((index > 0 && index < bands.length - 1 && Math.abs(band.gain) > 0.1) ||
+          index === 0 ||
+          index === bands.length - 1)
+    ) ?? false;
+
+  return (
+    <button
+      type="button"
+      aria-label={subLabel ? `${label} ${subLabel}` : label}
+      className={`flex h-12 w-full flex-col items-center justify-center rounded border px-1.5 py-1 select-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${className ?? ""}`}
+      {...props}
+    >
+      <div className="flex h-[18px] w-full items-center justify-center overflow-hidden rounded-sm bg-muted/20 px-1">
+        <svg viewBox={`0 0 ${width} ${height}`} className="h-[18px] w-full" aria-hidden="true" focusable="false">
+          <path
+            d={`M0,${baselineY.toFixed(2)} L${width},${baselineY.toFixed(2)}`}
+            className="stroke-border/80"
+            fill="none"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            d={path}
+            className={hasActiveCurve ? "stroke-foreground/90" : "stroke-muted-foreground/60"}
+            fill="none"
+            strokeWidth="1.25"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+      </div>
+      <span className="mt-0.5 text-[9px] leading-none tracking-wide text-muted-foreground">{subLabel ?? label}</span>
+    </button>
+  );
+}
+
 export function EqBandDialog({
   triggerLabel,
   title,
@@ -529,6 +600,7 @@ export function EqBandDialog({
   const dict = useI18n();
   const { applyEqBlock } = useAmpActions();
   const isDraggingRef = useRef(false);
+  const [triggerMainLabel, triggerSubLabel] = triggerLabel.split("|", 2);
 
   const patchAppliedOnBand = (band: EqBand, patch: ChartPatch): boolean => {
     const matchesFreq = patch.freq === undefined || band.freq === patch.freq;
@@ -683,22 +755,21 @@ export function EqBandDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button
+        <EqPreviewTriggerButton
           disabled={!bands}
-          size="sm"
-          variant="outline"
+          bands={bands}
+          label={triggerMainLabel}
+          subLabel={triggerSubLabel}
           onMouseEnter={onTriggerMouseEnter}
           onMouseLeave={onTriggerMouseLeave}
           onFocus={onTriggerFocus}
           onBlur={onTriggerBlur}
-          className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
+          className={`flex h-12 w-full flex-col items-center justify-center rounded border px-1.5 py-1 select-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
             !bands
               ? "border-border/30 bg-muted/10 text-muted-foreground/30"
-              : "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-border/60 hover:text-foreground/70"
+              : "border-border/65 bg-muted/25 text-foreground/85 hover:border-border/70 hover:bg-muted/40"
           } ${triggerClassName ?? ""}`}
-        >
-          {triggerLabel}
-        </Button>
+        />
       </DialogTrigger>
       <DialogContent className="w-[min(64rem,95vw)] max-w-none sm:max-w-none gap-0">
         <div className="absolute top-4 right-20 flex gap-2 z-10">

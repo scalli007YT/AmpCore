@@ -47,7 +47,15 @@ export function LimiterBlock({
     setPeakLimiterThreshold
   } = useAmpActions();
   const { updateAmpChannelOhms } = useProjectStore();
-  const vuOutputDbu = vu?.outputDbu ?? heartbeat?.outputDbu?.map(() => null) ?? [null, null, null, null];
+  const vuOutputDbu = vu?.outputDbu ?? heartbeat?.outputDbu?.map(() => null) ?? channels.map(() => null);
+  const limiterGridColsClass =
+    channels.length <= 1
+      ? "grid-cols-1"
+      : channels.length === 2
+        ? "grid-cols-2"
+        : channels.length === 3
+          ? "grid-cols-3"
+          : "grid-cols-4";
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -55,7 +63,7 @@ export function LimiterBlock({
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Limiters</span>
       )}
 
-      <div className="grid w-full grid-cols-2 gap-2 xl:grid-cols-4">
+      <div className={`grid w-full gap-2 ${limiterGridColsClass}`}>
         {channels.map((ch, i) => {
           const rms = ch.rmsLimiter;
           const peak = ch.peakLimiter;

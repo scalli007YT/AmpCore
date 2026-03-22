@@ -18,6 +18,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
 import { Trash2, Plus, Wifi } from "lucide-react";
 import { useI18n } from "@/components/layout/i18n-provider";
 
@@ -50,6 +51,10 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
 
   const currentProject = projects.find((p) => p.id === selectedProject.id);
   if (!currentProject) return null;
+
+  if (currentProject.projectMode === "demo") {
+    return <AssignDemoAmpsDialog trigger={trigger} />;
+  }
 
   const handleAddAmp = async () => {
     if (!macInput.trim()) {
@@ -102,7 +107,7 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
     setIsScanning(true);
     setScanError("");
     try {
-      const response = await fetch("/api/scan");
+      const response = await fetch(`/api/scan?projectMode=${encodeURIComponent(currentProject.projectMode ?? "real")}`);
       if (!response.ok) {
         setScanError(dict.dialogs.assignAmps.scanFailedNoDevices);
         setScannedDevices([]);

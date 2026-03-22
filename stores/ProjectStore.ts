@@ -9,7 +9,10 @@ import {
   serializeAmpLinkConfig,
   type AmpLinkConfig
 } from "@/lib/amp-action-linking";
+import { isSimulatedMac } from "@/lib/simulated-amp-identity";
 import { useAmpActionLinkStore } from "./AmpActionLinkStore";
+
+export type ProjectMode = "real" | "demo";
 
 export interface AmpChannelConstants {
   ohms: number;
@@ -38,6 +41,7 @@ export interface Project {
   id: string;
   name: string;
   description: string;
+  projectMode: ProjectMode;
   updatedAt: string;
   assigned_amps: Array<{
     id: string;
@@ -56,7 +60,7 @@ interface ProjectStore {
   setSelectedProject: (project: Project | null) => void;
   setLoading: (loading: boolean) => void;
   selectProjectById: (id: string) => void;
-  createProject: (name: string, description?: string) => Promise<Project>;
+  createProject: (name: string, description?: string, projectMode?: ProjectMode) => Promise<Project>;
   renameProject: (id: string, name: string, description: string) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   addAmpToProject: (projectId: string, mac: string) => Promise<void>;
@@ -153,11 +157,11 @@ export const useProjectStore = create<ProjectStore>()(
         }
       },
 
-      createProject: async (name: string, description = "") => {
+      createProject: async (name: string, description = "", projectMode: ProjectMode = "real") => {
         const response = await fetch("/api/projects", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, description })
+          body: JSON.stringify({ name, description, projectMode })
         });
 
         const data = await response.json();
@@ -209,6 +213,7 @@ export const useProjectStore = create<ProjectStore>()(
         const { projects, selectedProject } = get();
         const project = projects.find((p) => p.id === projectId);
         const normalizedMac = mac.toUpperCase();
+        const simulated = isSimulatedMac(normalizedMac);
 
         if (!project) {
           throw new Error("Project not found");
@@ -217,6 +222,14 @@ export const useProjectStore = create<ProjectStore>()(
         // Check if already exists
         if (project.assigned_amps.some((amp) => amp.mac.toUpperCase() === normalizedMac)) {
           throw new Error("This MAC address is already assigned");
+        }
+
+        if (project.projectMode === "demo" && !simulated) {
+          throw new Error("Demo projects accept simulated amps only");
+        }
+
+        if (project.projectMode === "real" && simulated) {
+          throw new Error("Real projects cannot contain simulated amps");
         }
 
         const runtimeAmp = useAmpStore.getState().amps.find((amp) => amp.mac.toUpperCase() === normalizedMac);

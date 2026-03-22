@@ -1,5 +1,6 @@
 import { ampController } from "@/lib/amp-controller";
 import { CvrAmpDevice } from "@/lib/amp-device";
+import { getSimulatedRuntimeMinutes, isSimulatedMac } from "@/lib/simulated-amps";
 import { NextResponse } from "next/server";
 
 /**
@@ -11,6 +12,14 @@ import { NextResponse } from "next/server";
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ mac: string }> }) {
   const { mac } = await params;
+
+  if (isSimulatedMac(mac)) {
+    const minutes = getSimulatedRuntimeMinutes(mac);
+    if (minutes === null) {
+      return NextResponse.json({ success: false, error: "Simulated device not found" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true, minutes, simulated: true });
+  }
 
   const ip = ampController.getIpForMac(mac);
   if (!ip) {

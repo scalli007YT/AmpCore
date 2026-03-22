@@ -122,20 +122,20 @@ function DelayPopover({
           onMouseLeave={onButtonMouseLeave}
           onFocus={onButtonFocus}
           onBlur={onButtonBlur}
-          className={`flex flex-col items-center w-full rounded border px-1.5 py-1 select-none transition-colors ${
+          className={`flex h-12 flex-col items-center justify-center w-full rounded border px-1.5 py-1 select-none transition-colors ${
             delayMs === undefined
               ? "border-border/30 bg-muted/10 opacity-40 pointer-events-none"
               : active
-                ? "border-sky-500/60 bg-sky-500/15 hover:bg-sky-500/25"
-                : "border-border/60 bg-muted/30 hover:border-sky-500/40 hover:bg-muted/50"
+                ? "border-sky-500/65 bg-muted/30 hover:border-sky-400/80"
+                : "border-border/65 bg-muted/25 hover:border-sky-500/45 hover:bg-muted/40"
           } ${buttonClassName ?? ""}`}
         >
           <span
-            className={`font-mono text-[13px] font-semibold tabular-nums leading-none ${active ? "text-sky-400" : ""}`}
+            className={`font-mono text-[13px] font-semibold tabular-nums leading-none ${active ? "text-sky-600 dark:text-sky-300" : "text-foreground/90"}`}
           >
             {delayMs !== undefined ? delayMs.toFixed(1) : "~"}
           </span>
-          <span className="text-[9px] text-muted-foreground mt-0.5">{label}</span>
+          <span className="text-[9px] mt-0.5 tracking-wide text-muted-foreground">{label}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-56 p-0" side="right" align="center">
@@ -236,6 +236,7 @@ function VolumePopover({
 }) {
   const [open, setOpen] = useState(false);
   const [inputVal, setInputVal] = useState("");
+  const hasValue = volumeDb !== undefined;
 
   const handleOpen = (next: boolean) => {
     if (next) {
@@ -261,16 +262,18 @@ function VolumePopover({
           onMouseLeave={onButtonMouseLeave}
           onFocus={onButtonFocus}
           onBlur={onButtonBlur}
-          className={`flex flex-col items-center w-full rounded border px-1.5 py-1 select-none transition-colors ${
+          className={`flex h-12 flex-col items-center justify-center w-full rounded border px-1.5 py-1 select-none transition-colors ${
             volumeDb === undefined
               ? "border-border/30 bg-muted/10 opacity-40 pointer-events-none"
-              : "border-border/60 bg-muted/30 hover:border-primary/40 hover:bg-muted/50"
+              : "border-border/65 bg-muted/25 hover:border-cyan-500/45 hover:bg-muted/40"
           } ${buttonClassName ?? ""}`}
         >
-          <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+          <span
+            className={`font-mono text-[13px] font-semibold tabular-nums leading-none ${hasValue ? "text-cyan-700 dark:text-cyan-300" : "text-foreground/90"}`}
+          >
             {volumeDb !== undefined ? volumeDb.toFixed(1) : "~"}
           </span>
-          <span className="text-[9px] text-foreground/65 mt-0.5">{label}</span>
+          <span className="text-[9px] mt-0.5 tracking-wide text-muted-foreground">{label}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-44 p-0" side="right" align="center">
@@ -362,20 +365,20 @@ function DbPopover({
           onMouseLeave={onButtonMouseLeave}
           onFocus={onButtonFocus}
           onBlur={onButtonBlur}
-          className={`flex flex-col items-center w-full rounded border px-1.5 py-1 select-none transition-colors ${
+          className={`flex h-12 flex-col items-center justify-center w-full rounded border px-1.5 py-1 select-none transition-colors ${
             valueDb === undefined
               ? "border-border/30 bg-muted/10 opacity-40 pointer-events-none"
               : active
-                ? "border-amber-500/60 bg-amber-500/15 hover:bg-amber-500/25"
-                : "border-border/60 bg-muted/30 hover:border-amber-500/40 hover:bg-muted/50"
+                ? "border-amber-500/65 bg-muted/30 hover:border-amber-400/80"
+                : "border-border/65 bg-muted/25 hover:border-amber-500/45 hover:bg-muted/40"
           } ${buttonClassName ?? ""}`}
         >
           <span
-            className={`font-mono text-[13px] font-semibold tabular-nums leading-none ${active ? "text-amber-400" : ""}`}
+            className={`font-mono text-[13px] font-semibold tabular-nums leading-none ${active ? "text-amber-600 dark:text-amber-300" : "text-foreground/90"}`}
           >
             {valueDb !== undefined ? valueDb.toFixed(1) : "~"}
           </span>
-          <span className="text-[9px] text-muted-foreground mt-0.5">{label}</span>
+          <span className="text-[9px] mt-0.5 tracking-wide text-muted-foreground">{label}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-44 p-0" side="right" align="center">
@@ -468,22 +471,24 @@ function PowerModePill({
     <>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
-          <Button
-            size="sm"
-            variant="outline"
+          <button
+            type="button"
             disabled={mode === undefined}
             onMouseEnter={onTriggerMouseEnter}
             onMouseLeave={onTriggerMouseLeave}
             onFocus={onTriggerFocus}
             onBlur={onTriggerBlur}
-            className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
+            className={`flex h-12 w-full flex-col items-center justify-center rounded border px-1.5 py-1 select-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
               mode === undefined
                 ? "border-border/30 bg-muted/10 text-muted-foreground/30"
-                : "border-border/40 bg-muted/20 text-muted-foreground/80 hover:border-primary/40 hover:text-foreground"
+                : "border-border/65 bg-muted/25 text-foreground/85 hover:border-primary/45 hover:bg-muted/40"
             } ${triggerClassName ?? ""}`}
           >
-            {mode === undefined ? dict.dialogs.heartbeat.powerMode : getPowerModeName(currentMode)}
-          </Button>
+            <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+              {mode === undefined ? "~" : getPowerModeName(currentMode)}
+            </span>
+            <span className="mt-0.5 text-[9px] leading-none tracking-wide text-muted-foreground">Mode</span>
+          </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="center" className="w-44">
           <DropdownMenuLabel>{dict.dialogs.heartbeat.outputPowerMode}</DropdownMenuLabel>
@@ -888,7 +893,7 @@ export function HeartbeatDashboard({
                       </div>
                       <div className="flex flex-col items-stretch gap-1.5 mt-3 w-full">
                         <div
-                          className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${v <= 0.01 ? "opacity-40" : ""}`}
+                          className={`flex min-h-[48px] flex-col items-center justify-center rounded border border-border/65 bg-muted/35 px-1.5 py-1 ${v <= 0.01 ? "opacity-45" : ""}`}
                         >
                           <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
                             {v > 0.01 ? f1(v) : "0"}
@@ -896,14 +901,14 @@ export function HeartbeatDashboard({
                           <span className="text-[10px] text-muted-foreground mt-0.5">V</span>
                         </div>
                         <div
-                          className={`flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1 ${a <= 0.001 ? "opacity-40" : ""}`}
+                          className={`flex min-h-[48px] flex-col items-center justify-center rounded border border-border/65 bg-muted/35 px-1.5 py-1 ${a <= 0.01 ? "opacity-45" : ""}`}
                         >
                           <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                            {a > 0.001 ? f1(a) : "0"}
+                            {a > 0.01 ? f1(a) : "0"}
                           </span>
                           <span className="text-[10px] text-muted-foreground mt-0.5">A</span>
                         </div>
-                        <div className="flex flex-col items-center rounded border border-border/60 bg-muted/30 px-1.5 py-1">
+                        <div className="flex min-h-[48px] flex-col items-center justify-center rounded border border-border/65 bg-muted/35 px-1.5 py-1">
                           <span
                             className={`font-mono text-[13px] font-semibold tabular-nums leading-none ${temp > 80 ? "text-red-500" : ""}`}
                           >
@@ -932,8 +937,8 @@ export function HeartbeatDashboard({
                             "delayOut",
                             i,
                             (channelParams?.channels[i]?.delayOut ?? 0) > 0
-                              ? "bg-sky-500/25"
-                              : "border-sky-500/40 bg-muted/50"
+                              ? "ring-1 ring-sky-500/45"
+                              : "ring-1 ring-sky-500/30"
                           )}
                           onButtonMouseEnter={getLinkHoverProps("delayOut", i).onMouseEnter}
                           onButtonMouseLeave={getLinkHoverProps("delayOut", i).onMouseLeave}
@@ -951,8 +956,8 @@ export function HeartbeatDashboard({
                             "trimOut",
                             i,
                             (channelParams?.channels[i]?.trimOut ?? 0) !== 0
-                              ? "bg-amber-500/25"
-                              : "border-amber-500/40 bg-muted/50"
+                              ? "ring-1 ring-amber-500/45"
+                              : "ring-1 ring-amber-500/30"
                           )}
                           onButtonMouseEnter={getLinkHoverProps("trimOut", i).onMouseEnter}
                           onButtonMouseLeave={getLinkHoverProps("trimOut", i).onMouseLeave}
@@ -969,72 +974,84 @@ export function HeartbeatDashboard({
                           const muted = channelParams?.channels[i]?.muteOut;
                           const canClick = muted !== undefined;
                           return (
-                            <Button
+                            <button
+                              type="button"
                               disabled={!canClick}
-                              size="sm"
                               {...getLinkHoverProps("muteOut", i)}
                               onClick={() => canClick && void muteOut(mac, i, !muted)}
-                              className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
+                              className={`flex h-12 w-full flex-col items-center justify-center rounded border px-1.5 py-1 select-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                                 muted === true
-                                  ? "border-orange-500/60 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 hover:text-orange-400"
+                                  ? "border-orange-500/65 bg-orange-500/15 text-orange-700 dark:text-orange-300 hover:bg-orange-500/20"
                                   : muted === false
-                                    ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-orange-500/40 hover:text-orange-400/70"
-                                    : "border-border/30 bg-muted/10 text-muted-foreground/30"
+                                    ? "border-border/65 bg-muted/25 text-foreground/85 hover:border-orange-500/45 hover:bg-muted/40 hover:text-orange-700 dark:hover:text-orange-300"
+                                    : "border-border/35 bg-muted/10 text-muted-foreground/45"
                               } ${linkedHoverClass("muteOut", i, muted === false ? "border-orange-500/40 text-orange-400/70" : "")}`}
-                              variant="outline"
                             >
-                              {muted === true ? "MUTED" : "Mute Out"}
-                            </Button>
+                              <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                                {muted === true ? "ON" : muted === false ? "OFF" : "~"}
+                              </span>
+                              <span className="mt-0.5 text-[9px] leading-none tracking-wide text-muted-foreground">
+                                Mute Out
+                              </span>
+                            </button>
                           );
                         })()}
                         {(() => {
                           const ng = channelParams?.channels[i]?.noiseGateOut;
                           const canClick = ng !== undefined;
                           return (
-                            <Button
+                            <button
+                              type="button"
                               disabled={!canClick}
-                              size="sm"
-                              variant="outline"
                               {...getLinkHoverProps("noiseGateOut", i)}
                               onClick={() => canClick && void noiseGateOut(mac, i, !ng)}
-                              className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
+                              className={`flex h-12 w-full flex-col items-center justify-center rounded border px-1.5 py-1 select-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                                 ng === true
-                                  ? "border-sky-500/60 bg-sky-500/20 text-sky-400"
+                                  ? "border-sky-500/65 bg-sky-500/15 text-sky-700 dark:text-sky-300"
                                   : ng === false
-                                    ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-sky-500/40 hover:text-sky-400/70"
-                                    : "border-border/30 bg-muted/10 text-muted-foreground/30"
+                                    ? "border-border/65 bg-muted/25 text-foreground/85 hover:border-sky-500/45 hover:bg-muted/40 hover:text-sky-700 dark:hover:text-sky-300"
+                                    : "border-border/35 bg-muted/10 text-muted-foreground/45"
                               } ${linkedHoverClass("noiseGateOut", i, ng === false ? "border-sky-500/40 text-sky-400/70" : "")}`}
                             >
-                              {ng === true ? "GATE ON" : "Gate"}
-                            </Button>
+                              <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                                {ng === true ? "ON" : ng === false ? "OFF" : "~"}
+                              </span>
+                              <span className="mt-0.5 text-[9px] leading-none tracking-wide text-muted-foreground">
+                                Gate
+                              </span>
+                            </button>
                           );
                         })()}
                         {(() => {
                           const inverted = channelParams?.channels[i]?.invertedOut;
                           const canClick = inverted !== undefined;
                           return (
-                            <Button
+                            <button
+                              type="button"
                               disabled={!canClick}
-                              size="sm"
-                              variant="outline"
                               {...getLinkHoverProps("polarityOut", i)}
                               onClick={() => canClick && void invertPolarityOut(mac, i, !inverted)}
-                              className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
+                              className={`flex h-12 w-full flex-col items-center justify-center rounded border px-1.5 py-1 select-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                                 inverted === true
-                                  ? "border-primary/60 bg-primary/20 text-primary hover:bg-primary/25"
+                                  ? "border-primary/65 bg-primary/15 text-primary hover:bg-primary/20"
                                   : inverted === false
-                                    ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-primary/40 hover:text-primary/80"
-                                    : "border-border/30 bg-muted/10 text-muted-foreground/30"
+                                    ? "border-border/65 bg-muted/25 text-foreground/85 hover:border-primary/45 hover:bg-muted/40 hover:text-primary"
+                                    : "border-border/35 bg-muted/10 text-muted-foreground/45"
                               } ${linkedHoverClass("polarityOut", i, inverted === false ? "border-primary/40 text-primary/80" : "")}`}
                             >
-                              {inverted === true ? "INVERTED" : "Polarity"}
-                            </Button>
+                              <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
+                                {inverted === true ? "INV" : inverted === false ? "NORM" : "~"}
+                              </span>
+                              <span className="mt-0.5 text-[9px] leading-none tracking-wide text-muted-foreground">
+                                Polarity
+                              </span>
+                            </button>
                           );
                         })()}
                         <EqBandDialog
-                          triggerLabel="EQ Out"
+                          triggerLabel="Edit|EQ Out"
                           title={`Output EQ - Ch ${channelLabels[i] ?? i + 1}`}
-                          triggerClassName={linkedHoverClass("outputEq", i, "border-border/60 text-foreground/70")}
+                          triggerClassName={linkedHoverClass("outputEq", i, "border-border/70 text-foreground")}
                           onTriggerMouseEnter={getLinkHoverProps("outputEq", i).onMouseEnter}
                           onTriggerMouseLeave={getLinkHoverProps("outputEq", i).onMouseLeave}
                           onTriggerFocus={getLinkHoverProps("outputEq", i).onFocus}

@@ -8,8 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MATRIX_GAIN_MAX_DB, MATRIX_GAIN_MIN_DB } from "@/lib/constants";
 
-const INPUT_LABELS = ["AIn1", "AIn2", "AIn3", "AIn4"];
-
 function MatrixCell({
   gain,
   active,
@@ -122,7 +120,10 @@ export function MatrixGrid({
   analogInputCount?: number;
 }) {
   const { setMatrixGain, setMatrixActive } = useAmpActions();
-  const enabledInputCount = Math.max(0, Math.min(4, analogInputCount ?? 4));
+  const matrixSourceCount = channels.reduce((max, channel) => Math.max(max, channel.matrix.length), 0);
+  const headerCount = Math.max(matrixSourceCount, analogInputCount ?? 0);
+  const sourceLabels = Array.from({ length: headerCount }, (_, idx) => `AIn${idx + 1}`);
+  const enabledInputCount = Math.max(0, Math.min(headerCount, analogInputCount ?? headerCount));
 
   return (
     <div className="overflow-auto">
@@ -130,7 +131,7 @@ export function MatrixGrid({
         <thead>
           <tr>
             <th className="w-16" />
-            {INPUT_LABELS.map((label, idx) => (
+            {sourceLabels.map((label, idx) => (
               <th
                 key={label}
                 className={`text-center text-xs font-semibold pb-1 w-24 ${
@@ -148,16 +149,17 @@ export function MatrixGrid({
               <td className="text-xs font-semibold text-muted-foreground pr-2 text-right align-middle whitespace-nowrap">
                 {ch.outputName}
               </td>
-              {ch.matrix.map((cell) => {
-                const enabled = cell.source < enabledInputCount;
+              {sourceLabels.map((_, sourceIndex) => {
+                const cell = ch.matrix[sourceIndex] ?? { source: sourceIndex, gain: 0, active: false };
+                const enabled = sourceIndex < enabledInputCount;
                 return (
-                  <td key={cell.source} className="align-middle">
+                  <td key={sourceIndex} className="align-middle">
                     <MatrixCell
                       gain={cell.gain}
                       active={cell.active}
                       disabled={!enabled}
-                      onToggleActive={() => enabled && setMatrixActive(mac, ch.channel, cell.source, !cell.active)}
-                      onGainChange={(db) => enabled && setMatrixGain(mac, ch.channel, cell.source, db)}
+                      onToggleActive={() => enabled && setMatrixActive(mac, ch.channel, sourceIndex, !cell.active)}
+                      onGainChange={(db) => enabled && setMatrixGain(mac, ch.channel, sourceIndex, db)}
                     />
                   </td>
                 );

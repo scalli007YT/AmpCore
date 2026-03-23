@@ -807,6 +807,20 @@ export function EqBandDialog({
                 interactive={mac !== undefined && channel !== undefined && target !== undefined}
                 onBandPreviewChange={handleChartPreviewChange}
                 onBandCommit={handleChartCommit}
+                onBandBypassToggle={(bandIdx) => {
+                  if (mac === undefined || channel === undefined || target === undefined || !bands || !bands[bandIdx])
+                    return;
+                  const nextBands = bands.map((band) => ({ ...band }));
+                  nextBands[bandIdx] = { ...nextBands[bandIdx], bypass: !nextBands[bandIdx].bypass };
+                  void applyEqBlock(mac, channel, target, nextBands);
+                }}
+                onBandResetGain={(bandIdx) => {
+                  if (mac === undefined || channel === undefined || target === undefined || !bands || !bands[bandIdx])
+                    return;
+                  const nextBands = bands.map((band) => ({ ...band }));
+                  nextBands[bandIdx] = { ...nextBands[bandIdx], gain: 0 };
+                  void applyEqBlock(mac, channel, target, nextBands);
+                }}
                 onDragStart={() => {
                   isDraggingRef.current = true;
                   if (bands) {

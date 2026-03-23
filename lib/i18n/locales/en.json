@@ -74,6 +74,13 @@
     "noDevicesTitle": "No devices found yet",
     "noDevicesDescription": "Click \"Start Scan\" to discover AMP devices"
   },
+  "menus": {
+    "eqBand": {
+      "bypass": "Bypass",
+      "enable": "Enable",
+      "resetGain": "Reset dB"
+    }
+  },
   "dialogs": {
     "common": {
       "cancel": "Cancel",

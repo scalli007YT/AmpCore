@@ -733,11 +733,11 @@ export function HeartbeatDashboard({
                               onClick={() => canClick && void muteIn(mac, i, !muted)}
                               className={`w-full h-auto py-1 text-[11px] font-semibold transition-colors ${
                                 muted === true
-                                  ? "border-orange-500/60 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 hover:text-orange-400"
+                                  ? "border-destructive/60 bg-destructive/20 text-destructive hover:bg-destructive/30 hover:text-destructive"
                                   : muted === false
-                                    ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-orange-500/40 hover:text-orange-400/70"
+                                    ? "border-border/40 bg-muted/20 text-muted-foreground/50 hover:border-destructive/40 hover:text-destructive/70"
                                     : "border-border/30 bg-muted/10 text-muted-foreground/30"
-                              } ${linkedHoverClass("muteIn", i, muted === false ? "border-orange-500/40 text-orange-400/70" : "")}`}
+                              } ${linkedHoverClass("muteIn", i, muted === false ? "border-destructive/40 text-destructive/70" : "")}`}
                               variant="outline"
                             >
                               {muted === true ? "MUTED" : "Mute In"}
@@ -981,11 +981,11 @@ export function HeartbeatDashboard({
                               onClick={() => canClick && void muteOut(mac, i, !muted)}
                               className={`flex h-12 w-full flex-col items-center justify-center rounded border px-1.5 py-1 select-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                                 muted === true
-                                  ? "border-orange-500/65 bg-orange-500/15 text-orange-700 dark:text-orange-300 hover:bg-orange-500/20"
+                                  ? "border-destructive/65 bg-destructive/15 text-destructive hover:bg-destructive/20"
                                   : muted === false
-                                    ? "border-border/65 bg-muted/25 text-foreground/85 hover:border-orange-500/45 hover:bg-muted/40 hover:text-orange-700 dark:hover:text-orange-300"
+                                    ? "border-border/65 bg-muted/25 text-foreground/85 hover:border-destructive/45 hover:bg-muted/40 hover:text-destructive"
                                     : "border-border/35 bg-muted/10 text-muted-foreground/45"
-                              } ${linkedHoverClass("muteOut", i, muted === false ? "border-orange-500/40 text-orange-400/70" : "")}`}
+                              } ${linkedHoverClass("muteOut", i, muted === false ? "border-destructive/40 text-destructive/70" : "")}`}
                             >
                               <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
                                 {muted === true ? "ON" : muted === false ? "OFF" : "~"}
@@ -1033,11 +1033,11 @@ export function HeartbeatDashboard({
                               onClick={() => canClick && void invertPolarityOut(mac, i, !inverted)}
                               className={`flex h-12 w-full flex-col items-center justify-center rounded border px-1.5 py-1 select-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                                 inverted === true
-                                  ? "border-primary/65 bg-primary/15 text-primary hover:bg-primary/20"
+                                  ? "border-destructive/65 bg-destructive/15 text-destructive hover:bg-destructive/20"
                                   : inverted === false
-                                    ? "border-border/65 bg-muted/25 text-foreground/85 hover:border-primary/45 hover:bg-muted/40 hover:text-primary"
+                                    ? "border-border/65 bg-muted/25 text-foreground/85 hover:border-destructive/45 hover:bg-muted/40 hover:text-destructive"
                                     : "border-border/35 bg-muted/10 text-muted-foreground/45"
-                              } ${linkedHoverClass("polarityOut", i, inverted === false ? "border-primary/40 text-primary/80" : "")}`}
+                              } ${linkedHoverClass("polarityOut", i, inverted === false ? "border-destructive/40 text-destructive/80" : "")}`}
                             >
                               <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
                                 {inverted === true ? "INV" : inverted === false ? "NORM" : "~"}

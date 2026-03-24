@@ -581,12 +581,12 @@ function EditableChannelName({
     <button
       type="button"
       onClick={startEdit}
-      className={`group flex items-center gap-1 text-[10px] font-semibold leading-none hover:underline cursor-pointer ${
+      className={`group relative inline-flex items-center text-[10px] font-semibold leading-none hover:underline cursor-pointer ${
         active ? "text-primary" : "text-muted-foreground/70"
       } ${className ?? ""}`}
     >
       {displayName}
-      <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+      <Pencil className="pointer-events-none absolute left-full top-1/2 ml-1 h-2.5 w-2.5 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-60" />
     </button>
   );
 }

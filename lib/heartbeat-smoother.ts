@@ -5,8 +5,8 @@
  *
  *  Stage 1 — Median (window=5) on all sensor arrays.
  *             Kills single-frame spikes before they reach the UI.
- *             Applied to: temperatures, outputVoltages,
- *             outputImpedance, inputVoltages, limiters, fanVoltage.
+ *             Applied to: temperatures, outputImpedance,
+ *             inputVoltages, limiters, fanVoltage.
  *
  *  Stage 2 — Attack/release EMA on VU-meter channels (outputDbu, inputDbfs).
  *             Ticked every rAF frame (~16 ms) for 60 fps bar animation.
@@ -22,7 +22,10 @@ import type { HeartbeatData } from "@/stores/AmpStore";
 const WINDOW_SIZE = 5; // median window (odd → clean median)
 const VU_ATTACK_MS = 20; // τ rising
 const VU_RELEASE_MS = 300; // τ falling
+const VU_OUTPUT_TARGET_FOLLOW_MS = 45; // output-only target easing to avoid staircase jitter
 const VU_FLOOR = -100; // below this → treat as silent (null)
+const VU_MIN_DT_MS = 1;
+const VU_MAX_DT_MS = 80;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -49,8 +52,6 @@ const channels = (n: number) => Array.from({ length: n }, () => new ChannelWindo
 
 interface SensorWindows {
   temperatures: ChannelWindow[];
-  outputVoltages: ChannelWindow[];
-  outputCurrents: ChannelWindow[];
   outputImpedance: ChannelWindow[];
   inputVoltages: ChannelWindow[];
   limiters: ChannelWindow[];
@@ -61,8 +62,6 @@ interface SensorWindows {
 function makeWindows(): SensorWindows {
   return {
     temperatures: channels(5),
-    outputVoltages: [],
-    outputCurrents: [],
     outputImpedance: [],
     inputVoltages: [],
     limiters: [],
@@ -81,20 +80,18 @@ class MedianSmoother {
 
   smooth(raw: HeartbeatData, maxDb: number): HeartbeatData {
     const { w } = this;
-    w.outputVoltages = ensureWindowCount(w.outputVoltages, raw.outputVoltages.length);
-    w.outputCurrents = ensureWindowCount(w.outputCurrents, raw.outputCurrents.length);
     w.outputImpedance = ensureWindowCount(w.outputImpedance, raw.outputImpedance.length);
     w.inputVoltages = ensureWindowCount(w.inputVoltages, raw.inputVoltages.length);
     w.limiters = ensureWindowCount(w.limiters, raw.limiters.length);
     w.outputStates = ensureWindowCount(w.outputStates, raw.outputStates.length);
     const arr = (wins: ChannelWindow[], vals: number[]) => wins.map((win, i) => win.push(vals[i]) ?? vals[i]);
 
-    const outputVoltages = arr(w.outputVoltages, raw.outputVoltages);
+    const outputVoltages = raw.outputVoltages;
     const outputStates = arr(w.outputStates, raw.outputStates).map((v) => Math.round(v));
 
-    // Recompute outputDbu from the already-smoothed voltages so spike samples
-    // in the raw packet never propagate to the VU targets.
-    const outputDbu = outputVoltages.map((v) => (v > 0 ? Math.round((Math.log10(v) * 20 - maxDb) * 10) / 10 : -100));
+    // Derive output dB target directly from live output voltages; Stage 2 EMA
+    // provides the visual smoothing for meter motion.
+    const outputDbu = outputVoltages.map((v) => (v > 0 ? Math.log10(v) * 20 - maxDb : -100));
 
     return {
       // Discrete / state — pass through unchanged
@@ -112,7 +109,7 @@ class MedianSmoother {
       limiters: arr(w.limiters, raw.limiters),
       fanVoltage: w.fanVoltage.push(raw.fanVoltage) ?? raw.fanVoltage,
 
-      // outputDbu recomputed from smoothed voltages (not forwarded raw)
+      // outputDbu recomputed from live voltages for smoother VU targeting
       outputDbu,
       inputDbfs: raw.inputDbfs
     };
@@ -128,17 +125,35 @@ class MedianSmoother {
 class VuChannel {
   private current: number | null = null;
   private target: number | null = null;
+  private smoothedTarget: number | null = null;
+
+  constructor(private readonly targetFollowMs = 0) {}
 
   setTarget(value: number | null): void {
     this.target = value != null && value > VU_FLOOR ? value : null;
+    if (this.target === null) {
+      this.smoothedTarget = null;
+    } else if (this.smoothedTarget === null) {
+      this.smoothedTarget = this.target;
+    }
   }
 
   tick(dt: number): number | null {
-    const { target: t } = this;
+    const clampedDt = Math.max(VU_MIN_DT_MS, Math.min(VU_MAX_DT_MS, dt));
+    const { target } = this;
+
+    if (target !== null && this.targetFollowMs > 0) {
+      this.smoothedTarget =
+        this.smoothedTarget === null ? target : ema(this.smoothedTarget, target, this.targetFollowMs, clampedDt);
+    } else {
+      this.smoothedTarget = target;
+    }
+
+    const t = this.smoothedTarget;
 
     if (t === null) {
       if (this.current === null) return null;
-      this.current = ema(this.current, VU_FLOOR, VU_RELEASE_MS, dt);
+      this.current = ema(this.current, VU_FLOOR, VU_RELEASE_MS, clampedDt);
       if (this.current <= VU_FLOOR + 0.5) {
         this.current = null;
         return null;
@@ -152,13 +167,14 @@ class VuChannel {
     }
 
     const tau = t >= this.current ? VU_ATTACK_MS : VU_RELEASE_MS;
-    this.current = ema(this.current, t, tau, dt);
+    this.current = ema(this.current, t, tau, clampedDt);
     return this.current;
   }
 
   reset(): void {
     this.current = null;
     this.target = null;
+    this.smoothedTarget = null;
   }
 }
 
@@ -174,7 +190,10 @@ class VuSmoother {
   private ensureLength(kind: "out" | "ins", count: number): VuChannel[] {
     const current = kind === "out" ? this.out : this.ins;
     if (current.length === count) return current;
-    const next = Array.from({ length: count }, (_, index) => current[index] ?? new VuChannel());
+    const next = Array.from(
+      { length: count },
+      (_, index) => current[index] ?? new VuChannel(kind === "out" ? VU_OUTPUT_TARGET_FOLLOW_MS : 0)
+    );
     if (kind === "out") this.out = next;
     else this.ins = next;
     return next;

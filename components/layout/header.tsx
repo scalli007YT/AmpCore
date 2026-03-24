@@ -35,6 +35,7 @@ export function Header({ lang, dictionary, projects = [], loading = false }: Hea
   const { selectedProject, selectProjectById } = useProjectStore();
   const pathname = usePathname();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
@@ -44,6 +45,10 @@ export function Header({ lang, dictionary, projects = [], loading = false }: Hea
   const monitorHref = `/${lang}/monitor`;
   const scannerHref = `/${lang}/scanner`;
   const navLinks = [{ label: dictionary.monitor, href: monitorHref }];
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.electronWindow?.isDesktop) {
@@ -93,22 +98,28 @@ export function Header({ lang, dictionary, projects = [], loading = false }: Hea
           {/* Left — logo + hamburger */}
           <div className="relative z-10 flex items-center gap-4">
             <div className="app-region-no-drag">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon">
-                    <Menu className="h-4.5 w-4.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem asChild>
-                    <Link href={monitorHref}>{dictionary.monitor}</Link>
-                  </DropdownMenuItem>
-                  <Separator />
-                  <DropdownMenuItem asChild>
-                    <Link href={scannerHref}>{dictionary.deviceScanner}</Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {mounted ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon">
+                      <Menu className="h-4.5 w-4.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem asChild>
+                      <Link href={monitorHref}>{dictionary.monitor}</Link>
+                    </DropdownMenuItem>
+                    <Separator />
+                    <DropdownMenuItem asChild>
+                      <Link href={scannerHref}>{dictionary.deviceScanner}</Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button variant="ghost" size="icon" disabled>
+                  <Menu className="h-4.5 w-4.5" />
+                </Button>
+              )}
             </div>
 
             {isDesktop ? (
@@ -146,70 +157,85 @@ export function Header({ lang, dictionary, projects = [], loading = false }: Hea
           {/* Right — theme toggle + project selector */}
           <div className="relative z-10 flex items-center justify-end gap-2">
             <div className="app-region-no-drag flex items-center gap-2">
-              <ModeToggle />
-              <LanguageModeToggle
-                lang={lang}
-                label={dictionary.language}
-                englishLabel={dictionary.english}
-                germanLabel={dictionary.german}
-              />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-36 min-w-0 justify-between font-normal"
-                    disabled={loading}
-                  >
-                    <span className="truncate">
-                      {loading ? dictionary.loading : (selectedProject?.name ?? dictionary.selectProject)}
-                    </span>
+              {mounted ? (
+                <>
+                  <ModeToggle />
+                  <LanguageModeToggle
+                    lang={lang}
+                    label={dictionary.language}
+                    englishLabel={dictionary.english}
+                    germanLabel={dictionary.german}
+                  />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-36 min-w-0 justify-between font-normal"
+                        disabled={loading}
+                      >
+                        <span className="truncate">
+                          {loading ? dictionary.loading : (selectedProject?.name ?? dictionary.selectProject)}
+                        </span>
+                        <ChevronDown className="ml-1 size-4 shrink-0 text-muted-foreground" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      {projects.map((project) => (
+                        <DropdownMenuItem
+                          key={project.id}
+                          onSelect={() => selectProjectById(project.id)}
+                          className="flex items-center justify-between gap-1 pr-1"
+                        >
+                          <span
+                            className={`truncate flex-1 ${selectedProject?.id === project.id ? "font-medium" : ""}`}
+                          >
+                            {project.name}
+                          </span>
+                          <span className="flex items-center gap-0.5 shrink-0">
+                            <button
+                              className="rounded p-0.5 hover:bg-accent hover:text-accent-foreground"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setEditProject(project);
+                              }}
+                              aria-label={`Edit ${project.name}`}
+                            >
+                              <Pencil className="size-3.5" />
+                            </button>
+                            <button
+                              className="rounded p-0.5 hover:bg-destructive/10 hover:text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setDeleteProject(project);
+                              }}
+                              aria-label={`Delete ${project.name}`}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </span>
+                        </DropdownMenuItem>
+                      ))}
+                      {projects.length > 0 && <DropdownMenuSeparator />}
+                      <DropdownMenuItem onSelect={() => setNewProjectOpen(true)} className="text-muted-foreground">
+                        <Plus className="mr-1 size-4" />
+                        {dictionary.newProject}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              ) : (
+                <>
+                  <Button variant="outline" size="icon-sm" disabled aria-label={dictionary.language} />
+                  <Button variant="outline" size="icon-sm" disabled aria-label="Theme toggle" />
+                  <Button variant="outline" size="sm" className="w-36 min-w-0 justify-between font-normal" disabled>
+                    <span className="truncate">{dictionary.loading}</span>
                     <ChevronDown className="ml-1 size-4 shrink-0 text-muted-foreground" />
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  {projects.map((project) => (
-                    <DropdownMenuItem
-                      key={project.id}
-                      onSelect={() => selectProjectById(project.id)}
-                      className="flex items-center justify-between gap-1 pr-1"
-                    >
-                      <span className={`truncate flex-1 ${selectedProject?.id === project.id ? "font-medium" : ""}`}>
-                        {project.name}
-                      </span>
-                      <span className="flex items-center gap-0.5 shrink-0">
-                        <button
-                          className="rounded p-0.5 hover:bg-accent hover:text-accent-foreground"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            setEditProject(project);
-                          }}
-                          aria-label={`Edit ${project.name}`}
-                        >
-                          <Pencil className="size-3.5" />
-                        </button>
-                        <button
-                          className="rounded p-0.5 hover:bg-destructive/10 hover:text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            setDeleteProject(project);
-                          }}
-                          aria-label={`Delete ${project.name}`}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </button>
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                  {projects.length > 0 && <DropdownMenuSeparator />}
-                  <DropdownMenuItem onSelect={() => setNewProjectOpen(true)} className="text-muted-foreground">
-                    <Plus className="mr-1 size-4" />
-                    {dictionary.newProject}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                </>
+              )}
 
               {isDesktop ? (
                 <div className="flex items-center overflow-hidden rounded-[min(var(--radius-md),10px)] border border-border bg-card/85 dark:bg-muted/50">

@@ -25,6 +25,7 @@ import {
   PEAK_LIMITER_HOLD_MAX_MS,
   PEAK_LIMITER_RELEASE_MAX_MS
 } from "@/lib/constants";
+import { FIR_MAX_TAPS, FIR_MIN_TAPS, FIR_NAME_MAX_BYTES } from "@/lib/fir";
 
 export const SOURCE_DELAY_MIN_MS = 0;
 export const SOURCE_DELAY_MAX_MS = 10;
@@ -346,6 +347,21 @@ const renameOutputSchema = baseSchema.extend({
     .max(CHANNEL_NAME_MAX_LENGTH, `Output name must be ${CHANNEL_NAME_MAX_LENGTH} characters or fewer`)
 });
 
+const firBypassSchema = baseSchema.extend({
+  action: z.literal("firBypass"),
+  value: z.boolean() // true = enabled (not bypassed), false = bypassed
+});
+
+const firDataSchema = baseSchema.extend({
+  action: z.literal("firData"),
+  value: z.number().optional(), // unused placeholder, kept for request shape consistency
+  coefficients: z
+    .array(z.number().finite("FIR coefficient must be a finite number"))
+    .min(FIR_MIN_TAPS, `FIR data must have at least ${FIR_MIN_TAPS} coefficients`)
+    .max(FIR_MAX_TAPS, `FIR data must be at most ${FIR_MAX_TAPS} coefficients`),
+  name: z.string().max(FIR_NAME_MAX_BYTES, `FIR name must be ${FIR_NAME_MAX_BYTES} characters or fewer`).default("")
+});
+
 export const ampActionRequestSchema = z.union([
   muteInSchema,
   volumeOutSchema,
@@ -375,7 +391,9 @@ export const ampActionRequestSchema = z.union([
   eqBandQSchema,
   renameAmpSchema,
   renameInputSchema,
-  renameOutputSchema
+  renameOutputSchema,
+  firBypassSchema,
+  firDataSchema
 ]);
 
 export type AmpActionRequest = z.infer<typeof ampActionRequestSchema>;

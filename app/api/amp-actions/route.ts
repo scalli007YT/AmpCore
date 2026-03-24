@@ -49,6 +49,7 @@ import { CvrAmpDevice, FuncCode } from "@/lib/amp-device";
 import { applySimulatedAction, isSimulatedMac } from "@/lib/simulated-amps";
 import { ampActionRequestSchema, type AmpActionRequest } from "@/lib/validation/amp-actions";
 import { AMP_NAME_MAX_LENGTH, CHANNEL_NAME_MAX_LENGTH } from "@/lib/constants";
+import { FIR_MAX_TAPS, FIR_NAME_MAX_BYTES } from "@/lib/fir";
 
 export const dynamic = "force-dynamic";
 
@@ -564,6 +565,42 @@ export async function POST(request: Request): Promise<Response> {
         const nameBytes = Buffer.from(value, "ascii").subarray(0, CHANNEL_NAME_MAX_LENGTH);
         nameBytes.copy(payload, 0);
         await device.sendControl(FuncCode.SPEAKER_NAME, channel, payload, 0 /* Input */);
+        break;
+      }
+
+      // -----------------------------------------------------------------------
+      // FIR bypass toggle — FC=44 FIR_BYPASS, in_out_flag=1 (Output)
+      // Body: 1 byte — 0x00 = enabled (filter active), non-zero = bypassed (off).
+      // C# reference: fir_bypass.fir_bypass, UDP.SendStruct(FIR_bypass, ch, Output)
+      // -----------------------------------------------------------------------
+      case "firBypass": {
+        const payload = Buffer.from([value ? 0x00 : 0x01]);
+        await device.sendControl(FuncCode.FIR_BYPASS, channel, payload, 1 /* Output */);
+        break;
+      }
+
+      // -----------------------------------------------------------------------
+      // FIR coefficient data — FC=43 FIR_DATA, in_out_flag=1 (Output)
+      // Body: 32-byte name + 512 × float32 LE coefficients = 2080 bytes.
+      // The protocol layer handles multi-fragment reassembly automatically.
+      // C# reference: FIR_DATA { fir_name[32], fir_data[512] }
+      // -----------------------------------------------------------------------
+      case "firData": {
+        const coeffs: number[] = body.coefficients;
+        const firName: string = body.name ?? "";
+
+        // Build body: 32-byte name + 512 × float32 LE
+        const nameField = Buffer.alloc(FIR_NAME_MAX_BYTES, 0);
+        const encodedName = Buffer.from(firName, "ascii").subarray(0, FIR_NAME_MAX_BYTES);
+        encodedName.copy(nameField, 0);
+
+        const dataField = Buffer.alloc(FIR_MAX_TAPS * 4);
+        for (let i = 0; i < FIR_MAX_TAPS; i++) {
+          dataField.writeFloatLE(i < coeffs.length ? coeffs[i] : 0, i * 4);
+        }
+
+        const payload = Buffer.concat([nameField, dataField]);
+        await device.sendControl(FuncCode.FIR_DATA, channel, payload, 1 /* Output */);
         break;
       }
 

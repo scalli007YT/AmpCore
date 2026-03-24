@@ -469,6 +469,8 @@ export function buildSimulatedFc27Hex(mac: string): string | null {
     }
 
     buffer.writeUInt8(channel.powerMode & 0xff, base + 403);
+    // FIR bypass: 0 = enabled, 1 = bypassed (default bypassed for demo)
+    buffer.writeUInt8(1, base + 404);
     buffer.writeFloatLE(channel.volumeOut, base + 405);
     buffer.writeUInt8(channel.noiseGateOut ? 0 : 1, base + 409);
 
@@ -679,6 +681,11 @@ export function applySimulatedAction(mac: string, body: AmpActionRequest): boole
 
     case "renameOutput":
       if (channelState) channelState.outputName = body.value.trim();
+      return true;
+
+    case "firBypass":
+    case "firData":
+      // FIR state is client-side only in demo mode; nothing to persist here.
       return true;
 
     default:

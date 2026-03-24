@@ -1,5 +1,13 @@
 import dgram from "dgram";
-import { buildProtocolPacket, type StructHeaderFields } from "@/lib/network/protocol";
+import {
+  buildStructHeader,
+  buildNetworkDataHeader,
+  calcCheckCode,
+  buildProtocolPacket,
+  FRAGMENT_SIZE,
+  NETWORK_HEADER_LEN,
+  type StructHeaderFields
+} from "@/lib/network/protocol";
 
 const AMP_SEND_PORT = 45455;
 // CvrAmpDevice uses an ephemeral port (0) for short-lived unicast commands
@@ -612,6 +620,109 @@ export class CvrAmpDevice {
   }
 
   /**
+   * Query FIR filter data for a specific output channel.
+   *
+   * C# reference: UDP.SendStruct(FIR_datas, Request, ch, Output, 0, null)
+   * Response: FIR_DATA { fir_name[32], fir_data[512 floats] } = 2080 bytes
+   * The response may arrive in multiple 450-byte fragments.
+   *
+   * @param channel Output channel index (0-based)
+   * @returns { name, coefficients } or null on failure
+   */
+  async queryFirData(channel: number): Promise<{ name: string; coefficients: number[] } | null> {
+    const header: StructHeaderFields = {
+      functionCode: FuncCode.FIR_DATA, // FC=43
+      statusCode: 2, // Request
+      chx: channel,
+      link: 0,
+      inOutFlag: 1, // Output
+      segment: 0
+    };
+
+    const sock = await this.ensureSocket();
+    const packet = buildProtocolPacket({
+      ...header,
+      body: Buffer.alloc(0),
+      machineMode: 0,
+      dataState: 0,
+      packetsCount: 1,
+      packetsStep: 1
+    });
+
+    return new Promise((resolve) => {
+      const collected: Buffer[] = [];
+
+      const collector = (msg: Buffer, rinfo: dgram.RemoteInfo) => {
+        if (rinfo.address === this.ampIp) {
+          collected.push(Buffer.from(msg));
+        }
+      };
+
+      sock.on("message", collector);
+      sock.send(packet, 0, packet.length, AMP_SEND_PORT, this.ampIp, (err) => {
+        if (err) {
+          sock.removeListener("message", collector);
+          resolve(null);
+        }
+      });
+
+      // FIR response is 2080 bytes (5 fragments) — give 600ms to collect all
+      setTimeout(() => {
+        sock.removeListener("message", collector);
+
+        if (collected.length === 0) {
+          resolve(null);
+          return;
+        }
+
+        // Filter out ACK packets (≤10 bytes — just NetworkData header)
+        const fragments = collected.filter((p) => p.length > NETWORK_HEADER_LEN);
+        if (fragments.length === 0) {
+          resolve(null);
+          return;
+        }
+
+        // Sort by packetsStep (byte 7 of NetworkData)
+        fragments.sort((a, b) => a[7] - b[7]);
+
+        // Strip 10-byte NetworkData header from each and concatenate
+        const assembledFrame = Buffer.concat(fragments.map((p) => p.slice(NETWORK_HEADER_LEN)));
+
+        // assembledFrame = StructHeader(10) + body(2080) + checksum(3) = 2093
+        if (assembledFrame.length < 10 + 32 + 3) {
+          resolve(null);
+          return;
+        }
+
+        const responseBody = assembledFrame.slice(10, assembledFrame.length - 3);
+
+        // Parse FIR_DATA: 32-byte name + 512 × float32 LE
+        if (responseBody.length < 32) {
+          resolve(null);
+          return;
+        }
+
+        const nullIdx = responseBody.indexOf(0);
+        const nameEnd = Math.min(nullIdx === -1 ? 32 : nullIdx, 32);
+        const name = responseBody.slice(0, nameEnd).toString("ascii").trim();
+
+        const floatCount = Math.min(Math.floor((responseBody.length - 32) / 4), 512);
+        const coefficients: number[] = new Array(floatCount);
+        for (let i = 0; i < floatCount; i++) {
+          coefficients[i] = responseBody.readFloatLE(32 + i * 4);
+        }
+
+        // Pad to 512 if fewer
+        while (coefficients.length < 512) {
+          coefficients.push(0);
+        }
+
+        resolve({ name, coefficients });
+      }, 600);
+    });
+  }
+
+  /**
    * Send a fire-and-forget control command via an ephemeral UDP socket.
    *
    * Wire format derived from real packet captures (Python reverse-engineering)
@@ -652,21 +763,46 @@ export class CvrAmpDevice {
       });
     });
 
-    const packet = buildProtocolPacket({
-      ...header,
-      body,
-      machineMode: 0,
-      dataState: 0,
-      packetsCount: 1,
-      packetsStep: 1
-    });
+    // Build the inner frame: structHeader + body + checkCode
+    // This matches the C# pattern: array = StructToBytes(header) + StructToBytes(body) + getCheckCode(array)
+    const structHeaderBuf = buildStructHeader(header);
+    const inner = Buffer.concat([structHeaderBuf, body]);
+    const frame = Buffer.concat([inner, calcCheckCode(inner)]);
 
-    await new Promise<void>((resolve, reject) => {
-      sock.send(packet, 0, packet.length, AMP_SEND_PORT, this.ampIp, (err) => {
-        if (err) reject(err);
-        else resolve();
+    // Fragment at application-level (450-byte chunks) matching C# UDP.cs behaviour.
+    // The device reassembles fragments using packets_count / packets_stepcount / packets_lastlenth.
+    const packetsCount = frame.length <= FRAGMENT_SIZE ? 1 : Math.ceil(frame.length / FRAGMENT_SIZE);
+    const packetsLastlen = frame.length % FRAGMENT_SIZE === 0 ? FRAGMENT_SIZE : frame.length % FRAGMENT_SIZE;
+
+    for (let step = 1; step <= packetsCount; step++) {
+      const chunkStart = (step - 1) * FRAGMENT_SIZE;
+      const chunkLen = step === packetsCount ? packetsLastlen : FRAGMENT_SIZE;
+      const chunk = frame.slice(chunkStart, chunkStart + chunkLen);
+
+      const networkHeader = buildNetworkDataHeader({
+        frameLen: packetsLastlen,
+        machineMode: 0,
+        dataState: 0,
+        packetsCount,
+        packetsStep: step
       });
-    });
+
+      const packet = Buffer.concat([networkHeader, chunk]);
+
+      await new Promise<void>((resolve, reject) => {
+        sock.send(packet, 0, packet.length, AMP_SEND_PORT, this.ampIp, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      // Wait between fragments for the device to process and ACK.
+      // The C# original waits for an ACK with a 1-second timeout per fragment.
+      // We use a shorter fixed delay since we don't have ACK handling yet.
+      if (step < packetsCount) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 20));
+      }
+    }
 
     // Give the OS ~10 ms to flush — matches Python's time.sleep(0.01) throttle
     await new Promise<void>((resolve) => setTimeout(resolve, 10));

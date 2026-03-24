@@ -8,6 +8,7 @@ import { useI18n } from "@/components/layout/i18n-provider";
 import { useClipboardStore } from "@/stores/ClipboardStore";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { EqCurveChart } from "@/components/monitor/eq-curve-chart";
 import { Copy, Clipboard } from "lucide-react";
@@ -594,6 +595,7 @@ export function EqBandDialog({
   type ChartPatch = Partial<Pick<EqBand, "freq" | "gain" | "q">>;
 
   const [open, setOpen] = useState(false);
+  const [showPhase, setShowPhase] = useState(false);
   const [previewBands, setPreviewBands] = useState<EqBand[] | null>(null);
   const [pendingChartPatches, setPendingChartPatches] = useState<Record<number, ChartPatch>>({});
   const { copyEq, pasteEq, canPasteEq, lastError } = useClipboardStore();
@@ -773,6 +775,14 @@ export function EqBandDialog({
       </DialogTrigger>
       <DialogContent className="w-[min(64rem,95vw)] max-w-none sm:max-w-none gap-0">
         <div className="absolute top-4 right-20 flex gap-2 z-10">
+          <label className="inline-flex h-8 items-center gap-1.5 px-1 text-xs text-muted-foreground">
+            <Checkbox
+              checked={showPhase}
+              onCheckedChange={(checked) => setShowPhase(checked === true)}
+              aria-label="Toggle phase curve"
+            />
+            <span>Phase</span>
+          </label>
           <Button
             size="sm"
             variant="outline"
@@ -804,6 +814,7 @@ export function EqBandDialog({
             <div className="px-3">
               <EqCurveChart
                 bands={displayBands}
+                showPhase={showPhase}
                 interactive={mac !== undefined && channel !== undefined && target !== undefined}
                 onBandPreviewChange={handleChartPreviewChange}
                 onBandCommit={handleChartCommit}

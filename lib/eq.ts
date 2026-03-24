@@ -31,6 +31,9 @@ interface HpLpDef {
   family: "bw" | "be" | "lr";
 }
 
+const RAD_TO_DEG = 180 / Math.PI;
+const SQRT2 = Math.sqrt(2);
+
 /** Map HPLP type code → slope definition. Indices match HPLP_FILTER_TYPE_NAMES. */
 const HPLP_DEFS: Record<number, HpLpDef> = {
   0: { order: 2, family: "bw" }, // BW-12
@@ -66,6 +69,26 @@ export function bandGainAt(band: EqBand, freq: number, bandIndex: number): numbe
 
   // Parametric EQ bands (1–8)
   return parametricGainAt(band, freq);
+}
+
+/**
+ * Compute the phase shift in degrees of a single EQ band at a given frequency.
+ */
+export function bandPhaseAt(band: EqBand, freq: number, bandIndex: number): number {
+  if (band.bypass) return 0;
+
+  if (bandIndex === 0) return hpPhaseAt(band, freq);
+  if (bandIndex === 9) return lpPhaseAt(band, freq);
+
+  return parametricPhaseAt(band, freq);
+}
+
+function angleDeg(im: number, re: number): number {
+  return Math.atan2(im, re) * RAD_TO_DEG;
+}
+
+function wrapPhaseDeg(phase: number): number {
+  return ((((phase + 180) % 360) + 360) % 360) - 180;
 }
 
 /** Parametric band gain for the full original CVR PEQ type list. */
@@ -145,6 +168,80 @@ function parametricGainAt(band: EqBand, freq: number): number {
   }
 }
 
+function parametricPhaseAt(band: EqBand, freq: number): number {
+  const fc = Math.max(band.freq, 1e-6);
+  const w = freq / fc;
+  const w2 = w * w;
+  const Q = Math.max(band.q, 0.1);
+
+  switch (band.type) {
+    case 0: {
+      // Peaking
+      const A = Math.pow(10, band.gain / 40);
+      const numRe = 1 - w2;
+      const numIm = (A / Q) * w;
+      const denRe = 1 - w2;
+      const denIm = (1 / (A * Q)) * w;
+      return angleDeg(numIm, numRe) - angleDeg(denIm, denRe);
+    }
+    case 1: {
+      // Low_Shelf
+      const A = Math.pow(10, band.gain / 40);
+      const inside = (A + 1 / A) * (1 / Q - 1) + 2;
+      const num5 = inside > 0 ? 1 / Math.sqrt(inside) : 1;
+      const phaseNum = (Math.sqrt(A) * w) / num5;
+      const phaseDen = w / Math.sqrt(A) / num5;
+      return angleDeg(phaseNum, A - w2) - angleDeg(phaseDen, 1 / A - w2);
+    }
+    case 2:
+    case 253: {
+      // High_Shelf
+      const A = Math.pow(10, band.gain / 40);
+      const inside = (A + 1 / A) * (1 / Q - 1) + 2;
+      const num5 = inside > 0 ? 1 / Math.sqrt(inside) : 1;
+      const phaseNum = (Math.sqrt(A) * w) / num5;
+      const phaseDen = w / Math.sqrt(A) / num5;
+      return angleDeg(phaseNum, 1 - A * w2) - angleDeg(phaseDen, 1 - w2 / A);
+    }
+    case 3:
+      // All_Pass-1st
+      return -2 * Math.atan(w) * RAD_TO_DEG;
+    case 4: {
+      // All_Pass-2nd
+      const theta = angleDeg(w / Q, 1 - w2);
+      return -2 * theta;
+    }
+    case 5: {
+      // General_Low
+      const theta = angleDeg(w / Q, 1 - w2);
+      return -theta;
+    }
+    case 6: {
+      // General_High
+      const theta = angleDeg(w / Q, 1 - w2);
+      return 180 - theta;
+    }
+    case 7: {
+      // Butterworth_Low
+      const theta = angleDeg(SQRT2 * w, 1 - w2);
+      return -theta;
+    }
+    case 8: {
+      // Butterworth_High
+      const theta = angleDeg(SQRT2 * w, 1 - w2);
+      return 180 - theta;
+    }
+    case 9:
+      // Bessel_Low
+      return besselLowPassPhaseDeg(w, 2);
+    case 10:
+      // Bessel_High
+      return besselHighPassPhaseDeg(w, 2);
+    default:
+      return 0;
+  }
+}
+
 /**
  * High-pass filter gain at a given frequency.
  * Uses the analog prototype |H(jω)|² for the appropriate filter family/order.
@@ -158,6 +255,19 @@ function hpGainAt(band: EqBand, freq: number): number {
   return rolloffGainDb(w, def);
 }
 
+function hpPhaseAt(band: EqBand, freq: number): number {
+  const def = HPLP_DEFS[band.type];
+  if (!def) return 0;
+
+  const ratio = freq / Math.max(band.freq, 1e-6);
+  if (def.family === "be") {
+    return besselHighPassPhaseDeg(ratio, def.order);
+  }
+
+  const phase = def.order * (90 - Math.atan(Math.max(ratio, 1e-9)) * RAD_TO_DEG);
+  return wrapPhaseDeg(phase);
+}
+
 /**
  * Low-pass filter gain at a given frequency.
  */
@@ -167,6 +277,19 @@ function lpGainAt(band: EqBand, freq: number): number {
 
   const w = freq / band.freq;
   return rolloffGainDb(w, def);
+}
+
+function lpPhaseAt(band: EqBand, freq: number): number {
+  const def = HPLP_DEFS[band.type];
+  if (!def) return 0;
+
+  const ratio = freq / Math.max(band.freq, 1e-6);
+  if (def.family === "be") {
+    return besselLowPassPhaseDeg(ratio, def.order);
+  }
+
+  const phase = -def.order * Math.atan(Math.max(ratio, 1e-9)) * RAD_TO_DEG;
+  return wrapPhaseDeg(phase);
 }
 
 /**
@@ -209,41 +332,62 @@ function butterworthMagSq(w: number, order: number): number {
  * For LP: w = f/fc.  For HP: caller passes w = fc/f (already inverted).
  */
 function besselGainDb(w: number, order: number): number {
+  if (order !== 2 && order !== 4 && order !== 8) {
+    // Fallback for any other order: generic delay-normalised Bessel
+    return besselGainDbGeneric(w, order);
+  }
+
+  const { re, im } = besselPolynomial(order, w);
+  return -10 * Math.log10(re * re + im * im);
+}
+
+function besselLowPassPhaseDeg(w: number, order: number): number {
+  const { re, im } = besselPolynomial(order, w);
+  return wrapPhaseDeg(-angleDeg(im, re));
+}
+
+function besselHighPassPhaseDeg(w: number, order: number): number {
+  const { re, im } = besselPolynomial(order, w);
+  return wrapPhaseDeg(order * 90 - angleDeg(im, re));
+}
+
+function besselPolynomial(order: number, w: number): { re: number; im: number } {
   const w2 = w * w;
 
   switch (order) {
-    case 2: {
-      // -10·log10((1−ω²)² + (1.732·ω)²)
-      const re = 1 - w2;
-      const im = 1.732 * w;
-      return -10 * Math.log10(re * re + im * im);
-    }
+    case 2:
+      return { re: 1 - w2, im: 1.732 * w };
     case 4: {
-      // -10·log10((ω⁴ − 4.392·ω² + 1)² + (−3.124·ω³ + 3.201·ω)²)
       const w4 = w2 * w2;
-      const re = w4 - 4.392 * w2 + 1;
-      const im = -3.124 * w2 * w + 3.201 * w;
-      return -10 * Math.log10(re * re + im * im);
+      return {
+        re: w4 - 4.392 * w2 + 1,
+        im: -3.124 * w2 * w + 3.201 * w
+      };
     }
     case 8: {
-      // -10·log10((ω⁸−16.7·ω⁶+36.51·ω⁴−17.61·ω²+1)² + (−5.861·ω⁷+29.9·ω⁵−30.9·ω³+6.143·ω)²)
       const w4 = w2 * w2;
       const w6 = w4 * w2;
       const w8 = w4 * w4;
-      const re = w8 - 16.7 * w6 + 36.51 * w4 - 17.61 * w2 + 1;
-      const im = -5.861 * w6 * w + 29.9 * w4 * w - 30.9 * w2 * w + 6.143 * w;
-      return -10 * Math.log10(re * re + im * im);
+      return {
+        re: w8 - 16.7 * w6 + 36.51 * w4 - 17.61 * w2 + 1,
+        im: -5.861 * w6 * w + 29.9 * w4 * w - 30.9 * w2 * w + 6.143 * w
+      };
     }
     default:
-      // Fallback for any other order: generic delay-normalised Bessel
-      return besselGainDbGeneric(w, order);
+      return besselPolynomialGeneric(order, w);
   }
 }
 
 /** Generic delay-normalised Bessel, used only for orders not in the firmware. */
 function besselGainDbGeneric(w: number, order: number): number {
-  let re = 0,
-    im = 0;
+  const { re, im } = besselPolynomialGeneric(order, w);
+  const a0 = besselCoeff(order, 0);
+  return 10 * Math.log10((a0 * a0) / (re * re + im * im));
+}
+
+function besselPolynomialGeneric(order: number, w: number): { re: number; im: number } {
+  let re = 0;
+  let im = 0;
   for (let k = 0; k <= order; k++) {
     const wk = Math.pow(w, k);
     const term = besselCoeff(order, k) * wk;
@@ -262,8 +406,7 @@ function besselGainDbGeneric(w: number, order: number): number {
         break;
     }
   }
-  const a0 = besselCoeff(order, 0);
-  return 10 * Math.log10((a0 * a0) / (re * re + im * im));
+  return { re, im };
 }
 
 function besselCoeff(n: number, k: number): number {
@@ -285,6 +428,11 @@ export interface EqCurvePoint {
   gain: number;
 }
 
+export interface EqPhasePoint {
+  freq: number;
+  phase: number;
+}
+
 /**
  * Compute the summed magnitude response of all bands at 256 log-spaced points.
  * Includes HP/LP rolloff when present.
@@ -304,6 +452,29 @@ export function computeEqCurve(bands: EqBand[], points = 256): EqCurvePoint[] {
     return {
       freq: Math.round(freq * 100) / 100,
       gain: Math.round(totalGain * 100) / 100
+    };
+  });
+}
+
+/**
+ * Compute the summed wrapped phase response of all bands at log-spaced points.
+ * Result is wrapped to [-180, 180) for display on a single phase axis.
+ */
+export function computeEqPhaseCurve(bands: EqBand[], points = 256): EqPhasePoint[] {
+  const fMin = 20;
+  const fMax = 20000;
+  const logMin = Math.log10(fMin);
+  const logMax = Math.log10(fMax);
+
+  return Array.from({ length: points }, (_, i) => {
+    const freq = Math.pow(10, logMin + (i / (points - 1)) * (logMax - logMin));
+    let totalPhase = 0;
+    for (let b = 0; b < bands.length; b++) {
+      totalPhase += bandPhaseAt(bands[b], freq, b);
+    }
+    return {
+      freq: Math.round(freq * 100) / 100,
+      phase: Math.round(wrapPhaseDeg(totalPhase) * 100) / 100
     };
   });
 }

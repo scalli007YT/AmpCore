@@ -3,7 +3,14 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { EqBand } from "@/stores/AmpStore";
 import { EqBandActionMenu } from "@/components/menus/eq-band-action-menu";
-import { bandGainAt, computeEqCurve, EQ_BAND_SHORT_LABELS, EQ_FREQ_TICKS, formatFreq } from "@/lib/eq";
+import {
+  bandGainAt,
+  computeEqCurve,
+  computeEqPhaseCurve,
+  EQ_BAND_SHORT_LABELS,
+  EQ_FREQ_TICKS,
+  formatFreq
+} from "@/lib/eq";
 import { getEqFilterTypeCapabilities } from "@/lib/parse-channel-data";
 import {
   CROSSOVER_FREQ_MAX_HZ,
@@ -30,6 +37,7 @@ type DragState = {
 
 interface EqCurveChartProps {
   bands: EqBand[];
+  showPhase?: boolean;
   interactive?: boolean;
   onBandPreviewChange?: (bandIdx: number, next: Partial<Pick<EqBand, "freq" | "gain" | "q">>) => void;
   onBandCommit?: (bandIdx: number, next: Partial<Pick<EqBand, "freq" | "gain" | "q">>) => void;
@@ -46,6 +54,7 @@ interface EqCurveChartProps {
  */
 export function EqCurveChart({
   bands,
+  showPhase = true,
   interactive = false,
   onBandPreviewChange,
   onBandCommit,
@@ -55,6 +64,7 @@ export function EqCurveChart({
   onDragEnd
 }: EqCurveChartProps) {
   const curveData = computeEqCurve(bands, 256);
+  const phaseData = computeEqPhaseCurve(bands, 256);
   const [activeBand, setActiveBand] = useState<number | null>(null);
   const [selectedBand, setSelectedBand] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -70,15 +80,20 @@ export function EqCurveChart({
   // Use viewBox for responsiveness — the SVG scales to fill its container
   const W = 800;
   const H = 360;
-  const pad = { top: 24, right: 20, bottom: 32, left: 48 };
+  const pad = { top: 24, right: 38, bottom: 32, left: 48 };
   const cw = W - pad.left - pad.right;
   const ch = H - pad.top - pad.bottom;
 
   const logMin = Math.log10(20);
   const logMax = Math.log10(20000);
+  const phaseMin = -180;
+  const phaseMax = 180;
+  const phaseStep = 45;
 
   const xScale = (freq: number) => pad.left + ((Math.log10(Math.max(freq, 20)) - logMin) / (logMax - logMin)) * cw;
   const yScale = (db: number) => pad.top + ((yMax - Math.max(yMin, Math.min(yMax, db))) / (yMax - yMin)) * ch;
+  const phaseScale = (phaseDeg: number) =>
+    pad.top + ((phaseMax - Math.max(phaseMin, Math.min(phaseMax, phaseDeg))) / (phaseMax - phaseMin)) * ch;
   const xToFreq = (x: number) => {
     const ratio = Math.max(0, Math.min(1, (x - pad.left) / cw));
     return 10 ** (logMin + ratio * (logMax - logMin));
@@ -125,6 +140,28 @@ export function EqCurveChart({
   const pathPoints = curveData.map((p) => `${xScale(p.freq)},${yScaleRaw(p.gain)}`);
   const linePath = `M${pathPoints.join("L")}`;
   const fillPath = `${linePath}L${xScale(20000)},${yScaleRaw(0)}L${xScale(20)},${yScaleRaw(0)}Z`;
+
+  const phasePathSegments: string[] = [];
+  if (showPhase) {
+    let segment = "";
+    let prevPhase: number | null = null;
+
+    for (const point of phaseData) {
+      const x = xScale(point.freq);
+      const y = phaseScale(point.phase);
+
+      if (prevPhase !== null && Math.abs(point.phase - prevPhase) > 180) {
+        if (segment) phasePathSegments.push(segment);
+        segment = `M${x},${y}`;
+      } else {
+        segment = `${segment}${segment ? "L" : "M"}${x},${y}`;
+      }
+
+      prevPhase = point.phase;
+    }
+
+    if (segment) phasePathSegments.push(segment);
+  }
 
   const focusBandIdx = activeBand ?? selectedBand;
   const localCurveData =
@@ -280,6 +317,8 @@ export function EqCurveChart({
   // Y ticks
   const yTicks: number[] = [];
   for (let db = yMin; db <= yMax; db += yStep) yTicks.push(db);
+  const phaseTicks: number[] = [];
+  for (let deg = phaseMin; deg <= phaseMax; deg += phaseStep) phaseTicks.push(deg);
 
   return (
     <div className="relative" ref={containerRef}>
@@ -363,9 +402,27 @@ export function EqCurveChart({
         <text x={8} y={pad.top - 8} className="fill-muted-foreground" fontSize={10}>
           dB
         </text>
+        <text x={W - 6} y={pad.top - 8} textAnchor="end" className="fill-muted-foreground" fontSize={10}>
+          deg
+        </text>
         <text x={W - pad.right} y={H - 4} textAnchor="end" className="fill-muted-foreground" fontSize={10}>
           Hz
         </text>
+        {showPhase
+          ? phaseTicks.map((deg) => (
+              <text
+                key={`phase-${deg}`}
+                x={W - pad.right + 4}
+                y={phaseScale(deg)}
+                textAnchor="start"
+                dominantBaseline="middle"
+                className="fill-muted-foreground"
+                fontSize={10}
+              >
+                {deg}
+              </text>
+            ))
+          : null}
 
         {/* Filled area under/above 0 dB */}
         <path d={fillPath} className="fill-primary/12" clipPath={`url(#${clipId})`} />
@@ -378,6 +435,19 @@ export function EqCurveChart({
           strokeLinejoin="round"
           clipPath={`url(#${clipId})`}
         />
+        {showPhase
+          ? phasePathSegments.map((segment, idx) => (
+              <path
+                key={`phase-path-${idx}`}
+                d={segment}
+                fill="none"
+                className="stroke-red-500/95"
+                strokeWidth={1.5}
+                strokeLinejoin="round"
+                clipPath={`url(#${clipId})`}
+              />
+            ))
+          : null}
         {localPath ? (
           <path
             d={localPath}

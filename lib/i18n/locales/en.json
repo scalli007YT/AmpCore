@@ -36,7 +36,7 @@
       "tabMain": "Main",
       "tabMatrixLimiter": "Matrix / Limiter",
       "tabPreferences": "Properties",
-      "ampUnreachable": "Amp is unreachable.",
+      "ampUnreachable": "Amp unreachable, try to reconnect or wait a few seconds.",
       "waitingForData": "Waiting for data",
       "matrix": "Matrix",
       "limiters": "Limiters",

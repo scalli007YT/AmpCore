@@ -19,7 +19,6 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConfirmActionDialog } from "@/components/dialogs/confirm-action-dialog";
 import { EqBandDialog } from "@/components/monitor/amp-tabs/eq-controls";
-import { VerticalDbMeter } from "@/components/monitor/vertical-db-meter";
 import { HorizontalDbMeter } from "@/components/monitor/horizontal-db-meter";
 import { COLORS } from "@/lib/colors";
 import { OUTPUT_TRIM_MAX_DB, OUTPUT_TRIM_MIN_DB, OUTPUT_VOLUME_MAX_DB, OUTPUT_VOLUME_MIN_DB } from "@/lib/constants";
@@ -526,18 +525,6 @@ const IN_DB_TOP = 0;
 const IN_DB_BOT = -60;
 const IN_SCALE = [-60, -48, -36, -24, -12, 0];
 
-function ScaleColumn({ ticks, height = 220, width = 24 }: { ticks: number[]; height?: number; width?: number }) {
-  return (
-    <div className="flex-shrink-0 flex flex-col justify-between" style={{ width, height }}>
-      {ticks.map((t) => (
-        <span key={t} className="text-[9px] text-foreground/65 leading-none text-right pr-1 block">
-          {t}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 export function HeartbeatDashboard({
   hb,
   mac,
@@ -575,11 +562,7 @@ export function HeartbeatDashboard({
   const vuInputDbfs = vu?.inputDbfs ?? hb.inputDbfs;
   const { top: OUT_DB_TOP, bot: OUT_DB_BOT, ticks: OUT_SCALE } = outDbScale();
 
-  const METER_H = 220;
-  const BAR_W = 36;
-  const COL_W = 64;
   const LABEL_H = 24;
-  const pairWidth = COL_W * 2 + 12;
   const channelCount = Math.max(
     channelParams?.channels.length ?? 0,
     hb.outputStates.length,
@@ -943,6 +926,21 @@ export function HeartbeatDashboard({
                                 channel={i}
                                 target="output"
                                 bands={channelParams?.channels[i]?.eqOut}
+                              />
+                            </div>
+                            <div className="w-16 shrink-0">
+                              <VolumePopover
+                                volumeDb={channelParams?.channels[i]?.volumeOut}
+                                label="Vol dB"
+                                title="Output Volume"
+                                minDb={OUTPUT_VOLUME_MIN_DB}
+                                maxDb={OUTPUT_VOLUME_MAX_DB}
+                                buttonClassName={`!h-12 text-[13px] ${linkedHoverClass("volumeOut", i, "border-primary/40 bg-muted/50")}`}
+                                onButtonMouseEnter={getLinkHoverProps("volumeOut", i).onMouseEnter}
+                                onButtonMouseLeave={getLinkHoverProps("volumeOut", i).onMouseLeave}
+                                onButtonFocus={getLinkHoverProps("volumeOut", i).onFocus}
+                                onButtonBlur={getLinkHoverProps("volumeOut", i).onBlur}
+                                onSet={(db) => setVolumeOut(mac, i, db)}
                               />
                             </div>
                             <div className="w-16 shrink-0">

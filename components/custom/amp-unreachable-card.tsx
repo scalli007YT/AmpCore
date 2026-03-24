@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { Unplug } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface AmpUnreachableCardProps {
@@ -27,7 +27,7 @@ export function AmpUnreachableCard({ ampName, ip, message }: AmpUnreachableCardP
       <div className="flex min-h-[220px] items-center justify-center px-6 py-10">
         <div className="max-w-md text-center">
           <div className="mx-auto mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-500">
-            <AlertTriangle className="h-5 w-5" />
+            <Unplug className="h-5 w-5" />
           </div>
           <p className="text-sm text-muted-foreground">{message}</p>
         </div>

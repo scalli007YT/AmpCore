@@ -184,6 +184,8 @@ export interface ChannelParam {
   matrix: MatrixSource[];
   eqIn: EqBand[]; // 10 bands: HP + EQ1–8 + LP
   eqOut: EqBand[]; // 10 bands: HP + EQ1–8 + LP
+  /** true = FIR bypassed (off). Parsed from FC=27 offset 404. */
+  firBypassed: boolean;
 }
 
 export interface ChannelParams {
@@ -479,7 +481,8 @@ export const useAmpStore = create<AmpStore>()(
                   peakLimiter: { ...ch.peakLimiter, ppeakW },
                   matrix: ch.matrix,
                   eqIn: ch.eqIn,
-                  eqOut: ch.eqOut
+                  eqOut: ch.eqOut,
+                  firBypassed: ch.firBypassed
                 };
               })
             };

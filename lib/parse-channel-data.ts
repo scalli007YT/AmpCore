@@ -203,6 +203,8 @@ export interface ChannelData {
   eqIn: EqBand[];
   /** 10-band output EQ (HP + EQ1–8 + LP), starting at offset 262 */
   eqOut: EqBand[];
+  /** FIR filter bypass state. true = FIR bypassed (off). Wire: byte @404, 0=enabled 1=bypassed. */
+  firBypassed: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -406,6 +408,10 @@ function parseChannelFromBuffer(
     // trailing bypass byte ends at offset 402, followed by dzdy at 403.
     const powerMode = buffer.readUInt8(base + 403);
 
+    // FIR bypass: 1 byte at offset 404 (right after dzdy).
+    // Wire encoding: 0 = FIR enabled, 1 = FIR bypassed.
+    const firBypassed = buffer.readUInt8(base + 404) !== 0;
+
     const sourceTypeCode = clampSourceCode(buffer.readUInt8(base + 85));
     const analogTrim = round2(buffer.readFloatLE(base + 36));
     const analogDelay = round2(buffer.readFloatLE(base + 40));
@@ -502,7 +508,8 @@ function parseChannelFromBuffer(
       peakLimiter,
       matrix,
       eqIn,
-      eqOut
+      eqOut,
+      firBypassed
     };
   } catch (err) {
     console.error(`Failed to parse channel ${channelNum}:`, err);

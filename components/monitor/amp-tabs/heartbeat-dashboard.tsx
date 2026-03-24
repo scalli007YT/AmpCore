@@ -19,6 +19,7 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConfirmActionDialog } from "@/components/dialogs/confirm-action-dialog";
 import { EqBandDialog } from "@/components/monitor/amp-tabs/eq-controls";
+import { FirFilterDialog } from "@/components/monitor/fir-filter-panel";
 import { HorizontalDbMeter } from "@/components/monitor/horizontal-db-meter";
 import { COLORS } from "@/lib/colors";
 import {
@@ -976,13 +977,13 @@ export function HeartbeatDashboard({
                                 <span className="text-[9px] text-muted-foreground mt-0.5">°C</span>
                               </div>
 
-                              <button
-                                type="button"
-                                disabled
-                                className="flex h-12 w-16 shrink-0 flex-col items-center justify-center rounded border px-1 py-0.5 select-none disabled:pointer-events-none disabled:opacity-50 border-border/30 bg-muted/10"
-                              >
-                                <span className="font-mono text-[13px] font-semibold">FIR</span>
-                              </button>
+                              <div className="w-16 shrink-0">
+                                <FirFilterDialog
+                                  mac={mac}
+                                  channel={i}
+                                  title={`FIR Filter - ${channelParams?.channels[i]?.outputName ?? `Out${channelLabels[i] ?? i + 1}`}`}
+                                />
+                              </div>
 
                               <div className="w-16 shrink-0">
                                 <EqBandDialog

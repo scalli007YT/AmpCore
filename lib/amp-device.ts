@@ -39,6 +39,7 @@ export class FuncCode {
   static GAIN = 13;
   static DELAY = 14;
   static STANDBY_DATA = 15;
+  static ROTARY_LOCK = 17;
   static PHASE = 18;
   static DYN_EQ = 25;
   static SYNC_DATA = 27;
@@ -538,6 +539,80 @@ export class CvrAmpDevice {
     };
 
     return this.sendRaw(header);
+  }
+
+  /**
+   * Query rotary/panel lock status (FC=17, statusCode=2 request).
+   *
+   * Original parser behavior:
+   *   body[0] == 1 => locked
+   *   body[0] == 0 => unlocked
+   */
+  async queryRotaryLock(): Promise<boolean | undefined> {
+    const header: StructHeaderFields = {
+      functionCode: FuncCode.ROTARY_LOCK,
+      statusCode: 2,
+      chx: 0,
+      link: 0,
+      inOutFlag: 0,
+      segment: 0
+    };
+
+    const sock = await this.ensureSocket();
+    const packet = buildProtocolPacket({
+      ...header,
+      body: Buffer.alloc(0),
+      machineMode: 0,
+      dataState: 0,
+      packetsCount: 1,
+      packetsStep: 1
+    });
+
+    return new Promise((resolve) => {
+      const collected: Buffer[] = [];
+
+      const collector = (msg: Buffer, rinfo: dgram.RemoteInfo) => {
+        if (rinfo.address === this.ampIp) {
+          collected.push(Buffer.from(msg));
+        }
+      };
+
+      sock.on("message", collector);
+      sock.send(packet, 0, packet.length, AMP_SEND_PORT, this.ampIp, () => {
+        // Ignore send callback errors here; timeout parsing below will resolve undefined.
+      });
+
+      setTimeout(() => {
+        sock.removeListener("message", collector);
+
+        // FC17 may ACK first with a short packet; ignore anything without struct+body.
+        const candidates = collected.filter((p) => p.length >= 24 && p[10] === 0x55 && p[11] === FuncCode.ROTARY_LOCK);
+
+        if (candidates.length === 0) {
+          resolve(undefined);
+          return;
+        }
+
+        // Use the largest matching response frame in case of duplicates.
+        const response = candidates.reduce((best, cur) => (cur.length > best.length ? cur : best));
+        const body = response.slice(20, response.length - 3);
+
+        if (body.length < 1) {
+          resolve(undefined);
+          return;
+        }
+
+        if (body[0] === 1) {
+          resolve(true);
+          return;
+        }
+        if (body[0] === 0) {
+          resolve(false);
+          return;
+        }
+        resolve(undefined);
+      }, 160);
+    });
   }
 
   /**

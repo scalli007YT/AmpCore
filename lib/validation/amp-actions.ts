@@ -52,6 +52,13 @@ const muteInSchema = baseSchema.extend({
   value: z.boolean()
 });
 
+const setAmpLockSchema = z.object({
+  mac: z.string().trim().min(1, "Missing mac"),
+  action: z.literal("setAmpLock"),
+  channel: z.literal(0),
+  value: z.boolean()
+});
+
 const volumeOutSchema = baseSchema.extend({
   action: z.literal("volumeOut"),
   value: z
@@ -364,6 +371,7 @@ const firDataSchema = baseSchema.extend({
 
 export const ampActionRequestSchema = z.union([
   muteInSchema,
+  setAmpLockSchema,
   volumeOutSchema,
   legacyVolumeInSchema,
   muteOutSchema,

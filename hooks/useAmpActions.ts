@@ -58,6 +58,7 @@ type PeakLimiterParams = {
 };
 
 interface AmpActionsHook {
+  setAmpLock: (mac: string, locked: boolean) => Promise<void>;
   setBridgePair: (mac: string, pair: BridgePair, bridged: boolean) => Promise<void>;
   muteIn: (mac: string, channel: Channel, muted: boolean) => Promise<void>;
   setVolumeOut: (mac: string, channel: Channel, db: number) => Promise<void>;
@@ -249,6 +250,16 @@ export function useAmpActions(): AmpActionsHook {
       );
     },
     [runLinked, send]
+  );
+
+  // ---------------------------------------------------------------------------
+  // setAmpLock
+  // ---------------------------------------------------------------------------
+  const setAmpLock = useCallback(
+    async (mac: string, locked: boolean) => {
+      await send(mac, "setAmpLock", 0, locked, undefined, { throwOnError: true });
+    },
+    [send]
   );
 
   // ---------------------------------------------------------------------------
@@ -669,6 +680,7 @@ export function useAmpActions(): AmpActionsHook {
   );
 
   return {
+    setAmpLock,
     setBridgePair,
     muteIn,
     setVolumeOut,

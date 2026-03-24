@@ -6,6 +6,7 @@
  */
 
 import { ampController } from "@/lib/amp-controller";
+import { parseFC27RotaryLock } from "@/lib/parse-channel-data";
 import { buildSimulatedFc27Hex, isSimulatedMac } from "@/lib/simulated-amps";
 
 export const dynamic = "force-dynamic";
@@ -24,12 +25,15 @@ export async function GET(request: Request): Promise<Response> {
       return Response.json({ success: false, error: `No simulated channel data for ${mac}` }, { status: 404 });
     }
 
+    const locked = parseFC27RotaryLock(hex);
+
     return Response.json({
       success: true,
       mac,
       length: hex.length / 2,
       hex,
-      simulated: true
+      simulated: true,
+      locked
     });
   }
 
@@ -40,12 +44,14 @@ export async function GET(request: Request): Promise<Response> {
     // Request FC=27 from this amp (returns ALL channel data in multi-packet response)
     const data = await ampController.requestFC27(mac, 0);
     const hex = data.toString("hex");
+    const locked = parseFC27RotaryLock(hex);
 
     const response = {
       success: true,
       mac,
       length: data.length,
-      hex
+      hex,
+      locked
     };
 
     return new Response(JSON.stringify(response), {

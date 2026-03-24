@@ -208,6 +208,8 @@ export interface AmpStatus {
   run_time?: number;
   /** Last known current preset/scenario label reported or selected after recall. */
   current_preset?: string;
+  /** Rotary/panel lock state read from device sync and FC17 polling. */
+  locked?: boolean;
   /** Raw FC=0 BASIC_INFO snapshot from discovery response. */
   basic_info?: AmpBasicInfo;
   /** Convenience mirrors from BASIC_INFO for quick access. */

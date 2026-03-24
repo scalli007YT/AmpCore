@@ -12,7 +12,15 @@ import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ConfirmActionDialog } from "@/components/dialogs/confirm-action-dialog";
 import { formatRuntime } from "@/lib/generic";
-import { LayoutDashboardIcon, GridIcon, SlidersHorizontalIcon, Link2Icon, ChevronRight } from "lucide-react";
+import {
+  LayoutDashboardIcon,
+  GridIcon,
+  SlidersHorizontalIcon,
+  Link2Icon,
+  ChevronRight,
+  Lock,
+  LockOpen
+} from "lucide-react";
 import { HeartbeatDashboard } from "@/components/monitor/amp-tabs/heartbeat-dashboard";
 import { LinkingPanel } from "@/components/monitor/amp-tabs/linking-panel";
 import { LimiterBlock } from "@/components/monitor/amp-tabs/limiter-panel";
@@ -25,6 +33,8 @@ import { AMP_NAME_MAX_LENGTH, PRESET_SLOT_MAX } from "@/lib/constants";
 import { AmpUnreachableCard } from "@/components/custom/amp-unreachable-card";
 import { InputWithCheck } from "@/components/custom/input-with-check";
 import { useTabStore, type AmpSection } from "@/stores/TabStore";
+import { useAmpActions } from "@/hooks/useAmpActions";
+import { triggerImmediateLockPoll } from "@/hooks/useAmpChannelData";
 
 type PresetFilter = "all" | "used" | "empty";
 
@@ -55,6 +65,8 @@ export function AmpTabs() {
   const [renameConfirmOpen, setRenameConfirmOpen] = useState(false);
   const [pendingRename, setPendingRename] = useState("");
   const [renaming, setRenaming] = useState(false);
+  const [lockUpdating, setLockUpdating] = useState(false);
+  const { setAmpLock } = useAmpActions();
 
   const onlineCount = amps.filter((amp) => amp.reachable).length;
   const selectedAmp = amps.find((a) => a.mac === selectedMac) ?? amps[0];
@@ -215,6 +227,24 @@ export function AmpTabs() {
     await renameAmp(pendingRename);
   };
 
+  const setSelectedAmpLock = async () => {
+    if (!selectedAmp || lockUpdating) return;
+
+    const nextLocked = !(selectedAmp.locked ?? false);
+
+    setLockUpdating(true);
+    try {
+      await setAmpLock(selectedAmp.mac, nextLocked);
+      updateAmpStatus(selectedAmp.mac, { locked: nextLocked });
+      triggerImmediateLockPoll(selectedAmp.mac);
+      toast.success(nextLocked ? "Amp locked" : "Amp unlocked");
+    } catch {
+      // Error toast is already handled in useAmpActions/send.
+    } finally {
+      setLockUpdating(false);
+    }
+  };
+
   if (!amps || amps.length === 0) {
     return (
       <div className="flex flex-col items-center rounded-xl border border-border/50 bg-muted/20 px-6 py-12 text-center text-sm text-muted-foreground">
@@ -336,6 +366,21 @@ export function AmpTabs() {
                   <Badge variant="outline" className="font-mono">
                     {selectedAmp.ip ?? dict.monitor.ampTabs.noIp}
                   </Badge>
+                  <Button
+                    size="icon"
+                    variant={selectedAmp.locked ? "secondary" : "outline"}
+                    disabled={lockUpdating}
+                    onClick={() => void setSelectedAmpLock()}
+                    className="h-9 w-9"
+                    aria-label={selectedAmp.locked ? "Unlock amp" : "Lock amp"}
+                    title={selectedAmp.locked ? "Unlock" : "Lock"}
+                  >
+                    {selectedAmp.locked ? (
+                      <Lock className="size-4 text-red-500" />
+                    ) : (
+                      <LockOpen className="size-4 text-green-500" />
+                    )}
+                  </Button>
                 </div>
               </div>
 
@@ -510,6 +555,10 @@ export function AmpTabs() {
                     <div>
                       <dt className="font-semibold">Machine_state:</dt>
                       <dd>{selectedAmp.machine_state !== undefined ? selectedAmp.machine_state : "---"}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold">Rotary_lock:</dt>
+                      <dd>{selectedAmp.locked === undefined ? "---" : selectedAmp.locked ? "Locked" : "Unlocked"}</dd>
                     </div>
                   </dl>
                 </CollapsibleContent>

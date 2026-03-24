@@ -379,7 +379,7 @@ export function AmpTabs() {
               {!selectedAmp.heartbeat ? (
                 <p className="text-sm text-muted-foreground animate-pulse">{dict.monitor.ampTabs.waitingForData}</p>
               ) : (
-                <div className="overflow-hidden rounded-md border border-border/50 bg-background/30 p-2.5">
+                <div>
                   <HeartbeatDashboard
                     hb={selectedAmp.heartbeat}
                     mac={selectedAmp.mac}

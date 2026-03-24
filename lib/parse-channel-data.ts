@@ -97,7 +97,7 @@ export function getEqFilterTypeCapabilities(type: number): EqFilterTypeCapabilit
 }
 
 export const POWER_MODE_NAMES: Record<number, string> = {
-  0: "Low-Z",
+  0: "Low-Ω",
   1: "70V",
   2: "100V"
 };
@@ -159,7 +159,7 @@ export interface ChannelData {
   noiseGateOut: boolean; // true = noise gate enabled  (wire: 0=on, 1=off @ 409)
   delayOut: number; // ms  (float32 @ 90)
   invertedOut: boolean; // true = polarity flipped  (uint8 @ 94)
-  /** Raw dzdy/CPCR mode byte from FC=27. Observed: 0=Low-Z 1=70V 2=100V. */
+  /** Raw dzdy/CPCR mode byte from FC=27. Observed: 0=Low-Ω 1=70V 2=100V. */
   powerMode: number;
   /** Raw source selector byte (0=Analog, 1=Dante, 2=AES3, 3=Backup on compatible models). */
   sourceTypeCode: number;
@@ -227,7 +227,7 @@ const CHANNEL_FIELDS = [
   { field: "delayOut", type: "float32", offset: 90 },
   { field: "invertedOut", type: "uint8", offset: 94 },
   { field: "volumeOut", type: "float32", offset: 405 },
-  { field: "inputName", type: "ascii", offset: 413, length: 16 },
+  { field: "inputName", type: "ascii", offset: 414, length: 16 },
   { field: "outputName", type: "ascii", offset: 430, length: 16 }
 ] as const;
 

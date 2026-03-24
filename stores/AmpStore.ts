@@ -153,7 +153,7 @@ export interface ChannelParam {
   noiseGateOut: boolean; // true = noise gate enabled
   delayOut: number; // ms (float32)
   invertedOut: boolean; // true = polarity flipped
-  /** Raw dzdy/CPCR mode byte from FC=27. Observed: 0=Low-Z 1=70V 2=100V. */
+  /** Raw dzdy/CPCR mode byte from FC=27. Observed: 0=Low-Ω 1=70V 2=100V. */
   powerMode: number;
   /** Raw source selector byte (0=Analog, 1=Dante, 2=AES3, 3=Backup on compatible models). */
   sourceTypeCode: number;

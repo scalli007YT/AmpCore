@@ -36,7 +36,7 @@
       "tabMain": "Main",
       "tabMatrixLimiter": "Matrix / Limiter",
       "tabPreferences": "Properties",
-      "ampUnreachable": "Amp is unreachable.",
+      "ampUnreachable": "Amp unreachable, try to reconnect or wait a few seconds.",
       "waitingForData": "Waiting for data",
       "matrix": "Matrix",
       "limiters": "Limiters",
@@ -73,6 +73,13 @@
     "runtime": "Runtime",
     "noDevicesTitle": "No devices found yet",
     "noDevicesDescription": "Click \"Start Scan\" to discover AMP devices"
+  },
+  "menus": {
+    "eqBand": {
+      "bypass": "Bypass",
+      "enable": "Enable",
+      "resetGain": "Reset dB"
+    }
   },
   "dialogs": {
     "common": {

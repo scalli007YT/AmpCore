@@ -71,8 +71,8 @@ export class FuncCode {
   static SOURCE_DATA = 62;
   static ANALOG_TYPE = 79;
   static POWER_ALLOT = 81;
-  static MONO_SWITCH = 77;
-  static SPEAKER_NAME = 78;
+  static SPEAKER_NAME = 77;
+  static MONO_SWITCH = 78;
 }
 
 export class CvrAmpDevice {

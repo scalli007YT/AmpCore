@@ -9,31 +9,12 @@ export type LinkValidationReason =
   | "invalid-linkable-count"
   | "channel-out-of-range"
   | "too-few-channels"
-  | "source-out-of-range"
-  | "target-out-of-range"
-  | "same-channel"
   | "already-linked";
 
 export interface ValidateLinkGroupInput {
   linkableCount: number;
   existingGroups: LinkingGroup[];
   channels: LinkableIndex[];
-}
-
-export interface ValidateLinkInput {
-  linkableCount: number;
-  existingGroups: LinkingGroup[];
-  source: LinkableIndex;
-  target: LinkableIndex;
-}
-
-export interface LinkValidationResult {
-  valid: boolean;
-  reason: LinkValidationReason;
-  normalizedGroups: LinkingGroup[];
-  sourceGroup: LinkingGroup | null;
-  targetGroup: LinkingGroup | null;
-  nextGroups: LinkingGroup[];
 }
 
 export interface LinkGroupValidationResult {
@@ -137,80 +118,6 @@ export function normalizeLinkingGroups(linkableCount: number, existingGroups: Li
 
 export function findLinkingGroup(groups: LinkingGroup[], channel: LinkableIndex): LinkingGroup | null {
   return groups.find((group) => group.channels.includes(channel)) ?? null;
-}
-
-export function validateLink(input: ValidateLinkInput): LinkValidationResult {
-  const { linkableCount, existingGroups, source, target } = input;
-  const normalizedGroups = normalizeLinkingGroups(linkableCount, existingGroups);
-
-  const invalidBaseResult = {
-    normalizedGroups,
-    sourceGroup: null,
-    targetGroup: null,
-    nextGroups: normalizedGroups
-  };
-
-  if (!Number.isInteger(linkableCount) || linkableCount <= 0) {
-    return {
-      valid: false,
-      reason: "invalid-linkable-count",
-      ...invalidBaseResult
-    };
-  }
-
-  if (!isValidIndex(source, linkableCount)) {
-    return {
-      valid: false,
-      reason: "source-out-of-range",
-      ...invalidBaseResult
-    };
-  }
-
-  if (!isValidIndex(target, linkableCount)) {
-    return {
-      valid: false,
-      reason: "target-out-of-range",
-      ...invalidBaseResult
-    };
-  }
-
-  if (source === target) {
-    return {
-      valid: false,
-      reason: "same-channel",
-      ...invalidBaseResult
-    };
-  }
-
-  const sourceGroup = findLinkingGroup(normalizedGroups, source);
-  const targetGroup = findLinkingGroup(normalizedGroups, target);
-
-  if (sourceGroup && targetGroup && groupKey(sourceGroup.channels) === groupKey(targetGroup.channels)) {
-    return {
-      valid: false,
-      reason: "already-linked",
-      normalizedGroups,
-      sourceGroup,
-      targetGroup,
-      nextGroups: normalizedGroups
-    };
-  }
-
-  const nextGroups = normalizeLinkingGroups(linkableCount, [
-    ...normalizedGroups,
-    {
-      channels: [source, target]
-    }
-  ]);
-
-  return {
-    valid: true,
-    reason: "ok",
-    normalizedGroups,
-    sourceGroup,
-    targetGroup,
-    nextGroups
-  };
 }
 
 export function validateLinkGroup(input: ValidateLinkGroupInput): LinkGroupValidationResult {

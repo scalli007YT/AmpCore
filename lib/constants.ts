@@ -44,3 +44,6 @@ export const PRESET_SLOT_MAX = 40;
 // Amp rename validation limits
 export const AMP_NAME_MIN_LENGTH = 1;
 export const AMP_NAME_MAX_LENGTH = 30;
+
+// Channel name validation limits (16-byte on-wire field, null-padded)
+export const CHANNEL_NAME_MAX_LENGTH = 16;

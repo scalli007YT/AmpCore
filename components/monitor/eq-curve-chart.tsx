@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import type { EqBand } from "@/stores/AmpStore";
+import { EqBandActionMenu } from "@/components/menus/eq-band-action-menu";
 import { bandGainAt, computeEqCurve, EQ_BAND_SHORT_LABELS, EQ_FREQ_TICKS, formatFreq } from "@/lib/eq";
 import { getEqFilterTypeCapabilities } from "@/lib/parse-channel-data";
 import {
@@ -32,6 +33,8 @@ interface EqCurveChartProps {
   interactive?: boolean;
   onBandPreviewChange?: (bandIdx: number, next: Partial<Pick<EqBand, "freq" | "gain" | "q">>) => void;
   onBandCommit?: (bandIdx: number, next: Partial<Pick<EqBand, "freq" | "gain" | "q">>) => void;
+  onBandBypassToggle?: (bandIdx: number) => void;
+  onBandResetGain?: (bandIdx: number) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
 }
@@ -46,15 +49,19 @@ export function EqCurveChart({
   interactive = false,
   onBandPreviewChange,
   onBandCommit,
+  onBandBypassToggle,
+  onBandResetGain,
   onDragStart,
   onDragEnd
 }: EqCurveChartProps) {
   const curveData = computeEqCurve(bands, 256);
   const [activeBand, setActiveBand] = useState<number | null>(null);
-  const [hoverBand, setHoverBand] = useState<number | null>(null);
-  const [lingerBand, setLingerBand] = useState<number | null>(null);
+  const [selectedBand, setSelectedBand] = useState<number | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuBandIdx, setMenuBandIdx] = useState<number | null>(null);
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
-  const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const yMin = -20;
   const yMax = 20;
@@ -112,26 +119,6 @@ export function EqCurveChart({
     onBandCommit(bandIdx, next);
   };
 
-  const clearLingerTimer = () => {
-    if (lingerTimerRef.current) {
-      clearTimeout(lingerTimerRef.current);
-      lingerTimerRef.current = null;
-    }
-  };
-
-  const scheduleLingerFade = (bandIdx: number) => {
-    clearLingerTimer();
-    lingerTimerRef.current = setTimeout(() => {
-      setLingerBand((prev) => (prev === bandIdx ? null : prev));
-    }, 2000);
-  };
-
-  useEffect(() => {
-    return () => {
-      clearLingerTimer();
-    };
-  }, []);
-
   // Curve paths — use raw (unclamped) yScale for clipping to work correctly
   const yScaleRaw = (db: number) => pad.top + ((yMax - db) / (yMax - yMin)) * ch;
 
@@ -139,7 +126,7 @@ export function EqCurveChart({
   const linePath = `M${pathPoints.join("L")}`;
   const fillPath = `${linePath}L${xScale(20000)},${yScaleRaw(0)}L${xScale(20)},${yScaleRaw(0)}Z`;
 
-  const focusBandIdx = activeBand ?? hoverBand ?? lingerBand;
+  const focusBandIdx = activeBand ?? selectedBand;
   const localCurveData =
     focusBandIdx !== null
       ? curveData.map((p) => ({
@@ -188,10 +175,8 @@ export function EqCurveChart({
     if (!svg) return;
     const { x: startViewX, y: startViewY } = toViewBoxPoint(svg, event.clientX, event.clientY);
 
-    clearLingerTimer();
-    setLingerBand(bandIdx);
     setActiveBand(bandIdx);
-    setHoverBand(bandIdx);
+    setSelectedBand(bandIdx);
     onDragStart?.();
     dragRef.current = {
       pointerId: event.pointerId,
@@ -205,6 +190,17 @@ export function EqCurveChart({
       startQ: band.q
     };
     event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const beginDragIfActivated = (event: React.PointerEvent<SVGElement>, bandIdx: number, mode: DragMode) => {
+    if (event.button !== 0) {
+      return;
+    }
+    if (selectedBand !== bandIdx && activeBand !== bandIdx) {
+      setSelectedBand(bandIdx);
+      return;
+    }
+    beginDrag(event, bandIdx, mode);
   };
 
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -276,9 +272,7 @@ export function EqCurveChart({
       }
     }
     dragRef.current = null;
-    clearLingerTimer();
-    setLingerBand(drag.bandIdx);
-    scheduleLingerFade(drag.bandIdx);
+    setSelectedBand(drag.bandIdx);
     setActiveBand(null);
     onDragEnd?.();
   };
@@ -288,323 +282,332 @@ export function EqCurveChart({
   for (let db = yMin; db <= yMax; db += yStep) yTicks.push(db);
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      className="w-full h-auto rounded-md border border-border/40 bg-muted/30"
-      preserveAspectRatio="xMidYMid meet"
-      onPointerMove={handlePointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
-      onPointerLeave={() => {
-        if (!dragRef.current) {
-          if (hoverBand !== null) {
-            scheduleLingerFade(hoverBand);
-          }
-          setHoverBand(null);
-        }
-      }}
-    >
-      <defs>
-        <clipPath id={clipId}>
-          <rect x={pad.left} y={pad.top} width={cw} height={ch} />
-        </clipPath>
-      </defs>
-      {/* Horizontal grid lines */}
-      {yTicks.map((db) => (
-        <g key={`y${db}`}>
-          <line
-            x1={pad.left}
-            x2={W - pad.right}
-            y1={yScale(db)}
-            y2={yScale(db)}
-            className={db === 0 ? "stroke-border" : "stroke-border/80"}
-            strokeWidth={db === 0 ? 1.5 : 0.5}
-          />
-          <text
-            x={pad.left - 8}
-            y={yScale(db)}
-            textAnchor="end"
-            dominantBaseline="middle"
-            className="fill-muted-foreground"
-            fontSize={11}
-          >
-            {db}
-          </text>
-        </g>
-      ))}
-      {/* Vertical grid lines */}
-      {EQ_FREQ_TICKS.map((f) => (
-        <g key={`x${f}`}>
-          <line
-            x1={xScale(f)}
-            x2={xScale(f)}
-            y1={pad.top}
-            y2={H - pad.bottom}
-            className="stroke-border/60"
-            strokeWidth={0.5}
-          />
-          <text
-            x={xScale(f)}
-            y={H - pad.bottom + 16}
-            textAnchor="middle"
-            className="fill-muted-foreground"
-            fontSize={11}
-          >
-            {formatFreq(f)}
-          </text>
-        </g>
-      ))}
-      {/* Axis labels */}
-      <text x={8} y={pad.top - 8} className="fill-muted-foreground" fontSize={10}>
-        dB
-      </text>
-      <text x={W - pad.right} y={H - 4} textAnchor="end" className="fill-muted-foreground" fontSize={10}>
-        Hz
-      </text>
-
-      {/* Filled area under/above 0 dB */}
-      <path d={fillPath} className="fill-primary/12" clipPath={`url(#${clipId})`} />
-      {/* Curve line */}
-      <path
-        d={linePath}
-        fill="none"
-        className="stroke-primary"
-        strokeWidth={2}
-        strokeLinejoin="round"
-        clipPath={`url(#${clipId})`}
+    <div className="relative" ref={containerRef}>
+      <EqBandActionMenu
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        bandIdx={menuBandIdx}
+        bandBypassed={menuBandIdx !== null ? bands[menuBandIdx]?.bypass : false}
+        bandSupportsGain={menuBandIdx !== null ? !(menuBandIdx === 0 || menuBandIdx === bands.length - 1) : true}
+        anchorPos={menuPos}
+        onBypassToggle={onBandBypassToggle}
+        onResetGain={onBandResetGain}
       />
-      {localPath ? (
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full h-auto rounded-md border border-border/40 bg-muted/30"
+        preserveAspectRatio="xMidYMid meet"
+        onPointerDown={(event) => {
+          if (event.button !== 0) {
+            return;
+          }
+          if (event.target === event.currentTarget) {
+            setSelectedBand(null);
+          }
+        }}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <defs>
+          <clipPath id={clipId}>
+            <rect x={pad.left} y={pad.top} width={cw} height={ch} />
+          </clipPath>
+        </defs>
+        {/* Horizontal grid lines */}
+        {yTicks.map((db) => (
+          <g key={`y${db}`}>
+            <line
+              x1={pad.left}
+              x2={W - pad.right}
+              y1={yScale(db)}
+              y2={yScale(db)}
+              className={db === 0 ? "stroke-border" : "stroke-border/80"}
+              strokeWidth={db === 0 ? 1.5 : 0.5}
+            />
+            <text
+              x={pad.left - 8}
+              y={yScale(db)}
+              textAnchor="end"
+              dominantBaseline="middle"
+              className="fill-muted-foreground"
+              fontSize={11}
+            >
+              {db}
+            </text>
+          </g>
+        ))}
+        {/* Vertical grid lines */}
+        {EQ_FREQ_TICKS.map((f) => (
+          <g key={`x${f}`}>
+            <line
+              x1={xScale(f)}
+              x2={xScale(f)}
+              y1={pad.top}
+              y2={H - pad.bottom}
+              className="stroke-border/60"
+              strokeWidth={0.5}
+            />
+            <text
+              x={xScale(f)}
+              y={H - pad.bottom + 16}
+              textAnchor="middle"
+              className="fill-muted-foreground"
+              fontSize={11}
+            >
+              {formatFreq(f)}
+            </text>
+          </g>
+        ))}
+        {/* Axis labels */}
+        <text x={8} y={pad.top - 8} className="fill-muted-foreground" fontSize={10}>
+          dB
+        </text>
+        <text x={W - pad.right} y={H - 4} textAnchor="end" className="fill-muted-foreground" fontSize={10}>
+          Hz
+        </text>
+
+        {/* Filled area under/above 0 dB */}
+        <path d={fillPath} className="fill-primary/12" clipPath={`url(#${clipId})`} />
+        {/* Curve line */}
         <path
-          d={localPath}
+          d={linePath}
           fill="none"
-          className="stroke-amber-400/95"
-          strokeWidth={1.5}
+          className="stroke-primary"
+          strokeWidth={2}
           strokeLinejoin="round"
           clipPath={`url(#${clipId})`}
         />
-      ) : null}
+        {localPath ? (
+          <path
+            d={localPath}
+            fill="none"
+            className="stroke-amber-400/95"
+            strokeWidth={1.5}
+            strokeLinejoin="round"
+            clipPath={`url(#${clipId})`}
+          />
+        ) : null}
 
-      {/* Band markers — rounded shadcn-style operator with separate drag handles */}
-      {markers.map((m, i) => {
-        if (m.bypass) return null;
-        const cx = Math.max(pad.left + 8, Math.min(W - pad.right - 8, m.x));
-        const cy = Math.max(pad.top + 8, Math.min(H - pad.bottom - 8, m.y));
-        const selected = activeBand === m.idx;
-        const visible = selected || hoverBand === m.idx || lingerBand === m.idx;
-        const qCanAdjust = m.capabilities.supportsQ;
-        const gainCanAdjust = m.capabilities.supportsGain;
-        const axisOffset = 14;
-        const qFreqLeft = clampFreq(m.freq / Math.pow(2, 1 / Math.max(m.q, 0.1)));
-        const qFreqRight = clampFreq(m.freq * Math.pow(2, 1 / Math.max(m.q, 0.1)));
-        const qLeftX = xScale(qFreqLeft);
-        const qRightX = xScale(qFreqRight);
-        const qLeftY = yScale(bandGainAt(bands[m.idx], qFreqLeft, m.idx));
-        const qRightY = yScale(bandGainAt(bands[m.idx], qFreqRight, m.idx));
-        const handleBandMouseEnter = () => {
-          clearLingerTimer();
-          setLingerBand(m.idx);
-          setHoverBand(m.idx);
-        };
+        {/* Band markers — rounded shadcn-style operator with separate drag handles */}
+        {markers.map((m, i) => {
+          if (m.bypass) return null;
+          const cx = Math.max(pad.left + 8, Math.min(W - pad.right - 8, m.x));
+          const cy = Math.max(pad.top + 8, Math.min(H - pad.bottom - 8, m.y));
+          const selected = activeBand === m.idx || selectedBand === m.idx;
+          const visible = selected;
+          const qCanAdjust = m.capabilities.supportsQ;
+          const gainCanAdjust = m.capabilities.supportsGain;
+          const axisOffset = 14;
+          const qFreqLeft = clampFreq(m.freq / Math.pow(2, 1 / Math.max(m.q, 0.1)));
+          const qFreqRight = clampFreq(m.freq * Math.pow(2, 1 / Math.max(m.q, 0.1)));
+          const qLeftX = xScale(qFreqLeft);
+          const qRightX = xScale(qFreqRight);
+          const qLeftY = yScale(bandGainAt(bands[m.idx], qFreqLeft, m.idx));
+          const qRightY = yScale(bandGainAt(bands[m.idx], qFreqRight, m.idx));
+          const mainCursorClass = selected ? (gainCanAdjust ? "cursor-move" : "cursor-ew-resize") : "cursor-pointer";
+          const xCursorClass = selected ? "cursor-ew-resize" : "cursor-pointer";
+          const yCursorClass = selected
+            ? gainCanAdjust
+              ? "cursor-ns-resize"
+              : "cursor-not-allowed"
+            : "cursor-pointer";
+          const qCursorClass = selected ? "cursor-ew-resize" : "cursor-pointer";
 
-        if (!interactive) {
+          if (!interactive) {
+            return (
+              <g key={i}>
+                <circle cx={cx} cy={cy} r={6} className="fill-background stroke-border" strokeWidth={1.25} />
+                <circle cx={cx} cy={cy} r={2.5} className="fill-primary/80" />
+              </g>
+            );
+          }
+
           return (
-            <g key={i}>
-              <circle cx={cx} cy={cy} r={6} className="fill-background stroke-border" strokeWidth={1.25} />
-              <circle cx={cx} cy={cy} r={2.5} className="fill-primary/80" />
+            <g
+              key={i}
+              className="select-none"
+              onClick={(event) => {
+                if (event.button === 0) {
+                  setSelectedBand(m.idx);
+                }
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setMenuBandIdx(m.idx);
+                const rect = containerRef.current?.getBoundingClientRect();
+                setMenuPos({
+                  x: event.clientX - (rect?.left ?? 0),
+                  y: event.clientY - (rect?.top ?? 0)
+                });
+                setMenuOpen(true);
+              }}
+            >
+              <circle
+                cx={cx}
+                cy={cy}
+                r={16}
+                fill="transparent"
+                pointerEvents="all"
+                className={`transition-opacity duration-200 ease-out ${mainCursorClass}`}
+                onPointerDown={(e) => beginDragIfActivated(e, m.idx, "xy")}
+                opacity={visible ? 1 : 0.35}
+                style={{ outline: "none" }}
+              />
+              <circle
+                cx={cx}
+                cy={cy}
+                r={8}
+                className={`fill-background/90 stroke-border transition-colors duration-200 ease-out ${mainCursorClass}`}
+                strokeWidth={1.25}
+                onPointerDown={(e) => beginDragIfActivated(e, m.idx, "xy")}
+              />
+              <circle
+                cx={cx}
+                cy={cy}
+                r={3.5}
+                className={`fill-primary/85 ${mainCursorClass}`}
+                onPointerDown={(e) => beginDragIfActivated(e, m.idx, "xy")}
+                opacity={visible ? 1 : 0.82}
+              />
+              <g
+                className="transition-opacity duration-200 ease-out"
+                opacity={visible ? 1 : 0}
+                style={{ pointerEvents: visible ? "auto" : "none" }}
+              >
+                <circle
+                  cx={cx - axisOffset}
+                  cy={cy}
+                  r={8}
+                  fill="transparent"
+                  pointerEvents="all"
+                  className={xCursorClass}
+                  onPointerDown={(e) => beginDragIfActivated(e, m.idx, "x")}
+                />
+                <circle
+                  cx={cx + axisOffset}
+                  cy={cy}
+                  r={8}
+                  fill="transparent"
+                  pointerEvents="all"
+                  className={xCursorClass}
+                  onPointerDown={(e) => beginDragIfActivated(e, m.idx, "x")}
+                />
+                <circle
+                  cx={cx - axisOffset}
+                  cy={cy}
+                  r={3}
+                  className={`fill-background stroke-primary/80 ${xCursorClass}`}
+                  strokeWidth={1}
+                  onPointerDown={(e) => beginDragIfActivated(e, m.idx, "x")}
+                />
+                <circle
+                  cx={cx + axisOffset}
+                  cy={cy}
+                  r={3}
+                  className={`fill-background stroke-primary/80 ${xCursorClass}`}
+                  strokeWidth={1}
+                  onPointerDown={(e) => beginDragIfActivated(e, m.idx, "x")}
+                />
+                <circle
+                  cx={cx}
+                  cy={cy - axisOffset}
+                  r={8}
+                  fill="transparent"
+                  pointerEvents="all"
+                  className={yCursorClass}
+                  onPointerDown={(e) => beginDragIfActivated(e, m.idx, "y")}
+                />
+                <circle
+                  cx={cx}
+                  cy={cy + axisOffset}
+                  r={8}
+                  fill="transparent"
+                  pointerEvents="all"
+                  className={yCursorClass}
+                  onPointerDown={(e) => beginDragIfActivated(e, m.idx, "y")}
+                />
+                <circle
+                  cx={cx}
+                  cy={cy - axisOffset}
+                  r={3}
+                  className={`${gainCanAdjust ? "fill-background stroke-primary/80" : "fill-muted stroke-muted-foreground/50"} ${
+                    yCursorClass
+                  }`}
+                  strokeWidth={1}
+                  onPointerDown={(e) => beginDragIfActivated(e, m.idx, "y")}
+                />
+                <circle
+                  cx={cx}
+                  cy={cy + axisOffset}
+                  r={3}
+                  className={`${gainCanAdjust ? "fill-background stroke-primary/80" : "fill-muted stroke-muted-foreground/50"} ${
+                    yCursorClass
+                  }`}
+                  strokeWidth={1}
+                  onPointerDown={(e) => beginDragIfActivated(e, m.idx, "y")}
+                />
+                {qCanAdjust && focusBandIdx === m.idx ? (
+                  <>
+                    <line
+                      x1={qLeftX}
+                      y1={qLeftY}
+                      x2={qRightX}
+                      y2={qRightY}
+                      className="stroke-amber-400/50"
+                      strokeWidth={1}
+                    />
+                    <circle
+                      cx={qLeftX}
+                      cy={qLeftY}
+                      r={8}
+                      fill="transparent"
+                      pointerEvents="all"
+                      className={qCursorClass}
+                      onPointerDown={(e) => beginDragIfActivated(e, m.idx, "qLeft")}
+                    />
+                    <circle
+                      cx={qRightX}
+                      cy={qRightY}
+                      r={8}
+                      fill="transparent"
+                      pointerEvents="all"
+                      className={qCursorClass}
+                      onPointerDown={(e) => beginDragIfActivated(e, m.idx, "qRight")}
+                    />
+                    <circle
+                      cx={qLeftX}
+                      cy={qLeftY}
+                      r={2.6}
+                      className={`fill-amber-400/95 ${qCursorClass}`}
+                      onPointerDown={(e) => beginDragIfActivated(e, m.idx, "qLeft")}
+                    />
+                    <circle
+                      cx={qRightX}
+                      cy={qRightY}
+                      r={2.6}
+                      className={`fill-amber-400/95 ${qCursorClass}`}
+                      onPointerDown={(e) => beginDragIfActivated(e, m.idx, "qRight")}
+                    />
+                  </>
+                ) : null}
+              </g>
+              <text
+                x={cx}
+                y={cy + 22}
+                textAnchor="middle"
+                className="fill-foreground/85 transition-opacity duration-200 ease-out"
+                opacity={visible ? 0 : 1}
+                pointerEvents="none"
+                fontSize={10}
+              >
+                {m.label}
+              </text>
             </g>
           );
-        }
-
-        return (
-          <g
-            key={i}
-            className="select-none"
-            onMouseEnter={handleBandMouseEnter}
-            onMouseLeave={() => {
-              if (!dragRef.current && activeBand !== m.idx && hoverBand === m.idx) {
-                scheduleLingerFade(m.idx);
-                setHoverBand(null);
-              }
-            }}
-          >
-            <circle
-              cx={cx}
-              cy={cy}
-              r={16}
-              fill="transparent"
-              pointerEvents="all"
-              className="transition-opacity duration-200 ease-out"
-              onMouseEnter={handleBandMouseEnter}
-              onPointerDown={(e) => beginDrag(e, m.idx, "xy")}
-              opacity={visible ? 1 : 0.35}
-              style={{ outline: "none", cursor: gainCanAdjust ? "move" : "ew-resize" }}
-            />
-            <circle
-              cx={cx}
-              cy={cy}
-              r={8}
-              className="fill-background/90 stroke-border transition-colors duration-200 ease-out"
-              strokeWidth={1.25}
-              onPointerDown={(e) => beginDrag(e, m.idx, "xy")}
-              onMouseEnter={handleBandMouseEnter}
-              style={{ cursor: gainCanAdjust ? "move" : "ew-resize" }}
-            />
-            <circle
-              cx={cx}
-              cy={cy}
-              r={3.5}
-              className="fill-primary/85"
-              onPointerDown={(e) => beginDrag(e, m.idx, "xy")}
-              onMouseEnter={handleBandMouseEnter}
-              opacity={visible ? 1 : 0.82}
-              style={{ cursor: gainCanAdjust ? "move" : "ew-resize" }}
-            />
-            <g
-              className="transition-opacity duration-200 ease-out"
-              opacity={visible ? 1 : 0}
-              style={{ pointerEvents: visible ? "auto" : "none" }}
-            >
-              <circle
-                cx={cx - axisOffset}
-                cy={cy}
-                r={8}
-                fill="transparent"
-                pointerEvents="all"
-                onPointerDown={(e) => beginDrag(e, m.idx, "x")}
-                style={{ cursor: "ew-resize" }}
-              />
-              <circle
-                cx={cx + axisOffset}
-                cy={cy}
-                r={8}
-                fill="transparent"
-                pointerEvents="all"
-                onPointerDown={(e) => beginDrag(e, m.idx, "x")}
-                style={{ cursor: "ew-resize" }}
-              />
-              <circle
-                cx={cx - axisOffset}
-                cy={cy}
-                r={3}
-                className="fill-background stroke-primary/80"
-                strokeWidth={1}
-                onPointerDown={(e) => beginDrag(e, m.idx, "x")}
-                style={{ cursor: "ew-resize" }}
-              />
-              <circle
-                cx={cx + axisOffset}
-                cy={cy}
-                r={3}
-                className="fill-background stroke-primary/80"
-                strokeWidth={1}
-                onPointerDown={(e) => beginDrag(e, m.idx, "x")}
-                style={{ cursor: "ew-resize" }}
-              />
-              <circle
-                cx={cx}
-                cy={cy - axisOffset}
-                r={8}
-                fill="transparent"
-                pointerEvents="all"
-                onPointerDown={(e) => beginDrag(e, m.idx, "y")}
-                style={{ cursor: gainCanAdjust ? "ns-resize" : "not-allowed" }}
-              />
-              <circle
-                cx={cx}
-                cy={cy + axisOffset}
-                r={8}
-                fill="transparent"
-                pointerEvents="all"
-                onPointerDown={(e) => beginDrag(e, m.idx, "y")}
-                style={{ cursor: gainCanAdjust ? "ns-resize" : "not-allowed" }}
-              />
-              <circle
-                cx={cx}
-                cy={cy - axisOffset}
-                r={3}
-                className={
-                  gainCanAdjust ? "fill-background stroke-primary/80" : "fill-muted stroke-muted-foreground/50"
-                }
-                strokeWidth={1}
-                onPointerDown={(e) => beginDrag(e, m.idx, "y")}
-                style={{ cursor: gainCanAdjust ? "ns-resize" : "not-allowed" }}
-              />
-              <circle
-                cx={cx}
-                cy={cy + axisOffset}
-                r={3}
-                className={
-                  gainCanAdjust ? "fill-background stroke-primary/80" : "fill-muted stroke-muted-foreground/50"
-                }
-                strokeWidth={1}
-                onPointerDown={(e) => beginDrag(e, m.idx, "y")}
-                style={{ cursor: gainCanAdjust ? "ns-resize" : "not-allowed" }}
-              />
-              {qCanAdjust && focusBandIdx === m.idx ? (
-                <>
-                  <line
-                    x1={qLeftX}
-                    y1={qLeftY}
-                    x2={qRightX}
-                    y2={qRightY}
-                    className="stroke-amber-400/50"
-                    strokeWidth={1}
-                  />
-                  <circle
-                    cx={qLeftX}
-                    cy={qLeftY}
-                    r={8}
-                    fill="transparent"
-                    pointerEvents="all"
-                    onMouseEnter={handleBandMouseEnter}
-                    onPointerDown={(e) => beginDrag(e, m.idx, "qLeft")}
-                    style={{ cursor: "ew-resize" }}
-                  />
-                  <circle
-                    cx={qRightX}
-                    cy={qRightY}
-                    r={8}
-                    fill="transparent"
-                    pointerEvents="all"
-                    onMouseEnter={handleBandMouseEnter}
-                    onPointerDown={(e) => beginDrag(e, m.idx, "qRight")}
-                    style={{ cursor: "ew-resize" }}
-                  />
-                  <circle
-                    cx={qLeftX}
-                    cy={qLeftY}
-                    r={2.6}
-                    className="fill-amber-400/95"
-                    onMouseEnter={handleBandMouseEnter}
-                    onPointerDown={(e) => beginDrag(e, m.idx, "qLeft")}
-                    style={{ cursor: "ew-resize" }}
-                  />
-                  <circle
-                    cx={qRightX}
-                    cy={qRightY}
-                    r={2.6}
-                    className="fill-amber-400/95"
-                    onMouseEnter={handleBandMouseEnter}
-                    onPointerDown={(e) => beginDrag(e, m.idx, "qRight")}
-                    style={{ cursor: "ew-resize" }}
-                  />
-                </>
-              ) : null}
-            </g>
-            <text
-              x={cx}
-              y={cy + 22}
-              textAnchor="middle"
-              className="fill-foreground/85 transition-opacity duration-200 ease-out"
-              opacity={visible ? 0 : 1}
-              pointerEvents="none"
-              fontSize={10}
-            >
-              {m.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+        })}
+      </svg>
+    </div>
   );
 }

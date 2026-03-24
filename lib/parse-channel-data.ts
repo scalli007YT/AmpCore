@@ -227,7 +227,7 @@ const CHANNEL_FIELDS = [
   { field: "delayOut", type: "float32", offset: 90 },
   { field: "invertedOut", type: "uint8", offset: 94 },
   { field: "volumeOut", type: "float32", offset: 405 },
-  { field: "inputName", type: "ascii", offset: 413, length: 16 },
+  { field: "inputName", type: "ascii", offset: 414, length: 16 },
   { field: "outputName", type: "ascii", offset: 430, length: 16 }
 ] as const;
 

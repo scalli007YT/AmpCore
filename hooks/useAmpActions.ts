@@ -24,7 +24,8 @@ import {
   RMS_LIMITER_RELEASE_MAX_MULTIPLIER,
   PEAK_LIMITER_THRESHOLD_MIN_VP,
   PEAK_LIMITER_HOLD_MAX_MS,
-  PEAK_LIMITER_RELEASE_MAX_MS
+  PEAK_LIMITER_RELEASE_MAX_MS,
+  CHANNEL_NAME_MAX_LENGTH
 } from "@/lib/constants";
 import { getLinkedChannels, type LinkScope } from "@/lib/amp-action-linking";
 import { useAmpStore } from "@/stores/AmpStore";
@@ -93,6 +94,8 @@ interface AmpActionsHook {
   setEqBandQ: (mac: string, channel: Channel, target: CrossoverTarget, band: number, q: number) => Promise<void>;
   invertPolarityOut: (mac: string, channel: Channel, inverted: boolean) => Promise<void>;
   noiseGateOut: (mac: string, channel: Channel, enabled: boolean) => Promise<void>;
+  renameInput: (mac: string, channel: Channel, name: string) => Promise<void>;
+  renameOutput: (mac: string, channel: Channel, name: string) => Promise<void>;
   rmsLimiterOut: (mac: string, channel: Channel, enabled: boolean, params?: RmsLimiterParams) => Promise<void>;
   setRmsLimiterAttack: (
     mac: string,
@@ -640,6 +643,30 @@ export function useAmpActions(): AmpActionsHook {
     [sendLinked]
   );
 
+  // ---------------------------------------------------------------------------
+  // renameInput — FC=77 SPEAKER_NAME in_out_flag=0
+  // ---------------------------------------------------------------------------
+  const renameInput = useCallback(
+    async (mac: string, channel: Channel, name: string) => {
+      const trimmed = name.trim().slice(0, CHANNEL_NAME_MAX_LENGTH);
+      if (!trimmed) return;
+      await send(mac, "renameInput", channel, trimmed);
+    },
+    [send]
+  );
+
+  // ---------------------------------------------------------------------------
+  // renameOutput — FC=77 SPEAKER_NAME in_out_flag=1
+  // ---------------------------------------------------------------------------
+  const renameOutput = useCallback(
+    async (mac: string, channel: Channel, name: string) => {
+      const trimmed = name.trim().slice(0, CHANNEL_NAME_MAX_LENGTH);
+      if (!trimmed) return;
+      await send(mac, "renameOutput", channel, trimmed);
+    },
+    [send]
+  );
+
   return {
     setBridgePair,
     muteIn,
@@ -671,6 +698,8 @@ export function useAmpActions(): AmpActionsHook {
     setEqBandType,
     setEqBandFreq,
     setEqBandGain,
-    setEqBandQ
+    setEqBandQ,
+    renameInput,
+    renameOutput
   };
 }

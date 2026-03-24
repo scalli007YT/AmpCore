@@ -73,6 +73,8 @@ interface SimulatedChannelState {
   peakLimiter: SimulatedLimiterPeak;
   eqIn: SimulatedEqBand[];
   eqOut: SimulatedEqBand[];
+  inputName: string;
+  outputName: string;
 }
 
 interface SimulatedAmpState {
@@ -225,7 +227,9 @@ function createDefaultChannelState(channelCount: number, channelIndex: number): 
       thresholdVp: 60
     },
     eqIn: Array.from({ length: EQ_BAND_COUNT }, (_, idx) => createDefaultEqBand(idx)),
-    eqOut: Array.from({ length: EQ_BAND_COUNT }, (_, idx) => createDefaultEqBand(idx))
+    eqOut: Array.from({ length: EQ_BAND_COUNT }, (_, idx) => createDefaultEqBand(idx)),
+    inputName: `Eingang ${channelIndex + 1}`,
+    outputName: `Out${String.fromCharCode(65 + channelIndex)}`
   };
 }
 
@@ -468,8 +472,8 @@ export function buildSimulatedFc27Hex(mac: string): string | null {
     buffer.writeFloatLE(channel.volumeOut, base + 405);
     buffer.writeUInt8(channel.noiseGateOut ? 0 : 1, base + 409);
 
-    writeAscii(buffer, base + 413, 16, `AIn${ch + 1}`);
-    writeAscii(buffer, base + 430, 16, `Out${String.fromCharCode(65 + ch)}`);
+    writeAscii(buffer, base + 414, 15, channel.inputName);
+    writeAscii(buffer, base + 430, 16, channel.outputName);
 
     buffer.writeUInt8(channel.muteIn ? 0 : 1, trailerBase + 132 + ch);
     buffer.writeUInt8(channel.analogInputIndex & 0xff, trailerBase + 136 + ch);
@@ -667,6 +671,14 @@ export function applySimulatedAction(mac: string, body: AmpActionRequest): boole
 
     case "renameAmp":
       definition.name = body.value.trim();
+      return true;
+
+    case "renameInput":
+      if (channelState) channelState.inputName = body.value.trim();
+      return true;
+
+    case "renameOutput":
+      if (channelState) channelState.outputName = body.value.trim();
       return true;
 
     default:

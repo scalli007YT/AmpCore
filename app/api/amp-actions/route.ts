@@ -48,7 +48,7 @@ import { ampController } from "@/lib/amp-controller";
 import { CvrAmpDevice, FuncCode } from "@/lib/amp-device";
 import { applySimulatedAction, isSimulatedMac } from "@/lib/simulated-amps";
 import { ampActionRequestSchema, type AmpActionRequest } from "@/lib/validation/amp-actions";
-import { AMP_NAME_MAX_LENGTH } from "@/lib/constants";
+import { AMP_NAME_MAX_LENGTH, CHANNEL_NAME_MAX_LENGTH } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -537,6 +537,33 @@ export async function POST(request: Request): Promise<Response> {
           // Fallback if the shared socket is not ready for any reason.
           await device.sendControl(FuncCode.CUSTOMER_NAME_MODIFY, 0, payload, 0 /* input/default */);
         }
+        break;
+      }
+
+      // -----------------------------------------------------------------------
+      // Rename output channel (speaker name) — FC=77 SPEAKER_NAME
+      // Body: 16-byte null-padded ASCII string.
+      // chx = channel index, in_out_flag=1 (Output).
+      // Confirmed by Wireshark: FC=0x4D, in_out_flag=1.
+      // -----------------------------------------------------------------------
+      case "renameOutput": {
+        const payload = Buffer.alloc(16, 0);
+        const nameBytes = Buffer.from(value, "ascii").subarray(0, CHANNEL_NAME_MAX_LENGTH);
+        nameBytes.copy(payload, 0);
+        await device.sendControl(FuncCode.SPEAKER_NAME, channel, payload, 1 /* Output */);
+        break;
+      }
+
+      // -----------------------------------------------------------------------
+      // Rename input channel — FC=77 SPEAKER_NAME
+      // Same as output rename but with in_out_flag=0 (Input).
+      // Confirmed by Wireshark: FC=0x4D, in_out_flag=0.
+      // -----------------------------------------------------------------------
+      case "renameInput": {
+        const payload = Buffer.alloc(16, 0);
+        const nameBytes = Buffer.from(value, "ascii").subarray(0, CHANNEL_NAME_MAX_LENGTH);
+        nameBytes.copy(payload, 0);
+        await device.sendControl(FuncCode.SPEAKER_NAME, channel, payload, 0 /* Input */);
         break;
       }
 

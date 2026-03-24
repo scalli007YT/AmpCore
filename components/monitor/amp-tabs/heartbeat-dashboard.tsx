@@ -28,6 +28,7 @@ import { getChannelLabels } from "@/lib/channel-labels";
 import { convertDelayUnits, type DelayUnit, voltageToMeterDb, rmsToPeakVoltage, formatDbfs } from "@/lib/generic";
 import { getPowerModeName } from "@/lib/parse-channel-data";
 import { useI18n } from "@/components/layout/i18n-provider";
+import { Volume1, VolumeX, Circle, CircleSlash } from "lucide-react";
 
 const POWER_MODE_OPTIONS = [0, 1, 2] as const;
 type BridgePair = number;
@@ -720,16 +721,6 @@ export function HeartbeatDashboard({
                       <span className="text-[9px] text-foreground/65 mt-0.5">Gain dB</span>
                     </div>
 
-                    <div className="w-16 shrink-0">
-                      <DelayPopover
-                        delayMs={channelParams?.channels[i]?.delayIn}
-                        maxMs={100}
-                        label="ms in"
-                        buttonClassName="!h-12 text-[13px]"
-                        onSet={(ms) => setDelayIn(mac, i, ms)}
-                      />
-                    </div>
-
                     {(() => {
                       const muted = channelParams?.channels[i]?.muteIn;
                       const canClick = muted !== undefined;
@@ -747,13 +738,27 @@ export function HeartbeatDashboard({
                                 : "border-border/30 bg-muted/10 text-muted-foreground/40"
                           } ${linkedHoverClass("muteIn", i, muted === false ? "border-destructive/40 text-destructive/70" : "")}`}
                         >
-                          <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                            {muted === true ? "ON" : muted === false ? "OFF" : "~"}
-                          </span>
+                          {muted === true ? (
+                            <VolumeX className="w-5 h-5" />
+                          ) : muted === false ? (
+                            <Volume1 className="w-5 h-5" />
+                          ) : (
+                            <span className="font-mono text-[13px] font-semibold">~</span>
+                          )}
                           <span className="text-[9px] leading-none text-muted-foreground mt-0.5">Mute</span>
                         </button>
                       );
                     })()}
+
+                    <div className="w-16 shrink-0">
+                      <DelayPopover
+                        delayMs={channelParams?.channels[i]?.delayIn}
+                        maxMs={100}
+                        label="ms in"
+                        buttonClassName="!h-12 text-[13px]"
+                        onSet={(ms) => setDelayIn(mac, i, ms)}
+                      />
+                    </div>
 
                     <div className="w-16 shrink-0">
                       <EqBandDialog
@@ -917,32 +922,27 @@ export function HeartbeatDashboard({
                               <span className="text-[9px] text-muted-foreground mt-0.5">°C</span>
                             </div>
 
+                            <button
+                              type="button"
+                              disabled
+                              className="flex h-12 w-16 shrink-0 flex-col items-center justify-center rounded border px-1 py-0.5 select-none disabled:pointer-events-none disabled:opacity-50 border-border/30 bg-muted/10"
+                            >
+                              <span className="font-mono text-[13px] font-semibold">FIR</span>
+                            </button>
+
                             <div className="w-16 shrink-0">
-                              <VolumePopover
-                                volumeDb={channelParams?.channels[i]?.volumeOut}
-                                label="Vol dB"
-                                title="Output Volume"
-                                minDb={OUTPUT_VOLUME_MIN_DB}
-                                maxDb={OUTPUT_VOLUME_MAX_DB}
-                                buttonClassName={`!h-12 text-[13px] ${linkedHoverClass("volumeOut", i, "border-primary/40 bg-muted/50")}`}
-                                onButtonMouseEnter={getLinkHoverProps("volumeOut", i).onMouseEnter}
-                                onButtonMouseLeave={getLinkHoverProps("volumeOut", i).onMouseLeave}
-                                onButtonFocus={getLinkHoverProps("volumeOut", i).onFocus}
-                                onButtonBlur={getLinkHoverProps("volumeOut", i).onBlur}
-                                onSet={(db) => setVolumeOut(mac, i, db)}
-                              />
-                            </div>
-                            <div className="w-16 shrink-0">
-                              <DelayPopover
-                                delayMs={channelParams?.channels[i]?.delayOut}
-                                maxMs={20}
-                                label="ms out"
-                                buttonClassName={`!h-12 text-[13px] ${linkedHoverClass("delayOut", i, (channelParams?.channels[i]?.delayOut ?? 0) > 0 ? "ring-1 ring-sky-500/45" : "ring-1 ring-sky-500/30")}`}
-                                onButtonMouseEnter={getLinkHoverProps("delayOut", i).onMouseEnter}
-                                onButtonMouseLeave={getLinkHoverProps("delayOut", i).onMouseLeave}
-                                onButtonFocus={getLinkHoverProps("delayOut", i).onFocus}
-                                onButtonBlur={getLinkHoverProps("delayOut", i).onBlur}
-                                onSet={(ms) => setDelayOut(mac, i, ms)}
+                              <EqBandDialog
+                                triggerLabel="Edit|EQ Out"
+                                title={`Output EQ - Ch ${channelLabels[i] ?? i + 1}`}
+                                triggerClassName={`!h-12 ${linkedHoverClass("outputEq", i, "ring-1 ring-purple-500/40")}`}
+                                onTriggerMouseEnter={getLinkHoverProps("outputEq", i).onMouseEnter}
+                                onTriggerMouseLeave={getLinkHoverProps("outputEq", i).onMouseLeave}
+                                onTriggerFocus={getLinkHoverProps("outputEq", i).onFocus}
+                                onTriggerBlur={getLinkHoverProps("outputEq", i).onBlur}
+                                mac={mac}
+                                channel={i}
+                                target="output"
+                                bands={channelParams?.channels[i]?.eqOut}
                               />
                             </div>
                             <div className="w-16 shrink-0">
@@ -961,6 +961,47 @@ export function HeartbeatDashboard({
                               />
                             </div>
                             <div className="w-16 shrink-0">
+                              <DelayPopover
+                                delayMs={channelParams?.channels[i]?.delayOut}
+                                maxMs={20}
+                                label="ms out"
+                                buttonClassName={`!h-12 text-[13px] ${linkedHoverClass("delayOut", i, (channelParams?.channels[i]?.delayOut ?? 0) > 0 ? "ring-1 ring-sky-500/45" : "ring-1 ring-sky-500/30")}`}
+                                onButtonMouseEnter={getLinkHoverProps("delayOut", i).onMouseEnter}
+                                onButtonMouseLeave={getLinkHoverProps("delayOut", i).onMouseLeave}
+                                onButtonFocus={getLinkHoverProps("delayOut", i).onFocus}
+                                onButtonBlur={getLinkHoverProps("delayOut", i).onBlur}
+                                onSet={(ms) => setDelayOut(mac, i, ms)}
+                              />
+                            </div>
+                            {(() => {
+                              const inverted = channelParams?.channels[i]?.invertedOut;
+                              const canClick = inverted !== undefined;
+                              return (
+                                <button
+                                  type="button"
+                                  disabled={!canClick}
+                                  {...getLinkHoverProps("polarityOut", i)}
+                                  onClick={() => canClick && void invertPolarityOut(mac, i, !inverted)}
+                                  className={`flex h-12 w-16 shrink-0 flex-col items-center justify-center rounded border px-1 py-0.5 select-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
+                                    inverted === true
+                                      ? "border-destructive/65 bg-destructive/15 text-destructive hover:bg-destructive/20"
+                                      : inverted === false
+                                        ? "border-border/50 bg-muted/20 text-foreground/80 hover:border-destructive/45 hover:text-destructive"
+                                        : "border-border/30 bg-muted/10 text-muted-foreground/40"
+                                  } ${linkedHoverClass("polarityOut", i, inverted === false ? "border-destructive/40 text-destructive/80" : "")}`}
+                                >
+                                  {inverted === true ? (
+                                    <CircleSlash className="w-5 h-5" />
+                                  ) : inverted === false ? (
+                                    <Circle className="w-5 h-5" />
+                                  ) : (
+                                    <span className="font-mono text-[13px] font-semibold">~</span>
+                                  )}
+                                  <span className="text-[9px] leading-none text-muted-foreground mt-0.5">Pol</span>
+                                </button>
+                              );
+                            })()}
+                            <div className="w-16 shrink-0">
                               <PowerModePill
                                 mode={channelParams?.channels[i]?.powerMode}
                                 channelLabel={`Out${channelLabels[i] ?? i + 1}`}
@@ -968,31 +1009,6 @@ export function HeartbeatDashboard({
                                 onConfirm={(mode) => setPowerModeOut(mac, i, mode)}
                               />
                             </div>
-
-                            {(() => {
-                              const muted = channelParams?.channels[i]?.muteOut;
-                              const canClick = muted !== undefined;
-                              return (
-                                <button
-                                  type="button"
-                                  disabled={!canClick}
-                                  {...getLinkHoverProps("muteOut", i)}
-                                  onClick={() => canClick && void muteOut(mac, i, !muted)}
-                                  className={`flex h-12 w-16 shrink-0 flex-col items-center justify-center rounded border px-1 py-0.5 select-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
-                                    muted === true
-                                      ? "border-destructive/65 bg-destructive/15 text-destructive hover:bg-destructive/20"
-                                      : muted === false
-                                        ? "border-border/50 bg-muted/20 text-foreground/80 hover:border-destructive/45 hover:text-destructive"
-                                        : "border-border/30 bg-muted/10 text-muted-foreground/40"
-                                  } ${linkedHoverClass("muteOut", i, muted === false ? "border-destructive/40 text-destructive/70" : "")}`}
-                                >
-                                  <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                                    {muted === true ? "ON" : muted === false ? "OFF" : "~"}
-                                  </span>
-                                  <span className="text-[9px] leading-none text-muted-foreground mt-0.5">Mute</span>
-                                </button>
-                              );
-                            })()}
                             {(() => {
                               const ng = channelParams?.channels[i]?.noiseGateOut;
                               const canClick = ng !== undefined;
@@ -1018,44 +1034,33 @@ export function HeartbeatDashboard({
                               );
                             })()}
                             {(() => {
-                              const inverted = channelParams?.channels[i]?.invertedOut;
-                              const canClick = inverted !== undefined;
+                              const muted = channelParams?.channels[i]?.muteOut;
+                              const canClick = muted !== undefined;
                               return (
                                 <button
                                   type="button"
                                   disabled={!canClick}
-                                  {...getLinkHoverProps("polarityOut", i)}
-                                  onClick={() => canClick && void invertPolarityOut(mac, i, !inverted)}
+                                  {...getLinkHoverProps("muteOut", i)}
+                                  onClick={() => canClick && void muteOut(mac, i, !muted)}
                                   className={`flex h-12 w-16 shrink-0 flex-col items-center justify-center rounded border px-1 py-0.5 select-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
-                                    inverted === true
+                                    muted === true
                                       ? "border-destructive/65 bg-destructive/15 text-destructive hover:bg-destructive/20"
-                                      : inverted === false
+                                      : muted === false
                                         ? "border-border/50 bg-muted/20 text-foreground/80 hover:border-destructive/45 hover:text-destructive"
                                         : "border-border/30 bg-muted/10 text-muted-foreground/40"
-                                  } ${linkedHoverClass("polarityOut", i, inverted === false ? "border-destructive/40 text-destructive/80" : "")}`}
+                                  } ${linkedHoverClass("muteOut", i, muted === false ? "border-destructive/40 text-destructive/70" : "")}`}
                                 >
-                                  <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
-                                    {inverted === true ? "INV" : inverted === false ? "NRM" : "~"}
-                                  </span>
-                                  <span className="text-[9px] leading-none text-muted-foreground mt-0.5">Pol</span>
+                                  {muted === true ? (
+                                    <VolumeX className="w-5 h-5" />
+                                  ) : muted === false ? (
+                                    <Volume1 className="w-5 h-5" />
+                                  ) : (
+                                    <span className="font-mono text-[13px] font-semibold">~</span>
+                                  )}
+                                  <span className="text-[9px] leading-none text-muted-foreground mt-0.5">Mute</span>
                                 </button>
                               );
                             })()}
-                            <div className="w-16 shrink-0">
-                              <EqBandDialog
-                                triggerLabel="Edit|EQ Out"
-                                title={`Output EQ - Ch ${channelLabels[i] ?? i + 1}`}
-                                triggerClassName={`!h-12 ${linkedHoverClass("outputEq", i, "ring-1 ring-purple-500/40")}`}
-                                onTriggerMouseEnter={getLinkHoverProps("outputEq", i).onMouseEnter}
-                                onTriggerMouseLeave={getLinkHoverProps("outputEq", i).onMouseLeave}
-                                onTriggerFocus={getLinkHoverProps("outputEq", i).onFocus}
-                                onTriggerBlur={getLinkHoverProps("outputEq", i).onBlur}
-                                mac={mac}
-                                channel={i}
-                                target="output"
-                                bands={channelParams?.channels[i]?.eqOut}
-                              />
-                            </div>
                           </div>
                         );
                       })}
@@ -1073,9 +1078,6 @@ export function HeartbeatDashboard({
                   {f0(hb.temperatures[4] ?? 0)}
                 </span>
                 <span className="text-[10px] ml-0.5">°C</span>
-              </span>
-              <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
-                {new Date(hb.receivedAt).toLocaleTimeString()}
               </span>
             </div>
           </div>

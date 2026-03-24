@@ -346,9 +346,9 @@ export async function POST(request: Request): Promise<Response> {
       }
 
       // -----------------------------------------------------------------------
-      // Output power mode (Low-Z / 70V / 100V) — FC=49 DZ_DY_data_code
+      // Output power mode (Low-Ω / 70V / 100V) — FC=49 DZ_DY_data_code
       // Body: DZ_DY { CPCR: byte }
-      //   0 = Low-Z
+      //   0 = Low-Ω
       //   1 = 70V
       //   2 = 100V
       // Uses the per-channel write path from the original controller rather than

@@ -244,6 +244,11 @@ const CHANNEL_FIELDS = [
  */
 const TRAILER_MUTE_IN_REL_OFFSET = 132;
 const TRAILER_ANALOG_MATRIX_REL_OFFSET = 136;
+// Reverse-engineered from original C# sync structs:
+// trailer[32]=standby, trailer[33]=encoder_to_lock.Rotary_lock (0/1).
+const TRAILER_ROTARY_LOCK_REL_OFFSET = 33;
+// DP_1 variant maps lock via `DisplayLock`, located just before a 485-byte tail padding block.
+const DP1_DISPLAY_LOCK_FROM_END = 486;
 
 function clampSourceCode(code: number): number {
   if (code <= 0) return 0;
@@ -321,6 +326,58 @@ export function parseFC27Channels(hexData: string): ChannelData[] {
   } catch (err) {
     console.error(`Failed to parse FC=27 data:`, err);
     return [];
+  }
+}
+
+/**
+ * Parse the amplifier rotary lock flag from an FC=27 payload trailer.
+ *
+ * Returns:
+ * - true/false when the byte is available
+ * - undefined when payload is too short or malformed
+ */
+export function parseFC27RotaryLock(hexData: string): boolean | undefined {
+  if (!hexData || hexData.length < 200) {
+    return undefined;
+  }
+
+  try {
+    const buffer = Buffer.from(hexData, "hex");
+    const channelCount = Math.max(0, Math.floor(buffer.length / BYTES_PER_CHANNEL));
+    const trailerBase = channelCount * BYTES_PER_CHANNEL;
+    const lockAbs = trailerBase + TRAILER_ROTARY_LOCK_REL_OFFSET;
+    const dp1DisplayLockAbs = buffer.length - DP1_DISPLAY_LOCK_FROM_END;
+
+    const trailerLock = lockAbs >= 0 && lockAbs < buffer.length ? buffer.readUInt8(lockAbs) : undefined;
+    const dp1DisplayLock =
+      dp1DisplayLockAbs >= 0 && dp1DisplayLockAbs < buffer.length ? buffer.readUInt8(dp1DisplayLockAbs) : undefined;
+
+    // Original parser semantics are strict: lock is true only when byte == 1.
+    // Non-binary values are treated as invalid/unknown instead of truthy.
+    const decodeLockByte = (value: number | undefined): boolean | undefined => {
+      if (value === 1) return true;
+      if (value === 0) return false;
+      return undefined;
+    };
+    const trailerLockDecoded = decodeLockByte(trailerLock);
+    const dp1DisplayLockDecoded = decodeLockByte(dp1DisplayLock);
+
+    // DP_1-style payloads expose lock through DisplayLock instead of encoder_to_lock.Rotary_lock.
+    if (channelCount <= 2 && dp1DisplayLockDecoded !== undefined) {
+      return dp1DisplayLockDecoded;
+    }
+
+    if (trailerLockDecoded !== undefined) {
+      return trailerLockDecoded;
+    }
+
+    if (channelCount <= 2 && dp1DisplayLockDecoded !== undefined) {
+      return dp1DisplayLockDecoded;
+    }
+
+    return undefined;
+  } catch {
+    return undefined;
   }
 }
 

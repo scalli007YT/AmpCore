@@ -29,6 +29,7 @@
  * Supported actions:
  *
  *   "muteIn"  — FC=10 MUTE, in_out_flag=0 (input)
+ *   "setAmpLock" — FC=17 ROTARY_LOCK, in_out_flag=0 (global)
  *   "volumeOut" — FC=9 VOL, observed output-volume control/readback on current amps
  *   "bridgePair" — FC=50 BRIDGE, pair channel=0 (A/B) or 1 (C/D)
  *   "muteOut" — FC=10 MUTE, in_out_flag=1 (Output)
@@ -124,6 +125,16 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     switch (action) {
+      // -----------------------------------------------------------------------
+      // Amp front-panel lock/unlock — FC=17 ROTARY_LOCK
+      // Wire body: 0x01 = locked, 0x00 = unlocked
+      // -----------------------------------------------------------------------
+      case "setAmpLock": {
+        const payload = Buffer.from([value ? 0x01 : 0x00]);
+        await device.sendControl(FuncCode.ROTARY_LOCK, 0, payload, 0 /* input/default */);
+        break;
+      }
+
       // -----------------------------------------------------------------------
       // Mute input — FC=10, in_out_flag=0 (input)
       // C# source: SendStruct(MUTE, ch, in_out_flag.input, linkNum, mute_data)

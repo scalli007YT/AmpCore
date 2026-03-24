@@ -150,14 +150,12 @@ export function AmpTabs() {
   }, [selectedAmp, selectedSectionByAmpMac, setSelectedSectionForAmp]);
 
   useEffect(() => {
-    if (activeSection === "preferences" && selectedAmp?.reachable && selectedAmp.presets === undefined && !fetching) {
-      void fetchPresets(selectedAmp.mac);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection, selectedMac]);
+    if (!selectedAmp?.reachable || selectedAmp.presets !== undefined || fetching) return;
+    void fetchPresets(selectedAmp.mac);
+  }, [selectedAmp?.mac, selectedAmp?.reachable, selectedAmp?.presets, fetching, fetchPresets]);
 
   useEffect(() => {
-    if (activeSection !== "preferences" || !selectedAmp?.reachable) return;
+    if (!selectedAmp?.reachable) return;
 
     void refreshCurrentPreset(selectedAmp.mac);
 
@@ -166,7 +164,7 @@ export function AmpTabs() {
     }, 4000);
 
     return () => clearInterval(timer);
-  }, [activeSection, selectedAmp?.mac, selectedAmp?.reachable, refreshCurrentPreset]);
+  }, [selectedAmp?.mac, selectedAmp?.reachable, refreshCurrentPreset]);
 
   useEffect(() => {
     setActivePreset(null);

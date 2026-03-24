@@ -132,9 +132,7 @@ export function LinkingGroupsDialog({
           ? validationMessages.alreadyLinked
           : result.reason === "too-few-channels"
             ? validationMessages.tooFewChannels
-            : result.reason === "channel-out-of-range" ||
-                result.reason === "source-out-of-range" ||
-                result.reason === "target-out-of-range"
+            : result.reason === "channel-out-of-range"
               ? validationMessages.channelOutOfRange
               : result.reason === "invalid-linkable-count"
                 ? validationMessages.invalidLinkableCount

@@ -531,12 +531,14 @@ function EditableChannelName({
   name,
   fallback,
   active,
-  onRename
+  onRename,
+  className
 }: {
   name: string | undefined;
   fallback: string;
   active: boolean;
   onRename: (newName: string) => Promise<void>;
+  className?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -569,7 +571,7 @@ function EditableChannelName({
           if (e.key === "Enter") void commit();
           if (e.key === "Escape") setEditing(false);
         }}
-        className="text-[10px] font-semibold px-1 leading-none bg-transparent border-b border-primary outline-none w-32"
+        className={`text-[10px] font-semibold leading-none bg-transparent border-b border-primary outline-none w-32 ${className ?? ""}`}
       />
     );
   }
@@ -578,9 +580,9 @@ function EditableChannelName({
     <button
       type="button"
       onClick={startEdit}
-      className={`group flex items-center gap-1 text-[10px] font-semibold px-1 leading-none hover:underline cursor-pointer ${
+      className={`group flex items-center gap-1 text-[10px] font-semibold leading-none hover:underline cursor-pointer ${
         active ? "text-primary" : "text-muted-foreground/70"
-      }`}
+      } ${className ?? ""}`}
     >
       {displayName}
       <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-60 transition-opacity" />
@@ -726,14 +728,17 @@ export function HeartbeatDashboard({
                 const hasSignal = hb.inputStates[i] === 0;
                 const isLimit = dbfsVal !== null && dbfsVal > -1;
                 return (
-                  <div key={i} className="flex flex-col gap-0.5">
-                    <EditableChannelName
-                      name={channelParams?.channels[i]?.inputName}
-                      fallback={`In${i + 1}`}
-                      active={hasSignal}
-                      onRename={(newName) => renameInput(mac, i, newName)}
-                    />
-                    <div className="flex items-center gap-2 rounded-md border border-border/30 bg-muted/5 px-2.5 py-2">
+                  <div key={i} className="relative">
+                    <div className="absolute left-2 top-1 z-10">
+                      <EditableChannelName
+                        name={channelParams?.channels[i]?.inputName}
+                        fallback={`In${i + 1}`}
+                        active={hasSignal}
+                        onRename={(newName) => renameInput(mac, i, newName)}
+                        className="rounded border border-border/50 bg-card/90 px-1.5 py-0.5"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 rounded-md border border-border/30 bg-muted/5 px-2.5 pb-2 pt-4">
                       <div className="flex flex-col shrink-0" style={{ width: 220 }}>
                         <HorizontalDbMeter
                           value={dbfsVal}
@@ -763,11 +768,11 @@ export function HeartbeatDashboard({
                         <span className="text-[9px] text-foreground/65 mt-0.5">dBFS</span>
                       </div>
 
-                      <div className="flex h-12 w-16 shrink-0 flex-col items-center justify-center rounded border border-border/60 bg-muted/30 px-1">
+                      <div className="flex h-12 w-16 shrink-0 select-none flex-col items-center justify-center rounded border border-border/30 bg-muted/10 px-1 text-muted-foreground/55 pointer-events-none">
                         <span className="font-mono text-[13px] font-semibold tabular-nums leading-none">
                           {channelParams?.channels[i]?.gainIn ?? "~"}
                         </span>
-                        <span className="text-[9px] text-foreground/65 mt-0.5">Gain dB</span>
+                        <span className="text-[9px] text-muted-foreground/75 mt-0.5">Gain dB</span>
                       </div>
 
                       {(() => {
@@ -901,17 +906,20 @@ export function HeartbeatDashboard({
                         return (
                           <div
                             key={i}
-                            className={`flex flex-col gap-0.5 ${isDisabledByBridge ? "opacity-40 pointer-events-none grayscale" : ""}`}
+                            className={`relative ${isDisabledByBridge ? "opacity-40 pointer-events-none grayscale" : ""}`}
                           >
-                            <EditableChannelName
-                              name={channelParams?.channels[i]?.outputName}
-                              fallback={`Out${ch}`}
-                              active={isActive}
-                              onRename={(newName) => renameOutput(mac, i, newName)}
-                            />
+                            <div className="absolute left-2 top-1 z-10">
+                              <EditableChannelName
+                                name={channelParams?.channels[i]?.outputName}
+                                fallback={`Out${ch}`}
+                                active={isActive}
+                                onRename={(newName) => renameOutput(mac, i, newName)}
+                                className="rounded border border-border/50 bg-card/90 px-1.5 py-0.5"
+                              />
+                            </div>
                             <div
                               aria-disabled={isDisabledByBridge}
-                              className="flex items-center gap-2 rounded-md border border-border/30 bg-muted/5 px-2.5 py-2"
+                              className="flex items-center gap-2 rounded-md border border-border/30 bg-muted/5 px-2.5 pb-2 pt-4"
                             >
                               <div className="flex flex-col shrink-0" style={{ width: 220 }}>
                                 <HorizontalDbMeter

@@ -43,6 +43,7 @@ type SourceType = 0 | 1 | 2;
 type SourceFamily = 0 | 1 | 2;
 type CrossoverTarget = "input" | "output";
 type CrossoverKind = "hp" | "lp";
+type ActionValue = boolean | number | string;
 
 type RmsLimiterParams = {
   attackMs: number;
@@ -177,7 +178,7 @@ export function useAmpActions(): AmpActionsHook {
       mac: string,
       action: string,
       channel: Channel,
-      value: boolean | number,
+      value: ActionValue,
       extra?: Record<string, unknown>,
       opts?: { suppressToast?: boolean; throwOnError?: boolean }
     ) => {
@@ -239,7 +240,7 @@ export function useAmpActions(): AmpActionsHook {
       mac: string,
       action: string,
       channel: Channel,
-      value: boolean | number,
+      value: ActionValue,
       scope: LinkScope,
       extra?: Record<string, unknown>
     ) => {

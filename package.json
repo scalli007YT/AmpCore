@@ -11,7 +11,9 @@
     "start": "next start",
     "lint": "eslint",
     "electron:dev": "concurrently -k -n next,electron -c cyan,yellow \"next dev -p 3000\" \"cross-env ELECTRON_DEV=1 electron .\"",
-    "electron:build": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && next build && electron-builder --win",
+    "electron:build": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && next build && electron-builder",
+    "electron:build:win": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && next build && electron-builder --win",
+    "electron:build:mac": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && next build && electron-builder --mac",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -45,7 +47,8 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "public/logo.ico"
+      "icon": "public/logo.ico",
+      "category": "public.app-category.music"
     }
   },
   "dependencies": {

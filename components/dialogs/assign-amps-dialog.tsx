@@ -46,6 +46,7 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
   const [scannedDevices, setScannedDevices] = useState<ScannedDevice[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState("");
+  const [debugIps, setDebugIps] = useState<Record<string, string>>({});
 
   if (!selectedProject) return null;
 
@@ -141,6 +142,20 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
     setOpen(false);
   };
 
+  const handleProbeIp = async (mac: string) => {
+    const ip = debugIps[mac]?.trim();
+    if (!ip) return;
+    try {
+      await fetch("/api/amp-advanced/probe-ip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip })
+      });
+    } catch {
+      /* ignore */
+    }
+  };
+
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (nextOpen) {
@@ -193,63 +208,88 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
                 {currentProject.assigned_amps.map((amp) => {
                   const ampInfo = amps.find((a) => a.mac === amp.mac);
                   return (
-                    <div key={amp.mac} className="flex items-center justify-between p-3 hover:bg-accent gap-3">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="flex items-center gap-3 flex-1 min-w-0 cursor-default">
-                            {/* Reachability indicator */}
-                            <div className="flex-shrink-0">
-                              <div
-                                className={`h-3 w-3 rounded-full ${ampInfo?.reachable ? "bg-green-500" : "bg-red-500"}`}
-                              />
-                            </div>
+                    <div key={amp.mac} className="p-3 hover:bg-accent space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-3 flex-1 min-w-0 cursor-default">
+                              {/* Reachability indicator */}
+                              <div className="flex-shrink-0">
+                                <div
+                                  className={`h-3 w-3 rounded-full ${ampInfo?.reachable ? "bg-green-500" : "bg-red-500"}`}
+                                />
+                              </div>
 
-                            {/* Amp info */}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold">
-                                {ampInfo ? getDisplayName(ampInfo) : dict.dialogs.assignAmps.unknownAmp}
-                              </p>
-                              <p className="text-xs text-muted-foreground font-mono">{amp.mac}</p>
+                              {/* Amp info */}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold">
+                                  {ampInfo ? getDisplayName(ampInfo) : dict.dialogs.assignAmps.unknownAmp}
+                                </p>
+                                <p className="text-xs text-muted-foreground font-mono">{amp.mac}</p>
+                              </div>
                             </div>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="left">
-                          <p>
-                            {dict.dialogs.assignAmps.status}:{" "}
-                            {ampInfo?.reachable
-                              ? dict.dialogs.assignAmps.reachable
-                              : dict.dialogs.assignAmps.unreachable}
-                          </p>
-                          <p>
-                            {dict.dialogs.assignAmps.mac}: {amp.mac}
-                          </p>
-                          <p>
-                            {dict.dialogs.assignAmps.name}: {ampInfo ? getDisplayName(ampInfo) : "-"}
-                          </p>
-                          <p>
-                            {dict.dialogs.assignAmps.version}: {ampInfo?.version ?? "-"}
-                          </p>
-                          <p>
-                            {dict.dialogs.assignAmps.id}: {ampInfo?.id ?? "-"}
-                          </p>
-                          <p>
-                            {dict.dialogs.assignAmps.runtime}:
-                            {ampInfo?.run_time !== undefined
-                              ? `${Math.floor(ampInfo.run_time / 60)}h ${ampInfo.run_time % 60}min`
-                              : "-"}
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
+                          </TooltipTrigger>
+                          <TooltipContent side="left">
+                            <p>
+                              {dict.dialogs.assignAmps.status}:{" "}
+                              {ampInfo?.reachable
+                                ? dict.dialogs.assignAmps.reachable
+                                : dict.dialogs.assignAmps.unreachable}
+                            </p>
+                            <p>
+                              {dict.dialogs.assignAmps.mac}: {amp.mac}
+                            </p>
+                            <p>
+                              {dict.dialogs.assignAmps.name}: {ampInfo ? getDisplayName(ampInfo) : "-"}
+                            </p>
+                            <p>
+                              {dict.dialogs.assignAmps.version}: {ampInfo?.version ?? "-"}
+                            </p>
+                            <p>
+                              {dict.dialogs.assignAmps.id}: {ampInfo?.id ?? "-"}
+                            </p>
+                            <p>
+                              {dict.dialogs.assignAmps.runtime}:
+                              {ampInfo?.run_time !== undefined
+                                ? `${Math.floor(ampInfo.run_time / 60)}h ${ampInfo.run_time % 60}min`
+                                : "-"}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
 
-                      {/* Delete button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteAmp(amp.mac)}
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                        {/* Delete button */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteAmp(amp.mac)}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      {/* Debug IP — for cross-subnet first discovery */}
+                      {!ampInfo?.reachable && (
+                        <div className="flex items-center gap-2 pl-6">
+                          <Input
+                            placeholder="IP (e.g. 192.168.11.240)"
+                            value={debugIps[amp.mac] ?? ""}
+                            onChange={(e) => setDebugIps((prev) => ({ ...prev, [amp.mac]: e.target.value }))}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void handleProbeIp(amp.mac);
+                            }}
+                            className="font-mono text-xs h-7 flex-1"
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs px-2"
+                            onClick={() => void handleProbeIp(amp.mac)}
+                          >
+                            Probe
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

@@ -248,6 +248,13 @@ class AmpController extends EventEmitter {
   >();
   private readonly oneShotQueueByKey = new Map<string, Promise<Buffer>>();
 
+  /**
+   * Cross-subnet support: remembered MAC→IP pairs from discovery responses.
+   * These are NOT cleared when an amp goes offline, so the next discovery
+   * cycle can unicast-probe the last known IP even across subnets.
+   */
+  private rememberedIps = new Map<string, string>();
+
   private readonly bridgePairsByMac = new Map<string, BridgeReadback[]>();
   private bridgePollTick = 0;
 
@@ -366,6 +373,24 @@ class AmpController extends EventEmitter {
       if (m.toUpperCase() === mac.toUpperCase()) return entry.ip;
     }
     return null;
+  }
+
+  /**
+   * Seed a specific IP for cross-subnet discovery and immediately probe it.
+   * Used when the user manually enters an IP for an unreachable amp.
+   */
+  probeIp(ip: string): void {
+    // Store with a placeholder key so it survives in rememberedIps
+    this.rememberedIps.set(`__probe__${ip}`, ip);
+
+    // Immediately send a unicast FC=0 discovery probe
+    if (this.network.isStarted) {
+      void this.network
+        .sendRaw_shouldBeReplacedWithSendPacket(this.discoveryPacket, 0, this.discoveryPacket.length, ip, false)
+        .catch(() => {
+          /* ignore */
+        });
+    }
   }
 
   /**
@@ -581,6 +606,9 @@ class AmpController extends EventEmitter {
           basicInfo: event.basicInfo
         });
 
+        // Remember MAC→IP for cross-subnet unicast probing (survives offline)
+        this.rememberedIps.set(event.mac, ip);
+
         if (isNew) {
           console.log(`[AmpController] Discovered: ${event.name} (${event.mac}) @ ${ip}`);
         }
@@ -724,6 +752,16 @@ class AmpController extends EventEmitter {
           .catch(() => {
             /* ignore */
           });
+
+        // Cross-subnet: unicast heartbeat to all remembered IPs
+        // (broadcast doesn't cross subnet boundaries)
+        for (const [, ip] of this.rememberedIps) {
+          void this.network
+            .sendRaw_shouldBeReplacedWithSendPacket(this.heartbeatPacket, 0, this.heartbeatPacket.length, ip, false)
+            .catch(() => {
+              /* ignore */
+            });
+        }
       }
 
       this.heartbeatCount++;
@@ -794,6 +832,17 @@ class AmpController extends EventEmitter {
 
   private async _sendDiscovery(): Promise<void> {
     if (!this.network.isStarted) return;
+
+    // Cross-subnet: unicast FC=0 probes to all remembered IPs (survives offline)
+    for (const [, ip] of this.rememberedIps) {
+      void this.network
+        .sendRaw_shouldBeReplacedWithSendPacket(this.discoveryPacket, 0, this.discoveryPacket.length, ip, false)
+        .catch(() => {
+          /* ignore — target may be unreachable */
+        });
+    }
+
+    // Standard subnet broadcast
     for (const target of await getDirectedBroadcasts()) {
       void this.network
         .sendRaw_shouldBeReplacedWithSendPacket(this.discoveryPacket, 0, this.discoveryPacket.length, target, true)

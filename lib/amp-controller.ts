@@ -231,6 +231,23 @@ class AmpController extends EventEmitter {
     }
   >();
   private readonly fc27QueueByIp = new Map<string, Promise<Buffer>>();
+
+  // Generic one-shot request/response tracking — used for FC codes that
+  // CvrAmpDevice previously sent from an ephemeral socket (FC=59, FC=71, etc.).
+  // Routing these through the persistent controller socket (port 45454) fixes
+  // Dante amps that only respond to the well-known control port.
+  private readonly pendingOneShot = new Map<
+    string, // key: `${ip}:${fc}`
+    {
+      frames: Buffer[];
+      timeout: ReturnType<typeof setTimeout>;
+      settleTimer: ReturnType<typeof setTimeout> | null;
+      resolve: (value: Buffer) => void;
+      reject: (error: Error) => void;
+    }
+  >();
+  private readonly oneShotQueueByKey = new Map<string, Promise<Buffer>>();
+
   private readonly bridgePairsByMac = new Map<string, BridgeReadback[]>();
   private bridgePollTick = 0;
 
@@ -377,6 +394,54 @@ class AmpController extends EventEmitter {
     return queued.finally(() => {
       if (this.fc27QueueByIp.get(ip) === queued) {
         this.fc27QueueByIp.delete(ip);
+      }
+    });
+  }
+
+  /**
+   * Generic request/response via the persistent socket (port 45454).
+   *
+   * Unlike CvrAmpDevice (ephemeral port), this routes through the same socket
+   * that handles heartbeats and channel-data — with proper ACK handling.
+   * This fixes Dante amps that only respond to the well-known control port.
+   *
+   * @param mac        Target device MAC
+   * @param fc         Function code (e.g. 59 = SAVE_RECALL, 71 = SN_TABLE)
+   * @param chx        Channel index
+   * @param body       Request body payload
+   * @param inOutFlag  0 = input, 1 = output
+   * @param timeoutMs  How long to wait for a response (default 2000ms)
+   */
+  public async requestFC(
+    mac: string,
+    fc: number,
+    chx = 0,
+    body: Buffer = Buffer.alloc(0),
+    inOutFlag = 0,
+    timeoutMs = 2000
+  ): Promise<Buffer> {
+    await this._socketReady;
+
+    const ip = this.getIpForMac(mac);
+    if (!ip) {
+      throw new Error(`Amp ${mac} not found or not yet discovered`);
+    }
+
+    if (!this.network.isStarted) {
+      throw new Error("Socket not initialized");
+    }
+
+    const key = `${ip}:${fc}`;
+    const previous = this.oneShotQueueByKey.get(key) ?? Promise.resolve(Buffer.alloc(0));
+    const queued = previous
+      .catch(() => Buffer.alloc(0))
+      .then(() => this._sendAndAwaitOneShot(ip, fc, chx, body, inOutFlag, timeoutMs));
+
+    this.oneShotQueueByKey.set(key, queued);
+
+    return queued.finally(() => {
+      if (this.oneShotQueueByKey.get(key) === queued) {
+        this.oneShotQueueByKey.delete(key);
       }
     });
   }
@@ -598,10 +663,22 @@ class AmpController extends EventEmitter {
         break;
       }
 
-      default:
-        // Other FCs (presets, vol, mute, …) will be handled by CvrAmpDevice
-        // unicast methods on the same socket — ignore here.
+      default: {
+        // Check for pending one-shot requests (FC=59 presets, FC=71 runtime, etc.)
+        const key = `${ip}:${fc}`;
+        const pending = this.pendingOneShot.get(key);
+        if (pending) {
+          pending.frames.push(Buffer.from(body));
+          if (pending.settleTimer) clearTimeout(pending.settleTimer);
+          pending.settleTimer = setTimeout(() => {
+            if (pending.settleTimer) clearTimeout(pending.settleTimer);
+            clearTimeout(pending.timeout);
+            this.pendingOneShot.delete(key);
+            pending.resolve(Buffer.concat(pending.frames));
+          }, 20);
+        }
         break;
+      }
     }
   }
 
@@ -812,6 +889,54 @@ class AmpController extends EventEmitter {
           clearTimeout(pending.timeout);
           if (pending.settleTimer) clearTimeout(pending.settleTimer);
           this.pendingFc27ByIp.delete(ip);
+        }
+        reject(err instanceof Error ? err : new Error(String(err)));
+      });
+    });
+  }
+
+  private _sendAndAwaitOneShot(
+    ip: string,
+    fc: number,
+    chx: number,
+    body: Buffer,
+    inOutFlag: number,
+    timeoutMs: number
+  ): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const key = `${ip}:${fc}`;
+
+      const timeout = setTimeout(() => {
+        const pending = this.pendingOneShot.get(key);
+        if (pending) {
+          if (pending.settleTimer) clearTimeout(pending.settleTimer);
+          this.pendingOneShot.delete(key);
+        }
+        reject(new Error(`FC=${fc} request for ${ip} timed out`));
+      }, timeoutMs);
+
+      this.pendingOneShot.set(key, {
+        frames: [],
+        timeout,
+        settleTimer: null,
+        resolve,
+        reject
+      });
+
+      const packet = this.network.buildProtocolPacket({
+        functionCode: fc,
+        statusCode: 2,
+        chx,
+        body,
+        inOutFlag
+      });
+
+      void this.network.sendRaw_shouldBeReplacedWithSendPacket(packet, 0, packet.length, ip, false).catch((err) => {
+        const pending = this.pendingOneShot.get(key);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          if (pending.settleTimer) clearTimeout(pending.settleTimer);
+          this.pendingOneShot.delete(key);
         }
         reject(err instanceof Error ? err : new Error(String(err)));
       });

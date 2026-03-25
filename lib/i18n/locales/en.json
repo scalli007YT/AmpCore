@@ -1,8 +1,7 @@
 {
   "header": {
     "monitor": "Monitor",
-    "deviceScanner": "Device Scanner",
-    "appTitle": "AMP Controller",
+    "appTitle": "AmpCore",
     "loading": "Loading...",
     "selectProject": "Select Project",
     "newProject": "New Project",
@@ -54,25 +53,6 @@
       "channelData": "Channel Data",
       "channelLabel": "Channel {channel} - {input} -> {output}"
     }
-  },
-  "scanner": {
-    "title": "Network Scanner",
-    "description": "Discover AMP devices on your network",
-    "scanning": "Scanning...",
-    "startScan": "Start Scan",
-    "scanningSubnet": "Scanning subnet:",
-    "foundDevices": "Found {count} device(s)",
-    "querySpecificIp": "Query specific IP:",
-    "query": "Query",
-    "scanFailedFind": "Failed to find AMP devices",
-    "scanFailed": "Scan failed",
-    "discoveredDevices": "Discovered Devices ({count})",
-    "mac": "MAC",
-    "version": "Version",
-    "identifier": "Identifier",
-    "runtime": "Runtime",
-    "noDevicesTitle": "No devices found yet",
-    "noDevicesDescription": "Click \"Start Scan\" to discover AMP devices"
   },
   "menus": {
     "eqBand": {

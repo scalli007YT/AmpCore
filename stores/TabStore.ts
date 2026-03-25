@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-export type AppView = "monitor" | "scanner" | "unknown";
+export type AppView = "monitor" | "unknown";
 export type AmpSection = "main" | "matrix" | "linking" | "preferences";
 
 interface TabStore {

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CVR AMP Controller</title>
+    <title>AmpCore</title>
     <style>
       :root {
         --color-window-bg: #121212;
@@ -64,9 +64,20 @@
         font-weight: 600;
         color: var(--color-splash-text);
         letter-spacing: -0.3px;
-        margin-bottom: 48px;
+        margin-bottom: 8px;
         opacity: 0;
         animation: fadeIn 0.35s ease 0.15s forwards;
+      }
+
+      .version {
+        margin-bottom: 40px;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--color-splash-status);
+        opacity: 0;
+        animation: fadeIn 0.35s ease 0.2s forwards;
       }
 
       .spinner {
@@ -115,10 +126,29 @@
   </head>
   <body>
     <img class="logo" src="../public/logo.ico" alt="" />
-    <div class="title">AMP Controller</div>
+    <div id="app-name" class="title">AmpCore</div>
+    <div id="app-version" class="version">v0.0.0</div>
     <div class="spinner"></div>
     <div id="status" class="status" aria-live="polite"></div>
     <script>
+      (() => {
+        const params = new URLSearchParams(window.location.search);
+        const name = params.get("name") || "AmpCore";
+        const version = params.get("version") || "0.0.0";
+
+        const nameEl = document.getElementById("app-name");
+        const versionEl = document.getElementById("app-version");
+
+        if (nameEl) {
+          nameEl.textContent = name;
+          document.title = name;
+        }
+
+        if (versionEl) {
+          versionEl.textContent = `v${version}`;
+        }
+      })();
+
       window.setSplashStatus = (text, isError = false) => {
         const el = document.getElementById("status");
         if (!el) return;

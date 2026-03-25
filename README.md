@@ -1,6 +1,6 @@
-# CVR AMP Controller Web
+# AmpCore
 
-Desktop-first control and monitoring app for CVR amplifier devices.
+Desktop-first control and monitoring app for networked amplifier devices.
 
 This project combines:
 
@@ -87,7 +87,6 @@ pnpm lint
 ## Key Routes
 
 - `/monitor` - project monitor and amp control UI
-- `/scanner` - network scanner for amp discovery
 - `/api/*` - internal API routes for scan/runtime/actions/presets/projects
 
 ## Storage

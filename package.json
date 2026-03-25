@@ -1,7 +1,7 @@
 {
-  "name": "cvr-amp-controller-web",
+  "name": "ampcore",
   "version": "0.1.0",
-  "description": "CVR AMP Controller — desktop app for managing CVR amplifier devices",
+  "description": "AmpCore — desktop app for managing amplifier devices",
   "author": "scalli007",
   "private": true,
   "main": "electron/main.js",
@@ -16,8 +16,8 @@
     "format:check": "prettier --check ."
   },
   "build": {
-    "appId": "com.cvr.ampcontroller",
-    "productName": "CVR AMP Controller",
+    "appId": "com.ampcore.app",
+    "productName": "AmpCore",
     "icon": "public/logo.ico",
     "asar": true,
     "asarUnpack": [

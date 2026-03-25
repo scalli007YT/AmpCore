@@ -1,8 +1,7 @@
 {
   "header": {
     "monitor": "Monitor",
-    "deviceScanner": "Geräte-Scanner",
-    "appTitle": "AMP Steuerung",
+    "appTitle": "AmpCore",
     "loading": "Lädt...",
     "selectProject": "Projekt wählen",
     "newProject": "Neues Projekt",
@@ -54,25 +53,6 @@
       "channelData": "Kanaldaten",
       "channelLabel": "Kanal {channel} - {input} -> {output}"
     }
-  },
-  "scanner": {
-    "title": "Netzwerk-Scanner",
-    "description": "Finde AMP-Geräte in deinem Netzwerk",
-    "scanning": "Scan läuft...",
-    "startScan": "Scan starten",
-    "scanningSubnet": "Scanne Subnetz:",
-    "foundDevices": "{count} Gerät(e) gefunden",
-    "querySpecificIp": "Bestimmte IP abfragen:",
-    "query": "Abfragen",
-    "scanFailedFind": "AMP-Geräte konnten nicht gefunden werden",
-    "scanFailed": "Scan fehlgeschlagen",
-    "discoveredDevices": "Gefundene Geräte ({count})",
-    "mac": "MAC",
-    "version": "Version",
-    "identifier": "Kennung",
-    "runtime": "Laufzeit",
-    "noDevicesTitle": "Noch keine Geräte gefunden",
-    "noDevicesDescription": "Klicke auf \"Scan starten\", um AMP-Geräte zu finden"
   },
   "menus": {
     "eqBand": {

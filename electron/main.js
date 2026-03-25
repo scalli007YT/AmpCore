@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, nativeTheme } = require("electron");
 const path = require("path");
 const http = require("http");
+const { name: packageName, version: packageVersion } = require("../package.json");
 
 const PORT = 3000;
 const isDev = !!process.env.ELECTRON_DEV;
@@ -75,7 +76,7 @@ function createWindow() {
     height: 800,
     backgroundColor: isDark ? "#121212" : "#f5f5f5",
     show: true,
-    title: "CVR AMP Controller",
+    title: "AmpCore",
     autoHideMenuBar: true,
     frame: false,
     titleBarStyle: "hidden",
@@ -111,7 +112,12 @@ function createWindow() {
     mainWindow = null;
   });
 
-  mainWindow.loadFile(path.join(__dirname, "splash.html"));
+  mainWindow.loadFile(path.join(__dirname, "splash.html"), {
+    query: {
+      name: packageName,
+      version: packageVersion
+    }
+  });
 }
 
 ipcMain.handle("window:minimize", () => {

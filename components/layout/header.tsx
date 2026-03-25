@@ -12,7 +12,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ChevronDown, Menu, Minus, Pencil, Plus, Square, SquareStack, Trash2, X } from "lucide-react";
 import { useProjectStore, type Project } from "@/stores/ProjectStore";
@@ -43,7 +42,6 @@ export function Header({ lang, dictionary, projects = [], loading = false }: Hea
   const [deleteProject, setDeleteProject] = useState<Project | null>(null);
 
   const monitorHref = `/${lang}/monitor`;
-  const scannerHref = `/${lang}/scanner`;
   const navLinks = [{ label: dictionary.monitor, href: monitorHref }];
 
   useEffect(() => {
@@ -108,10 +106,6 @@ export function Header({ lang, dictionary, projects = [], loading = false }: Hea
                   <DropdownMenuContent align="start">
                     <DropdownMenuItem asChild>
                       <Link href={monitorHref}>{dictionary.monitor}</Link>
-                    </DropdownMenuItem>
-                    <Separator />
-                    <DropdownMenuItem asChild>
-                      <Link href={scannerHref}>{dictionary.deviceScanner}</Link>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

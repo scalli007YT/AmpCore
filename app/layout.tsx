@@ -8,8 +8,8 @@ const fontSans = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "CVR AMP Controller",
-  description: "Control and monitor your CVR AMP system",
+  title: "AmpCore",
+  description: "Control and monitor your amplifier system",
   icons: {
     icon: "/logo.ico"
   }

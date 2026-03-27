@@ -249,6 +249,13 @@
       "changeBridgeModeFallback": "Are you sure you want to change bridge mode?",
       "applyBridgeChange": "Apply Bridge Change",
       "applying": "Applying..."
+    },
+    "prerelease": {
+      "title": "Welcome to AmpCore Beta",
+      "description": "This is a prerelease build. Please review the version below and accept to continue.",
+      "versionLabel": "Software version",
+      "closeApp": "Close app",
+      "accept": "Accept"
     }
   }
 }

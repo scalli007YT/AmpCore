@@ -147,6 +147,8 @@ ipcMain.handle("window:is-maximized", () => {
   return mainWindow.isMaximized();
 });
 
+ipcMain.handle("app:get-version", () => packageVersion);
+
 // --- Lifecycle ------------------------------------------------------------
 
 app.whenReady().then(() => {

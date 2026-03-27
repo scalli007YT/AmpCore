@@ -46,6 +46,8 @@ interface PingEvent {
 
 type AmpSseEvent = DiscoverySseEvent | HeartbeatSseEvent | OfflineSseEvent | PingEvent;
 
+const runtimeFetchInFlight = new Set<string>();
+
 // ---------------------------------------------------------------------------
 
 interface UseAmpPollerReturn {
@@ -61,6 +63,9 @@ function findAmp(amps: ReturnType<typeof useAmpStore.getState>["amps"], mac: str
 
 /** Fetch & store run-time minutes for an amp — non-critical, silent on failure. */
 function fetchRuntime(mac: string): void {
+  if (runtimeFetchInFlight.has(mac)) return;
+  runtimeFetchInFlight.add(mac);
+
   fetch(`/api/amp-runtime/${encodeURIComponent(mac)}`)
     .then((r) => r.json())
     .then((data: { success: boolean; minutes: number }) => {
@@ -70,6 +75,9 @@ function fetchRuntime(mac: string): void {
     })
     .catch(() => {
       /* non-critical */
+    })
+    .finally(() => {
+      runtimeFetchInFlight.delete(mac);
     });
 }
 
@@ -153,13 +161,21 @@ export function useAmpPoller(): UseAmpPollerReturn {
             if (name.trim().length > 0) {
               void useProjectStore.getState().updateAmpLastKnownName(amp.mac, name);
             }
+            if (ip.trim().length > 0) {
+              void useProjectStore.getState().updateAmpLastKnownIp(amp.mac, ip);
+            }
+
+            // Runtime is independent from reachability transition; fetch once if missing.
+            if (amp.run_time === undefined) {
+              fetchRuntime(amp.mac);
+            }
+
             usePollingStore.getState().setLastUpdated(amp.mac, Date.now());
             usePollingStore.getState().setError(amp.mac, null);
 
             if (wasUnreachable) {
               resetSmootherForMac(amp.mac);
               toast.success(`${name || mac} is now reachable`);
-              fetchRuntime(amp.mac);
             }
             break;
           }
@@ -186,6 +202,11 @@ export function useAmpPoller(): UseAmpPollerReturn {
             }
             if (Object.keys(nextStatus).length > 0) {
               useAmpStore.getState().updateAmpStatus(amp.mac, nextStatus);
+            }
+
+            // Fallback: if discovery path missed runtime fetch, try once on heartbeat.
+            if (amp.run_time === undefined) {
+              fetchRuntime(amp.mac);
             }
 
             useAmpStore.getState().updateHeartbeat(amp.mac, smoothHeartbeat(amp.mac, heartbeat, maxDb), bridgePairs);

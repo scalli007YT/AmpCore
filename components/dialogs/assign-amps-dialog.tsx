@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
 import { Trash2, Plus, Wifi } from "lucide-react";
+import { toast } from "sonner";
 import { useI18n } from "@/components/layout/i18n-provider";
 
 interface ScannedDevice {
@@ -37,7 +38,7 @@ interface AssignAmpsDialogProps {
 
 export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
   const dict = useI18n();
-  const { selectedProject, projects, addAmpToProject, deleteAmpFromProject } = useProjectStore();
+  const { selectedProject, projects, addAmpToProject, deleteAmpFromProject, updateAmpLastKnownIp } = useProjectStore();
   const { amps, getDisplayName } = useAmpStore();
   const [macInput, setMacInput] = useState("");
   const [open, setOpen] = useState(false);
@@ -46,7 +47,8 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
   const [scannedDevices, setScannedDevices] = useState<ScannedDevice[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState("");
-  const [debugIps, setDebugIps] = useState<Record<string, string>>({});
+  const [probeInputByMac, setProbeInputByMac] = useState<Record<string, string>>({});
+  const [isProbingByMac, setIsProbingByMac] = useState<Record<string, boolean>>({});
 
   if (!selectedProject) return null;
 
@@ -58,17 +60,19 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
   }
 
   const handleAddAmp = async () => {
-    if (!macInput.trim()) {
-      alert(dict.dialogs.assignAmps.enterMac);
+    const normalizedMac = macInput.trim().toUpperCase();
+    if (!normalizedMac) {
+      toast.error(dict.dialogs.assignAmps.enterMac);
       return;
     }
 
     setIsSaving(true);
     try {
-      await addAmpToProject(selectedProject.id, macInput);
+      await addAmpToProject(selectedProject.id, normalizedMac);
       setMacInput("");
+      toast.success(dict.dialogs.assignAmps.addAmp);
     } catch (error) {
-      alert(
+      toast.error(
         `${dict.dialogs.assignAmps.errorAddingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
       );
     } finally {
@@ -80,10 +84,10 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
     setIsSaving(true);
     try {
       await addAmpToProject(selectedProject.id, mac);
-      // Remove from scanned devices list after adding
       setScannedDevices(scannedDevices.filter((d) => d.mac !== mac));
+      toast.success(dict.dialogs.assignAmps.addAmp);
     } catch (error) {
-      alert(
+      toast.error(
         `${dict.dialogs.assignAmps.errorAddingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
       );
     } finally {
@@ -95,8 +99,9 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
     setIsSaving(true);
     try {
       await deleteAmpFromProject(selectedProject.id, mac);
+      toast.success("Amp removed");
     } catch (error) {
-      alert(
+      toast.error(
         `${dict.dialogs.assignAmps.errorDeletingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
       );
     } finally {
@@ -117,7 +122,6 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
 
       const data = await response.json();
       if (data.devices && Array.isArray(data.devices)) {
-        // Filter out already assigned devices
         const assignedMacs = currentProject.assigned_amps.map((a) => a.mac.toUpperCase());
         const unassignedDevices = data.devices.filter(
           (d: ScannedDevice) => !assignedMacs.includes(d.mac.toUpperCase())
@@ -138,29 +142,45 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
     }
   };
 
-  const handleSave = () => {
-    setOpen(false);
-  };
-
-  const handleProbeIp = async (mac: string) => {
-    const ip = debugIps[mac]?.trim();
-    if (!ip) return;
-    try {
-      await fetch("/api/amp-advanced/probe-ip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ip })
-      });
-    } catch {
-      /* ignore */
-    }
-  };
-
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (nextOpen) {
       setMode("scan");
       void handleScan();
+    }
+  };
+
+  const handleProbeOfflineAmp = async (mac: string) => {
+    const ip = (probeInputByMac[mac] ?? "").trim();
+    if (!ip) return;
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
+      toast.error(dict.dialogs.assignAmps.invalidIp);
+      return;
+    }
+
+    setIsProbingByMac((prev) => ({ ...prev, [mac]: true }));
+    try {
+      const response = await fetch("/api/amp-advanced/probe-ip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip, mac })
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        toast.error(data.error ?? dict.dialogs.assignAmps.noAmpAtIp);
+        return;
+      }
+
+      await updateAmpLastKnownIp(mac, ip);
+      setProbeInputByMac((prev) => ({ ...prev, [mac]: "" }));
+      toast.success(`${dict.dialogs.assignAmps.ipAddress}: ${ip}`);
+    } catch (error) {
+      toast.error(
+        `${dict.dialogs.assignAmps.scanError}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
+      );
+    } finally {
+      setIsProbingByMac((prev) => ({ ...prev, [mac]: false }));
     }
   };
 
@@ -200,7 +220,6 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* List of assigned amps */}
           <div className="space-y-2">
             <Label className="text-sm font-semibold">{dict.dialogs.assignAmps.assignedAmps}</Label>
             {currentProject.assigned_amps.length > 0 ? (
@@ -213,19 +232,20 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <div className="flex items-center gap-3 flex-1 min-w-0 cursor-default">
-                              {/* Reachability indicator */}
                               <div className="flex-shrink-0">
                                 <div
                                   className={`h-3 w-3 rounded-full ${ampInfo?.reachable ? "bg-green-500" : "bg-red-500"}`}
                                 />
                               </div>
 
-                              {/* Amp info */}
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-semibold">
                                   {ampInfo ? getDisplayName(ampInfo) : dict.dialogs.assignAmps.unknownAmp}
                                 </p>
                                 <p className="text-xs text-muted-foreground font-mono">{amp.mac}</p>
+                                {!ampInfo?.reachable && amp.lastKnownIp && (
+                                  <p className="text-xs text-muted-foreground font-mono">{amp.lastKnownIp}</p>
+                                )}
                               </div>
                             </div>
                           </TooltipTrigger>
@@ -238,6 +258,9 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
                             </p>
                             <p>
                               {dict.dialogs.assignAmps.mac}: {amp.mac}
+                            </p>
+                            <p>
+                              {dict.dialogs.assignAmps.ipAddress}: {ampInfo?.ip ?? amp.lastKnownIp ?? "-"}
                             </p>
                             <p>
                               {dict.dialogs.assignAmps.name}: {ampInfo ? getDisplayName(ampInfo) : "-"}
@@ -257,7 +280,6 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
                           </TooltipContent>
                         </Tooltip>
 
-                        {/* Delete button */}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -268,23 +290,30 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
                         </Button>
                       </div>
 
-                      {/* Debug IP — for cross-subnet first discovery */}
                       {!ampInfo?.reachable && (
                         <div className="flex items-center gap-2 pl-6">
                           <Input
-                            placeholder="IP (e.g. 192.168.11.240)"
-                            value={debugIps[amp.mac] ?? ""}
-                            onChange={(e) => setDebugIps((prev) => ({ ...prev, [amp.mac]: e.target.value }))}
+                            placeholder={dict.dialogs.assignAmps.ipPlaceholder}
+                            value={probeInputByMac[amp.mac] ?? ""}
+                            onChange={(e) =>
+                              setProbeInputByMac((prev) => ({
+                                ...prev,
+                                [amp.mac]: e.target.value
+                              }))
+                            }
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") void handleProbeIp(amp.mac);
+                              if (e.key === "Enter") {
+                                void handleProbeOfflineAmp(amp.mac);
+                              }
                             }}
-                            className="font-mono text-xs h-7 flex-1"
+                            className="font-mono text-xs h-7"
                           />
                           <Button
                             variant="outline"
                             size="sm"
                             className="h-7 text-xs px-2"
-                            onClick={() => void handleProbeIp(amp.mac)}
+                            disabled={isProbingByMac[amp.mac] === true}
+                            onClick={() => void handleProbeOfflineAmp(amp.mac)}
                           >
                             Probe
                           </Button>
@@ -301,11 +330,9 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
             )}
           </div>
 
-          {/* Add new amp section */}
           <div className="border-t pt-4 space-y-3">
             <Label className="text-sm font-semibold">{dict.dialogs.assignAmps.addNewAmp}</Label>
 
-            {/* Mode selector */}
             <div className="flex gap-2">
               <Button
                 variant={mode === "scan" ? "default" : "outline"}
@@ -332,7 +359,6 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
               </Button>
             </div>
 
-            {/* Manual entry mode */}
             {mode === "manual" && (
               <div className="space-y-2">
                 <div>
@@ -354,7 +380,6 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
               </div>
             )}
 
-            {/* Scan mode */}
             {mode === "scan" && (
               <div className="space-y-2">
                 <Button onClick={handleScan} disabled={isScanning || isSaving} className="w-full" size="sm">
@@ -399,7 +424,7 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
               {dict.dialogs.common.cancel}
             </Button>
           </DialogClose>
-          <Button onClick={handleSave} disabled={isSaving || isScanning}>
+          <Button onClick={() => setOpen(false)} disabled={isSaving || isScanning}>
             {isSaving ? dict.dialogs.common.saving : dict.dialogs.common.done}
           </Button>
         </DialogFooter>

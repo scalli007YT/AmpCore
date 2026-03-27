@@ -12,6 +12,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { EqCurveChart } from "@/components/monitor/eq-curve-chart";
 import { Copy, Clipboard } from "lucide-react";
+import { ChannelButtonGroup } from "@/components/custom/channel-button-group";
+import { getChannelLabels } from "@/lib/channel-labels";
 import {
   getFilterTypeName,
   HPLP_FILTER_TYPE_NAMES,
@@ -578,7 +580,11 @@ export function EqBandDialog({
   onTriggerMouseEnter,
   onTriggerMouseLeave,
   onTriggerFocus,
-  onTriggerBlur
+  onTriggerBlur,
+  // Multi-channel switching props
+  allChannelBands,
+  channelCount,
+  channelNames
 }: {
   triggerLabel: string;
   title: string;
@@ -591,6 +597,12 @@ export function EqBandDialog({
   onTriggerMouseLeave?: () => void;
   onTriggerFocus?: () => void;
   onTriggerBlur?: () => void;
+  /** All channels' EQ bands for channel switching support. */
+  allChannelBands?: (EqBand[] | undefined)[];
+  /** Total channel count (required if allChannelBands is provided). */
+  channelCount?: number;
+  /** Optional custom channel names (e.g., ["AIn1", "AIn2", ...]). */
+  channelNames?: string[];
 }) {
   type ChartPatch = Partial<Pick<EqBand, "freq" | "gain" | "q">>;
 
@@ -604,6 +616,27 @@ export function EqBandDialog({
   const isDraggingRef = useRef(false);
   const [triggerMainLabel, triggerSubLabel] = triggerLabel.split("|", 2);
 
+  // Multi-channel switching state
+  const enableChannelSwitching = allChannelBands !== undefined && channelCount !== undefined && channelCount > 0;
+  const [activeChannel, setActiveChannel] = useState<number>(channel ?? 0);
+  const effectiveChannel = enableChannelSwitching ? activeChannel : channel;
+  const effectiveBands = enableChannelSwitching ? allChannelBands?.[activeChannel] : bands;
+  const effectiveChannelLabels = channelNames ?? getChannelLabels(channelCount ?? 4);
+  const effectiveChannelName = effectiveChannelLabels[activeChannel] ?? `Ch${activeChannel + 1}`;
+
+  // Reset active channel when dialog opens or channel prop changes
+  useEffect(() => {
+    if (open && channel !== undefined) {
+      setActiveChannel(channel);
+    }
+  }, [open, channel]);
+
+  // Clear preview state when switching channels
+  useEffect(() => {
+    setPreviewBands(null);
+    setPendingChartPatches({});
+  }, [activeChannel]);
+
   const patchAppliedOnBand = (band: EqBand, patch: ChartPatch): boolean => {
     const matchesFreq = patch.freq === undefined || band.freq === patch.freq;
     const matchesGain = patch.gain === undefined || Math.abs(band.gain - patch.gain) <= 0.05;
@@ -612,7 +645,7 @@ export function EqBandDialog({
   };
 
   useEffect(() => {
-    if (!bands) {
+    if (!effectiveBands) {
       setPreviewBands(null);
       setPendingChartPatches({});
       return;
@@ -625,7 +658,7 @@ export function EqBandDialog({
       const next: Record<number, ChartPatch> = {};
       for (const [idxKey, patch] of entries) {
         const idx = Number(idxKey);
-        const band = bands[idx];
+        const band = effectiveBands[idx];
         if (!band || patchAppliedOnBand(band, patch)) {
           changed = true;
           continue;
@@ -638,12 +671,12 @@ export function EqBandDialog({
     if (!isDraggingRef.current) {
       setPreviewBands((prev) => {
         if (!prev) return null;
-        return bands.map((band) => ({ ...band }));
+        return effectiveBands.map((band) => ({ ...band }));
       });
     }
-  }, [bands]);
+  }, [effectiveBands]);
 
-  const baseDisplayBands = previewBands ?? bands;
+  const baseDisplayBands = previewBands ?? effectiveBands;
   const displayBands =
     !baseDisplayBands || Object.keys(pendingChartPatches).length === 0
       ? baseDisplayBands
@@ -654,8 +687,8 @@ export function EqBandDialog({
   const cloneBands = (source: EqBand[]) => source.map((band) => ({ ...band }));
 
   const handleCopy = () => {
-    if (bands) {
-      copyEq(bands);
+    if (effectiveBands) {
+      copyEq(effectiveBands);
       toast.success("Copied EQ settings");
     }
   };
@@ -669,14 +702,14 @@ export function EqBandDialog({
       return;
     }
 
-    if (mac === undefined || channel === undefined || target === undefined) {
+    if (mac === undefined || effectiveChannel === undefined || target === undefined) {
       toast.error("Cannot paste: invalid amp/channel");
       return;
     }
 
     void applyEqBlock(
       mac,
-      channel,
+      effectiveChannel,
       target,
       pastedBands.map((band) => ({ ...band }))
     );
@@ -686,7 +719,7 @@ export function EqBandDialog({
 
   const handleChartPreviewChange = (bandIdx: number, next: Partial<Pick<EqBand, "freq" | "gain" | "q">>) => {
     setPreviewBands((prev) => {
-      const source = prev ?? (bands ? cloneBands(bands) : null);
+      const source = prev ?? (effectiveBands ? cloneBands(effectiveBands) : null);
       if (!source || !source[bandIdx]) return source;
       const updated = [...source];
       updated[bandIdx] = {
@@ -698,11 +731,18 @@ export function EqBandDialog({
   };
 
   const handleChartCommit = (bandIdx: number, next: Partial<Pick<EqBand, "freq" | "gain" | "q">>) => {
-    if (mac === undefined || channel === undefined || target === undefined || !bands || !bands[bandIdx]) return;
+    if (
+      mac === undefined ||
+      effectiveChannel === undefined ||
+      target === undefined ||
+      !effectiveBands ||
+      !effectiveBands[bandIdx]
+    )
+      return;
 
     const isHpLp = bandIdx === 0 || bandIdx === 9;
     const patch: ChartPatch = {};
-    const nextBands = bands.map((band) => ({ ...band }));
+    const nextBands = effectiveBands.map((band) => ({ ...band }));
 
     if (next.freq !== undefined) {
       patch.freq = next.freq;
@@ -729,7 +769,7 @@ export function EqBandDialog({
     }
 
     if (patch.freq !== undefined || patch.gain !== undefined || patch.q !== undefined) {
-      void applyEqBlock(mac, channel, target, nextBands);
+      void applyEqBlock(mac, effectiveChannel, target, nextBands);
     }
 
     if (patch.freq !== undefined || patch.gain !== undefined || patch.q !== undefined) {
@@ -742,7 +782,7 @@ export function EqBandDialog({
       }));
 
       setPreviewBands((prev) => {
-        const source = prev ?? (bands ? cloneBands(bands) : null);
+        const source = prev ?? (effectiveBands ? cloneBands(effectiveBands) : null);
         if (!source || !source[bandIdx]) return source;
         const updated = [...source];
         updated[bandIdx] = {
@@ -787,7 +827,7 @@ export function EqBandDialog({
             size="sm"
             variant="outline"
             onClick={handleCopy}
-            disabled={!bands}
+            disabled={!effectiveBands}
             className="h-8 px-2 text-xs gap-1.5"
             title="Copy EQ settings to clipboard"
           >
@@ -807,7 +847,17 @@ export function EqBandDialog({
           </Button>
         </div>
         <DialogHeader className="pb-4">
-          <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
+          <div className="flex items-center gap-6">
+            <DialogTitle className="text-sm font-semibold">{title.split(" - ")[0]}</DialogTitle>
+            {enableChannelSwitching && channelCount !== undefined && (
+              <ChannelButtonGroup
+                channelCount={channelCount}
+                value={activeChannel}
+                onValueChange={setActiveChannel}
+                size="sm"
+              />
+            )}
+          </div>
         </DialogHeader>
         {displayBands && (
           <>
@@ -815,27 +865,39 @@ export function EqBandDialog({
               <EqCurveChart
                 bands={displayBands}
                 showPhase={showPhase}
-                interactive={mac !== undefined && channel !== undefined && target !== undefined}
+                interactive={mac !== undefined && effectiveChannel !== undefined && target !== undefined}
                 onBandPreviewChange={handleChartPreviewChange}
                 onBandCommit={handleChartCommit}
                 onBandBypassToggle={(bandIdx) => {
-                  if (mac === undefined || channel === undefined || target === undefined || !bands || !bands[bandIdx])
+                  if (
+                    mac === undefined ||
+                    effectiveChannel === undefined ||
+                    target === undefined ||
+                    !effectiveBands ||
+                    !effectiveBands[bandIdx]
+                  )
                     return;
-                  const nextBands = bands.map((band) => ({ ...band }));
+                  const nextBands = effectiveBands.map((band) => ({ ...band }));
                   nextBands[bandIdx] = { ...nextBands[bandIdx], bypass: !nextBands[bandIdx].bypass };
-                  void applyEqBlock(mac, channel, target, nextBands);
+                  void applyEqBlock(mac, effectiveChannel, target, nextBands);
                 }}
                 onBandResetGain={(bandIdx) => {
-                  if (mac === undefined || channel === undefined || target === undefined || !bands || !bands[bandIdx])
+                  if (
+                    mac === undefined ||
+                    effectiveChannel === undefined ||
+                    target === undefined ||
+                    !effectiveBands ||
+                    !effectiveBands[bandIdx]
+                  )
                     return;
-                  const nextBands = bands.map((band) => ({ ...band }));
+                  const nextBands = effectiveBands.map((band) => ({ ...band }));
                   nextBands[bandIdx] = { ...nextBands[bandIdx], gain: 0 };
-                  void applyEqBlock(mac, channel, target, nextBands);
+                  void applyEqBlock(mac, effectiveChannel, target, nextBands);
                 }}
                 onDragStart={() => {
                   isDraggingRef.current = true;
-                  if (bands) {
-                    setPreviewBands(cloneBands(bands));
+                  if (effectiveBands) {
+                    setPreviewBands(cloneBands(effectiveBands));
                   }
                 }}
                 onDragEnd={() => {
@@ -845,7 +907,7 @@ export function EqBandDialog({
               />
             </div>
             <div className="overflow-x-auto">
-              <EqParamStrip bands={displayBands} mac={mac} channel={channel} target={target} />
+              <EqParamStrip bands={displayBands} mac={mac} channel={effectiveChannel} target={target} />
             </div>
           </>
         )}

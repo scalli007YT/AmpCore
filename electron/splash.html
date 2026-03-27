@@ -10,8 +10,9 @@
         --color-window-bg: #121212;
         --color-splash-text: #ececec;
         --color-splash-border: #2b2b2b;
-        --color-splash-border-top: #686868;
-        --color-splash-status: #9d9d9d;
+        --color-splash-border-top: #b7b7b7;
+        --color-splash-status: #bcbcbc;
+        --color-splash-status-error: #ff8f8f;
       }
 
       @media (prefers-color-scheme: light) {
@@ -19,8 +20,9 @@
           --color-window-bg: #f5f5f5;
           --color-splash-text: #2b2b2b;
           --color-splash-border: #d6d6d6;
-          --color-splash-border-top: #8f8f8f;
-          --color-splash-status: #666666;
+          --color-splash-border-top: #676767;
+          --color-splash-status: #4d4d4d;
+          --color-splash-status-error: #b91c1c;
         }
       }
 
@@ -69,9 +71,9 @@
       }
 
       .version {
-        margin-bottom: 40px;
+        margin-bottom: 24px;
         font-size: 12px;
-        font-weight: 500;
+        font-weight: 600;
         letter-spacing: 0.06em;
         text-transform: uppercase;
         color: var(--color-splash-status);
@@ -80,15 +82,30 @@
       }
 
       .spinner {
-        width: 28px;
-        height: 28px;
-        border: 2.5px solid var(--color-splash-border);
+        width: 32px;
+        height: 32px;
+        border: 3px solid var(--color-splash-border);
         border-top-color: var(--color-splash-border-top);
         border-radius: 50%;
         opacity: 0;
         animation:
           fadeIn 0.35s ease 0.25s forwards,
           spin 0.85s linear 0.25s infinite;
+      }
+
+      .status {
+        min-height: 18px;
+        margin-top: 14px;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        color: var(--color-splash-status);
+        opacity: 0;
+        animation: fadeIn 0.35s ease 0.3s forwards;
+      }
+
+      .status.error {
+        color: var(--color-splash-status-error);
       }
 
       .sr-only {
@@ -111,7 +128,8 @@
         .logo,
         .title,
         .version,
-        .spinner {
+        .spinner,
+        .status {
           opacity: 1;
           animation: none;
         }
@@ -141,19 +159,21 @@
     <div id="app-name" class="title">AmpCore</div>
     <div id="app-version" class="version">v0.0.0</div>
     <div class="spinner" aria-hidden="true"></div>
+    <div id="splash-status" class="status">Initializing services...</div>
     <div class="sr-only">Loading application</div>
     <script>
       (() => {
         const params = new URLSearchParams(window.location.search);
         const name = params.get("name") || "AmpCore";
         const version = params.get("version") || "0.0.0";
+        const normalizedName = name.trim().toLowerCase() === "ampcore" ? "AmpCore" : name;
 
         const nameEl = document.getElementById("app-name");
         const versionEl = document.getElementById("app-version");
 
         if (nameEl) {
-          nameEl.textContent = name;
-          document.title = name;
+          nameEl.textContent = normalizedName;
+          document.title = normalizedName;
         }
 
         if (versionEl) {
@@ -161,8 +181,13 @@
         }
       })();
 
-      // Keep API for callers, but intentionally render no status text on splash.
-      window.setSplashStatus = () => {};
+      window.setSplashStatus = (message, isError = false) => {
+        const statusEl = document.getElementById("splash-status");
+        if (!statusEl) return;
+
+        statusEl.textContent = message || "Initializing services...";
+        statusEl.classList.toggle("error", Boolean(isError));
+      };
 
       window.startFadeOut = () => {
         const durationMs = 220;

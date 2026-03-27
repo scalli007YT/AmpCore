@@ -4,9 +4,12 @@ const http = require("http");
 const { name: packageName, version: packageVersion } = require("../package.json");
 
 const PORT = 3000;
+const MIN_SPLASH_MS = 900;
+const MAIN_READY_TIMEOUT_MS = 12000;
 const isDev = !!process.env.ELECTRON_DEV;
 
 let mainWindow;
+let splashWindow;
 let server;
 
 // Prevent multiple app instances.
@@ -16,9 +19,10 @@ if (!gotSingleInstanceLock) {
 }
 
 app.on("second-instance", () => {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.focus();
+  const targetWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : splashWindow;
+  if (!targetWindow || targetWindow.isDestroyed()) return;
+  if (targetWindow.isMinimized()) targetWindow.restore();
+  targetWindow.focus();
 });
 
 // --- Server ---------------------------------------------------------------
@@ -68,18 +72,53 @@ async function startServer() {
 
 // --- Window ---------------------------------------------------------------
 
-function createWindow() {
+function createSplashWindow() {
   const isDark = nativeTheme.shouldUseDarkColors;
 
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+  splashWindow = new BrowserWindow({
+    width: 520,
+    height: 420,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
     backgroundColor: isDark ? "#121212" : "#f5f5f5",
     show: true,
     title: "AmpCore",
     autoHideMenuBar: true,
     frame: false,
-    titleBarStyle: "hidden",
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      devTools: isDev
+    }
+  });
+
+  splashWindow.on("closed", () => {
+    splashWindow = null;
+  });
+
+  splashWindow.loadFile(path.join(__dirname, "splash.html"), {
+    query: {
+      name: packageName,
+      version: packageVersion
+    }
+  });
+}
+
+function createMainWindow() {
+  const isDark = nativeTheme.shouldUseDarkColors;
+  const isMac = process.platform === "darwin";
+
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    backgroundColor: isDark ? "#121212" : "#f5f5f5",
+    show: false,
+    title: "AmpCore",
+    autoHideMenuBar: true,
+    frame: !isMac,
+    titleBarStyle: isMac ? "hiddenInset" : "hidden",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -111,12 +150,61 @@ function createWindow() {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+}
 
-  mainWindow.loadFile(path.join(__dirname, "splash.html"), {
-    query: {
-      name: packageName,
-      version: packageVersion
-    }
+function setSplashStatus(message, isError = false) {
+  if (!splashWindow || splashWindow.isDestroyed()) return;
+
+  const safeMessage = JSON.stringify(String(message));
+  void splashWindow.webContents
+    .executeJavaScript(`window.setSplashStatus ? window.setSplashStatus(${safeMessage}, ${Boolean(isError)}) : null`)
+    .catch(() => {
+      // Ignore if splash renderer is already closing.
+    });
+}
+
+async function showMainWindowWhenReady(mainReadyAtMs) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  const elapsed = Date.now() - mainReadyAtMs;
+  const remainingSplashMs = Math.max(0, MIN_SPLASH_MS - elapsed);
+  if (remainingSplashMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, remainingSplashMs));
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  mainWindow.show();
+  mainWindow.focus();
+
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+  }
+}
+
+async function waitForMainWindowReady() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (isDev) return;
+  if (mainWindow.webContents.isLoadingMainFrame() === false) return;
+
+  await new Promise((resolve) => {
+    let resolved = false;
+    const wc = mainWindow?.webContents;
+
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeoutId);
+      mainWindow?.removeListener("ready-to-show", done);
+      wc?.removeListener("did-finish-load", done);
+      wc?.removeListener("did-stop-loading", done);
+      resolve();
+    };
+
+    const timeoutId = setTimeout(done, MAIN_READY_TIMEOUT_MS);
+    mainWindow.once("ready-to-show", done);
+    wc?.once("did-finish-load", done);
+    wc?.once("did-stop-loading", done);
   });
 }
 
@@ -149,33 +237,48 @@ ipcMain.handle("window:is-maximized", () => {
 
 ipcMain.handle("app:get-version", () => packageVersion);
 
+ipcMain.handle("app:get-platform", () => process.platform);
+
 // --- Lifecycle ------------------------------------------------------------
 
 app.whenReady().then(() => {
-  createWindow();
+  createSplashWindow();
+  createMainWindow();
+  setSplashStatus(isDev ? "Waiting for development server..." : "Starting local server...");
+  const splashShownAt = Date.now();
   const serverReady = isDev ? waitForDevServer() : startServer();
 
   serverReady
     .then(async () => {
       const url = isDev ? `http://localhost:${PORT}` : `http://127.0.0.1:${PORT}`;
+      setSplashStatus("Loading interface...");
 
       if (!mainWindow || mainWindow.isDestroyed()) return;
 
       try {
         await mainWindow.loadURL(url);
-      } catch {
+      } catch (firstLoadErr) {
         // If JS execution fails, fall back to immediate navigation.
         if (mainWindow && !mainWindow.isDestroyed()) {
-          await mainWindow.loadURL(url);
+          try {
+            await mainWindow.loadURL(url);
+          } catch (secondLoadErr) {
+            console.error("Failed to load app URL:", secondLoadErr || firstLoadErr);
+            throw secondLoadErr || firstLoadErr;
+          }
         }
       }
+
+      await waitForMainWindowReady();
+      await showMainWindowWhenReady(splashShownAt);
     })
     .catch((err) => {
       console.error("Failed to start app server:", err);
+      setSplashStatus(err instanceof Error ? err.message : String(err), true);
 
-      if (mainWindow && !mainWindow.isDestroyed()) {
+      if (splashWindow && !splashWindow.isDestroyed()) {
         const safeMessage = JSON.stringify(String(err instanceof Error ? err.message : err));
-        void mainWindow.webContents.executeJavaScript(
+        void splashWindow.webContents.executeJavaScript(
           `window.setSplashStatus ? window.setSplashStatus(${safeMessage}, true) : null`
         );
       }

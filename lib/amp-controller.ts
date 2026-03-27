@@ -380,16 +380,23 @@ class AmpController extends EventEmitter {
    * Used when the user manually enters an IP for an unreachable amp.
    */
   probeIp(ip: string): void {
+    console.log(`[AmpController.probeIp] Probing IP: ${ip}`);
     // Store with a placeholder key so it survives in rememberedIps
     this.rememberedIps.set(`__probe__${ip}`, ip);
 
     // Immediately send a unicast FC=0 discovery probe
     if (this.network.isStarted) {
+      console.log(`[AmpController.probeIp] Sending discovery probe to ${ip}`);
       void this.network
         .sendRaw_shouldBeReplacedWithSendPacket(this.discoveryPacket, 0, this.discoveryPacket.length, ip, false)
-        .catch(() => {
-          /* ignore */
+        .then(() => {
+          console.log(`[AmpController.probeIp] Discovery probe sent successfully to ${ip}`);
+        })
+        .catch((err) => {
+          console.warn(`[AmpController.probeIp] Failed to send probe to ${ip}: ${err}`);
         });
+    } else {
+      console.warn(`[AmpController.probeIp] Socket not ready, cannot probe ${ip}`);
     }
   }
 
@@ -550,11 +557,19 @@ class AmpController extends EventEmitter {
   //   4. If all fragments have arrived: validate checksum, dispatch FC handler
   // -------------------------------------------------------------------------
   private _onPacket(raw: Buffer, ip: string): void {
+    console.log(`[AmpController._onPacket] Received from ${ip}, length=${raw.length}`);
     const nd = this.network.parseNetworkData(raw);
-    if (!nd) return;
+    if (!nd) {
+      console.warn(`[AmpController._onPacket] Failed to parse NetworkData from ${ip}`);
+      return;
+    }
+    console.log(`[AmpController._onPacket] Parsed: dataState=${nd.dataState}, machineMode=${nd.machineMode}`);
 
     // data_state=1 means this is an ACK we sent ourselves, reflected back — ignore
-    if (nd.dataState === 1) return;
+    if (nd.dataState === 1) {
+      console.log(`[AmpController._onPacket] Ignoring ACK from ${ip}`);
+      return;
+    }
 
     // --- Step 2: ACK back to sender (Fix #1) ---
     // mirrors: networkData.data_state = 1; UDP_Receive.Send(SendData, ..., ACK_IP)
@@ -562,10 +577,18 @@ class AmpController extends EventEmitter {
     this._sendAck(ip, raw);
 
     const assembled = this.network.pushFragment(ip, raw);
-    if (!assembled) return;
+    if (!assembled) {
+      console.log(`[AmpController._onPacket] Fragmented, waiting for more from ${ip}`);
+      return;
+    }
+    console.log(`[AmpController._onPacket] Full packet assembled`);
 
     const decoded = this.network.decodeAssembled(assembled);
-    if (!decoded) return;
+    if (!decoded) {
+      console.warn(`[AmpController._onPacket] Failed to decode from ${ip}`);
+      return;
+    }
+    console.log(`[AmpController._onPacket] Decoded FC=${decoded.functionCode}`);
 
     this._dispatchFC(decoded.functionCode, decoded.body, ip, nd.machineMode, decoded.rawAssembled);
   }
@@ -591,11 +614,16 @@ class AmpController extends EventEmitter {
     switch (fc) {
       // FC=0 BASIC_INFO — device replied to our discovery broadcast
       case FuncCode.BASIC_INFO: {
+        console.log(`[_dispatchFC] BASIC_INFO from ${ip}`);
         // parseDiscoveryPacket needs the full raw packet with NetworkData header
         // re-prepend a synthetic NetworkData so offsets are correct
         const withNd = prependNetworkHeaderToAssembled(rawAssembled, machineMode);
         const event = parseDiscoveryPacket(withNd, ip);
-        if (!event) return;
+        if (!event) {
+          console.warn(`[_dispatchFC] Failed to parse discovery from ${ip}`);
+          return;
+        }
+        console.log(`[_dispatchFC] Device: mac=${event.mac}, ip=${ip}, name=${event.name}, version=${event.version}`);
 
         this.currentWindowMacs.add(event.mac);
         const isNew = !this.knownMacs.has(event.mac);

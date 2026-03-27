@@ -35,6 +35,8 @@ import { InputWithCheck } from "@/components/custom/input-with-check";
 import { useTabStore, type AmpSection } from "@/stores/TabStore";
 import { useAmpActions } from "@/hooks/useAmpActions";
 import { triggerImmediateLockPoll } from "@/hooks/useAmpChannelData";
+import { useProjectStore } from "@/stores/ProjectStore";
+import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
 
 type PresetFilter = "all" | "used" | "empty";
 
@@ -67,8 +69,8 @@ export function AmpTabs() {
   const [renaming, setRenaming] = useState(false);
   const [lockUpdating, setLockUpdating] = useState(false);
   const { setAmpLock } = useAmpActions();
+  const selectedProject = useProjectStore((state) => state.selectedProject);
 
-  const onlineCount = amps.filter((amp) => amp.reachable).length;
   const selectedAmp = amps.find((a) => a.mac === selectedMac) ?? amps[0];
   const activeSection: AmpSection =
     selectedAmp !== undefined ? (selectedSectionByAmpMac[selectedAmp.mac] ?? "main") : "main";
@@ -262,17 +264,28 @@ export function AmpTabs() {
     <div className="grid w-full gap-3 xl:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="rounded-lg border border-border/50 bg-card/25 p-2">
         <div className="mb-2 flex items-center justify-between border-b border-border/50 px-2 pb-2">
-          <div className="min-w-0">
-            <p className="truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] leading-tight whitespace-normal break-words text-muted-foreground">
               {dict.monitor.ampTabs.ampRack}
             </p>
-            <p className="text-sm font-semibold">
-              {dict.monitor.ampTabs.devicesCount.replace("{count}", String(amps.length))}
-            </p>
           </div>
-          <span className="rounded border border-emerald-500/50 bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-            {onlineCount} {dict.monitor.online}
-          </span>
+          {selectedProject?.projectMode === "demo" ? (
+            <AssignDemoAmpsDialog
+              trigger={
+                <Button size="sm" variant="outline" className="h-8 px-2 text-xs">
+                  {dict.monitor.ampTabs.assignAction}
+                </Button>
+              }
+            />
+          ) : (
+            <AssignAmpsDialog
+              trigger={
+                <Button size="sm" variant="outline" className="h-8 px-2 text-xs">
+                  {dict.monitor.ampTabs.assignAction}
+                </Button>
+              }
+            />
+          )}
         </div>
 
         <div className="space-y-1.5">

@@ -19,7 +19,6 @@ export function MonitorPage({ dictionary }: MonitorPageProps) {
   const { selectedProject } = useProjectStore();
   const amps = useAmpStore((state) => state.amps);
   const setCurrentView = useTabStore((state) => state.setCurrentView);
-  const online = amps.filter((amp) => amp.reachable).length;
 
   useEffect(() => {
     setCurrentView("monitor");
@@ -35,16 +34,6 @@ export function MonitorPage({ dictionary }: MonitorPageProps) {
             <h1 className="text-xl font-semibold sm:text-2xl">{selectedProject.name}</h1>
 
             <div className="flex flex-wrap items-center gap-2">
-              {amps.length > 0 && (
-                <span className="rounded-md border border-border/60 bg-card/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                  {amps.length} {dictionary.amps}
-                </span>
-              )}
-              {amps.length > 0 && (
-                <span className="rounded-md border border-emerald-500/50 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                  {online} {dictionary.online}
-                </span>
-              )}
               {selectedProject.projectMode === "demo" ? <AssignDemoAmpsDialog /> : <AssignAmpsDialog />}
             </div>
           </div>

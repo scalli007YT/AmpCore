@@ -30,6 +30,7 @@ import {
   type FirState
 } from "@/lib/fir";
 import { Upload, Download, Trash2 } from "lucide-react";
+import { ChannelButtonGroup } from "@/components/custom/channel-button-group";
 
 // ---------------------------------------------------------------------------
 // Default state per channel
@@ -339,18 +340,25 @@ interface FirFilterDialogProps {
   title: string;
   /** Optional className for the trigger button */
   triggerClassName?: string;
+  /** Total number of channels for channel switching */
+  channelCount?: number;
 }
 
-export function FirFilterDialog({ mac, channel, title, triggerClassName }: FirFilterDialogProps) {
+export function FirFilterDialog({ mac, channel, title, triggerClassName, channelCount }: FirFilterDialogProps) {
   const [open, setOpen] = useState(false);
   const [firState, setFirState] = useState<FirState>(defaultFirState);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Channel switching state
+  const enableChannelSwitching = channelCount !== undefined && channelCount > 1;
+  const [activeChannel, setActiveChannel] = useState(channel);
+  const effectiveChannel = enableChannelSwitching ? activeChannel : channel;
+
   // Sync bypass state from device (FC=27 parsed value)
   const deviceFirBypassed = useAmpStore(
-    (s) => s.amps.find((a) => a.mac === mac)?.channelParams?.channels[channel]?.firBypassed
+    (s) => s.amps.find((a) => a.mac === mac)?.channelParams?.channels[effectiveChannel]?.firBypassed
   );
 
   useEffect(() => {
@@ -359,15 +367,16 @@ export function FirFilterDialog({ mac, channel, title, triggerClassName }: FirFi
     }
   }, [deviceFirBypassed]);
 
-  // Fetch FIR coefficients from device when dialog opens
+  // Fetch FIR coefficients from device when dialog opens or channel changes
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
 
     async function fetchFirData() {
       setLoading(true);
+      setFirState(defaultFirState()); // Reset state when loading new channel
       try {
-        const res = await fetch(`/api/amp-fir-data?mac=${encodeURIComponent(mac)}&channel=${channel}`);
+        const res = await fetch(`/api/amp-fir-data?mac=${encodeURIComponent(mac)}&channel=${effectiveChannel}`);
         if (!res.ok) return;
         const data = await res.json();
         if (cancelled) return;
@@ -389,7 +398,7 @@ export function FirFilterDialog({ mac, channel, title, triggerClassName }: FirFi
     return () => {
       cancelled = true;
     };
-  }, [open, mac, channel]);
+  }, [open, mac, effectiveChannel]);
 
   const coefficients = firState.coefficients;
   const order = getFirOrder(coefficients);
@@ -416,13 +425,13 @@ export function FirFilterDialog({ mac, channel, title, triggerClassName }: FirFi
     async (nextCoefficients: number[], nextName: string) => {
       await postAmpAction({
         action: "firData",
-        channel,
+        channel: effectiveChannel,
         value: 0,
         coefficients: nextCoefficients,
         name: nextName
       });
     },
-    [postAmpAction, channel]
+    [postAmpAction, effectiveChannel]
   );
 
   // ---- Toggle bypass ----
@@ -432,14 +441,14 @@ export function FirFilterDialog({ mac, channel, title, triggerClassName }: FirFi
 
     try {
       setSending(true);
-      await postAmpAction({ action: "firBypass", channel, value: !nextBypassed });
+      await postAmpAction({ action: "firBypass", channel: effectiveChannel, value: !nextBypassed });
     } catch (err) {
       setFirState((prev) => ({ ...prev, bypassed: !nextBypassed }));
       toast.error(`FIR bypass failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSending(false);
     }
-  }, [postAmpAction, channel, firState.bypassed]);
+  }, [postAmpAction, effectiveChannel, firState.bypassed]);
 
   // ---- Import FIR file ----
   const handleImport = useCallback(() => {
@@ -493,10 +502,10 @@ export function FirFilterDialog({ mac, channel, title, triggerClassName }: FirFi
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${firState.name || `FIR_Ch${FIR_CHANNEL_LABELS[channel]}`}.txt`;
+    a.download = `${firState.name || `FIR_Ch${FIR_CHANNEL_LABELS[effectiveChannel]}`}.txt`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [coefficients, firState.name, channel]);
+  }, [coefficients, firState.name, effectiveChannel]);
 
   // ---- Remove FIR data (preserve bypass state) ----
   const handleRemove = useCallback(async () => {
@@ -536,7 +545,17 @@ export function FirFilterDialog({ mac, channel, title, triggerClassName }: FirFi
 
       <DialogContent className="w-[94vw] sm:w-[92vw] lg:w-[86vw] xl:w-[80vw] max-w-[1240px] sm:max-w-[92vw] lg:max-w-[86vw] xl:max-w-[1240px] h-[84dvh] max-h-[860px] min-h-[560px] flex flex-col gap-2 p-3 sm:p-4 overflow-hidden">
         <DialogHeader className="pb-2">
-          <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
+          <div className="flex items-center gap-6">
+            <DialogTitle className="text-sm font-semibold">{title.split(" - ")[0]}</DialogTitle>
+            {enableChannelSwitching && channelCount !== undefined && (
+              <ChannelButtonGroup
+                channelCount={channelCount}
+                value={activeChannel}
+                onValueChange={setActiveChannel}
+                size="sm"
+              />
+            )}
+          </div>
         </DialogHeader>
 
         {/* Top bar: FIR toggle + info + action buttons */}

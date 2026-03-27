@@ -12,26 +12,48 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 
+const SESSION_SHOWN_KEY = "prerelease-disclaimer-shown-this-session";
+
 export function PrereleaseStartupDialog() {
   const dict = useI18n();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [appVersion, setAppVersion] = useState("unknown");
 
   useEffect(() => {
     let isMounted = true;
 
-    void window.electronWindow
-      ?.getVersion()
-      .then((version) => {
-        if (isMounted) {
-          setAppVersion(version || "unknown");
+    const bootstrapDialogState = async () => {
+      // Check if already shown this session (prevents re-showing on language change)
+      try {
+        if (sessionStorage.getItem(SESSION_SHOWN_KEY) === "1") {
+          return;
         }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setAppVersion("unknown");
-        }
-      });
+      } catch {
+        // sessionStorage unavailable, continue to show
+      }
+
+      let resolvedVersion = "unknown";
+
+      try {
+        resolvedVersion = (await window.electronWindow?.getVersion()) || "unknown";
+      } catch {
+        resolvedVersion = "unknown";
+      }
+
+      if (!isMounted) return;
+
+      setAppVersion(resolvedVersion);
+      setOpen(true);
+
+      // Mark as shown for this session
+      try {
+        sessionStorage.setItem(SESSION_SHOWN_KEY, "1");
+      } catch {
+        // Ignore storage errors
+      }
+    };
+
+    void bootstrapDialogState();
 
     return () => {
       isMounted = false;

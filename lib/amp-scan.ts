@@ -52,12 +52,26 @@ export async function broadcastDiscovery(): Promise<Array<{ ip: string; mac: str
 
       socket.on("message", (msg: Buffer, rinfo) => {
         try {
-          console.log(`[broadcastDiscovery] Received message from ${rinfo.address}:${rinfo.port}, length=${msg.length}`);\n          // BASIC_INFO response layout:
+          console.log(
+            `[broadcastDiscovery] Received message from ${rinfo.address}:${rinfo.port}, length=${msg.length}`
+          );
+          // BASIC_INFO response layout:
           //   [0–9]   NetworkData header
           //   [10–19] StructHeader (head=0x55, FC=0)
           //   [20..]  body + checksum
           // Body supports legacy 24-byte and newer 32-byte name layouts.
-          if (msg.length < 90) {\n            console.debug(`[broadcastDiscovery] Message too short from ${rinfo.address}`);\n            return;\n          }\n          if (msg[10] !== 0x55) {\n            console.debug(`[broadcastDiscovery] Invalid header from ${rinfo.address}`);\n            return;\n          }\n          if (msg[11] !== FuncCode.BASIC_INFO) {\n            console.debug(`[broadcastDiscovery] Not BASIC_INFO from ${rinfo.address}`);\n            return;\n          }
+          if (msg.length < 90) {
+            console.debug(`[broadcastDiscovery] Message too short from ${rinfo.address}`);
+            return;
+          }
+          if (msg[10] !== 0x55) {
+            console.debug(`[broadcastDiscovery] Invalid header from ${rinfo.address}`);
+            return;
+          }
+          if (msg[11] !== FuncCode.BASIC_INFO) {
+            console.debug(`[broadcastDiscovery] Not BASIC_INFO from ${rinfo.address}`);
+            return;
+          }
 
           const fullBody = msg.slice(20, msg.length - 3);
           let body = fullBody;
@@ -99,7 +113,9 @@ export async function broadcastDiscovery(): Promise<Array<{ ip: string; mac: str
             .toString("ascii")
             .trim();
 
-          console.log(`[broadcastDiscovery] Device discovered: mac=${mac}, ip=${rinfo.address}, name=${name}, version=${version}`);
+          console.log(
+            `[broadcastDiscovery] Device discovered: mac=${mac}, ip=${rinfo.address}, name=${name}, version=${version}`
+          );
           devices.set(mac, { ip: rinfo.address, mac, name, version });
         } catch (err) {
           console.error("[DISCOVERY] Error parsing message:", err);
@@ -161,12 +177,16 @@ export async function broadcastDiscovery(): Promise<Array<{ ip: string; mac: str
           // Send directed broadcast on every active network interface so amps
           // are discovered regardless of which subnet/adapter they're on.
           const broadcastAddrs = getDirectedBroadcasts();
-          console.log(`[broadcastDiscovery] Sending discovery probe to ${broadcastAddrs.length} broadcast address(es): ${broadcastAddrs.join(", ")}`);\n          for (const addr of broadcastAddrs) {
+          console.log(
+            `[broadcastDiscovery] Sending discovery probe to ${broadcastAddrs.length} broadcast address(es): ${broadcastAddrs.join(", ")}`
+          );
+          for (const addr of broadcastAddrs) {
             socket.send(packet, 0, packet.length, AMP_PORT, addr, (err) => {
               if (err) {
                 console.error(`[broadcastDiscovery] Send error on ${addr}:`, err);
               } else {
-                console.log(`[broadcastDiscovery] Discovery probe sent to ${addr}:${AMP_PORT}`);\n              }
+                console.log(`[broadcastDiscovery] Discovery probe sent to ${addr}:${AMP_PORT}`);
+              }
             });
           }
         } catch (err) {

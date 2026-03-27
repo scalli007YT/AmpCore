@@ -828,6 +828,9 @@ export function HeartbeatDashboard({
                           channel={i}
                           target="input"
                           bands={channelParams?.channels[i]?.eqIn}
+                          allChannelBands={channelParams?.channels.map((c) => c?.eqIn)}
+                          channelCount={channelCount}
+                          channelNames={channelParams?.channels.map((c) => c?.inputName)}
                         />
                       </div>
                     </div>
@@ -982,6 +985,7 @@ export function HeartbeatDashboard({
                                   mac={mac}
                                   channel={i}
                                   title={`FIR Filter - ${channelParams?.channels[i]?.outputName ?? `Out${channelLabels[i] ?? i + 1}`}`}
+                                  channelCount={channelCount}
                                 />
                               </div>
 
@@ -998,6 +1002,9 @@ export function HeartbeatDashboard({
                                   channel={i}
                                   target="output"
                                   bands={channelParams?.channels[i]?.eqOut}
+                                  allChannelBands={channelParams?.channels.map((c) => c?.eqOut)}
+                                  channelCount={channelCount}
+                                  channelNames={channelParams?.channels.map((c) => c?.outputName)}
                                 />
                               </div>
                               <div className="w-16 shrink-0">

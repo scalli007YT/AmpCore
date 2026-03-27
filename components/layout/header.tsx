@@ -37,6 +37,7 @@ export function Header({ lang, dictionary, projects = [], loading = false }: Hea
   const [mounted, setMounted] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isMac, setIsMac] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [editProject, setEditProject] = useState<Project | null>(null);
   const [deleteProject, setDeleteProject] = useState<Project | null>(null);
@@ -55,6 +56,9 @@ export function Header({ lang, dictionary, projects = [], loading = false }: Hea
 
     setIsDesktop(true);
     void window.electronWindow.isMaximized().then(setIsMaximized);
+    void window.electronWindow.getPlatform().then((platform) => {
+      setIsMac(platform === "darwin");
+    });
     const unsubscribe = window.electronWindow.onMaximizedChange(setIsMaximized);
     return unsubscribe;
   }, []);
@@ -231,7 +235,7 @@ export function Header({ lang, dictionary, projects = [], loading = false }: Hea
                 </>
               )}
 
-              {isDesktop ? (
+              {isDesktop && !isMac ? (
                 <div className="flex items-center overflow-hidden rounded-[min(var(--radius-md),10px)] border border-border bg-card/85 dark:bg-muted/50">
                   <WindowButton
                     label="Minimize"

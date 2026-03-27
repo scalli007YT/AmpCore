@@ -70,6 +70,7 @@ async function startServer() {
 
 function createWindow() {
   const isDark = nativeTheme.shouldUseDarkColors;
+  const isMac = process.platform === "darwin";
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -78,8 +79,8 @@ function createWindow() {
     show: true,
     title: "AmpCore",
     autoHideMenuBar: true,
-    frame: false,
-    titleBarStyle: "hidden",
+    frame: !isMac,
+    titleBarStyle: isMac ? "hiddenInset" : "hidden",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -148,6 +149,8 @@ ipcMain.handle("window:is-maximized", () => {
 });
 
 ipcMain.handle("app:get-version", () => packageVersion);
+
+ipcMain.handle("app:get-platform", () => process.platform);
 
 // --- Lifecycle ------------------------------------------------------------
 

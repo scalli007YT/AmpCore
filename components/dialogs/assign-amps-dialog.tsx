@@ -70,7 +70,6 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
     try {
       await addAmpToProject(selectedProject.id, normalizedMac);
       setMacInput("");
-      toast.success(dict.dialogs.assignAmps.addAmp);
     } catch (error) {
       toast.error(
         `${dict.dialogs.assignAmps.errorAddingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
@@ -85,7 +84,6 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
     try {
       await addAmpToProject(selectedProject.id, mac);
       setScannedDevices(scannedDevices.filter((d) => d.mac !== mac));
-      toast.success(dict.dialogs.assignAmps.addAmp);
     } catch (error) {
       toast.error(
         `${dict.dialogs.assignAmps.errorAddingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
@@ -99,7 +97,6 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
     setIsSaving(true);
     try {
       await deleteAmpFromProject(selectedProject.id, mac);
-      toast.success("Amp removed");
     } catch (error) {
       toast.error(
         `${dict.dialogs.assignAmps.errorDeletingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
@@ -174,7 +171,6 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
 
       await updateAmpLastKnownIp(mac, ip);
       setProbeInputByMac((prev) => ({ ...prev, [mac]: "" }));
-      toast.success(`${dict.dialogs.assignAmps.ipAddress}: ${ip}`);
     } catch (error) {
       toast.error(
         `${dict.dialogs.assignAmps.scanError}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`

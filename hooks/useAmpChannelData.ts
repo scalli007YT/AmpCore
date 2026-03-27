@@ -2,14 +2,21 @@
 
 import { useEffect } from "react";
 import { useAmpStore } from "@/stores/AmpStore";
+import { useTabStore } from "@/stores/TabStore";
 import { parseFC27Channels, parseFC27RotaryLock } from "@/lib/parse-channel-data";
 
-const CHANNEL_DATA_POLL_MS = 250;
-const LOCK_POLL_MS = 2000;
+// Tiered polling: fast for active amp, slow for background amps.
+// With 10 amps this drops from ~40 req/sec to ~5 req/sec.
+const ACTIVE_POLL_MS = 250; // tick interval (drives active amp)
+const BACKGROUND_CHANNEL_MS = 2000; // background amps channel data interval
+const LOCK_POLL_ACTIVE_MS = 2000; // lock poll for active amp
+const LOCK_POLL_BACKGROUND_MS = 10_000; // lock poll for background amps
+
 let channelDataTimer: ReturnType<typeof setInterval> | null = null;
 let channelDataSubscribers = 0;
 const inFlightMacs = new Set<string>();
 const inFlightLockMacs = new Set<string>();
+const lastChannelPollAtByMac = new Map<string, number>();
 const lastLockPollAtByMac = new Map<string, number>();
 const forceLockPollMacs = new Set<string>();
 
@@ -19,11 +26,11 @@ export function triggerImmediateLockPoll(mac: string): void {
 }
 
 /**
- * useAmpChannelData — Polls channel data for all reachable amps
+ * useAmpChannelData — Tiered channel-data poller
  *
- * Every 250ms, fetches the latest channel data from all reachable amps,
- * parses the FC=27 response into 4 channel configurations, and stores in AmpStore.
- * This is separate from the heartbeat poller.
+ * Polls FC=27 channel data at 250ms for the active amp (selected in TabStore)
+ * and at 2000ms for all other reachable amps. This keeps the active amp
+ * fully responsive while preventing network overload with 10+ amps.
  */
 export function useAmpChannelData(): void {
   useEffect(() => {
@@ -33,10 +40,21 @@ export function useAmpChannelData(): void {
       channelDataTimer = setInterval(() => {
         const amps = useAmpStore.getState().amps;
         const reachableAmps = amps.filter((amp) => amp.reachable);
+        const selectedMac = useTabStore.getState().selectedAmpMac;
+        const now = Date.now();
 
         reachableAmps.forEach((amp) => {
+          const isActive = amp.mac === selectedMac;
+
+          // ── Channel data: fast for active, throttled for background ──
+          if (!isActive) {
+            const lastPoll = lastChannelPollAtByMac.get(amp.mac) ?? 0;
+            if (now - lastPoll < BACKGROUND_CHANNEL_MS) return;
+          }
+
           if (inFlightMacs.has(amp.mac)) return;
           inFlightMacs.add(amp.mac);
+          lastChannelPollAtByMac.set(amp.mac, now);
 
           fetch(`/api/amp-channel-data?mac=${encodeURIComponent(amp.mac)}`)
             .then((r) => r.json())
@@ -44,11 +62,9 @@ export function useAmpChannelData(): void {
               if (response.success && response.hex) {
                 const { syncChannelParams, updateAmpStatus } = useAmpStore.getState();
 
-                // Parse the raw hex into 4 channel configurations
                 const channels = parseFC27Channels(response.hex);
                 const locked = parseFC27RotaryLock(response.hex);
 
-                // Sync into ChannelParams for structured access
                 syncChannelParams(amp.mac, channels);
                 if (locked !== undefined) {
                   updateAmpStatus(amp.mac, { locked });
@@ -62,10 +78,11 @@ export function useAmpChannelData(): void {
               inFlightMacs.delete(amp.mac);
             });
 
-          const now = Date.now();
+          // ── Lock polling: active gets 2s, background gets 10s ──
+          const lockInterval = isActive ? LOCK_POLL_ACTIVE_MS : LOCK_POLL_BACKGROUND_MS;
           const lastLockPollAt = lastLockPollAtByMac.get(amp.mac) ?? 0;
           const shouldForceLockPoll = forceLockPollMacs.has(amp.mac);
-          if (!inFlightLockMacs.has(amp.mac) && (shouldForceLockPoll || now - lastLockPollAt >= LOCK_POLL_MS)) {
+          if (!inFlightLockMacs.has(amp.mac) && (shouldForceLockPoll || now - lastLockPollAt >= lockInterval)) {
             inFlightLockMacs.add(amp.mac);
             forceLockPollMacs.delete(amp.mac);
             lastLockPollAtByMac.set(amp.mac, now);
@@ -85,7 +102,7 @@ export function useAmpChannelData(): void {
               });
           }
         });
-      }, CHANNEL_DATA_POLL_MS);
+      }, ACTIVE_POLL_MS);
     }
 
     return () => {
@@ -95,6 +112,7 @@ export function useAmpChannelData(): void {
         channelDataTimer = null;
         inFlightMacs.clear();
         inFlightLockMacs.clear();
+        lastChannelPollAtByMac.clear();
         lastLockPollAtByMac.clear();
         forceLockPollMacs.clear();
       }

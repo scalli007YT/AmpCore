@@ -3,10 +3,11 @@
  *
  * Request FIR filter data (FC=43, statusCode=2) for a specific output channel.
  * Returns the current FIR name and coefficients stored on the device.
+ * Routed through the persistent controller socket so Dante amps are supported.
  */
 
 import { ampController } from "@/lib/amp-controller";
-import { CvrAmpDevice } from "@/lib/amp-device";
+import { FuncCode } from "@/lib/amp-device";
 import { isSimulatedMac } from "@/lib/simulated-amps";
 import { FIR_MAX_TAPS } from "@/lib/fir";
 
@@ -46,24 +47,37 @@ export async function GET(request: Request): Promise<Response> {
   try {
     ampController.start();
 
-    const ip = ampController.getIpForMac(mac);
-    if (!ip) {
+    if (!ampController.getIpForMac(mac)) {
       return Response.json({ error: `Amp ${mac} not yet discovered` }, { status: 404 });
     }
 
-    const device = new CvrAmpDevice(ip);
-    const result = await device.queryFirData(channel);
+    // FC=43 FIR_DATA, output channel, 2s timeout (response is ~2080 bytes / 5 fragments)
+    const body = await ampController.requestFC(mac, FuncCode.FIR_DATA, channel, Buffer.alloc(0), 1, 2000);
 
-    if (!result) {
+    if (body.length < 32) {
       return Response.json({ error: "No FIR data response from device" }, { status: 504 });
+    }
+
+    // Parse FIR_DATA body: 32-byte name + 512 × float32 LE
+    const nullIdx = body.indexOf(0);
+    const nameEnd = Math.min(nullIdx === -1 ? 32 : nullIdx, 32);
+    const name = body.slice(0, nameEnd).toString("ascii").trim();
+
+    const floatCount = Math.min(Math.floor((body.length - 32) / 4), 512);
+    const coefficients: number[] = new Array(floatCount);
+    for (let i = 0; i < floatCount; i++) {
+      coefficients[i] = body.readFloatLE(32 + i * 4);
+    }
+    while (coefficients.length < 512) {
+      coefficients.push(0);
     }
 
     return Response.json({
       success: true,
       mac,
       channel,
-      name: result.name,
-      coefficients: result.coefficients
+      name,
+      coefficients
     });
   } catch (err) {
     console.error("[amp-fir-data] Error:", err);

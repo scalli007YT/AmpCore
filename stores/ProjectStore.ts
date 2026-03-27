@@ -47,6 +47,7 @@ export interface Project {
     id: string;
     mac: string;
     lastKnownName?: string;
+    lastKnownIp?: string;
     constants: AssignedAmpConstants;
   }>;
 }
@@ -68,6 +69,7 @@ interface ProjectStore {
   updateAmpChannelOhms: (mac: string, channelIndex: number, ohms: number) => Promise<void>;
   updateAmpLinking: (mac: string, linking: AmpLinkConfig) => Promise<void>;
   updateAmpLastKnownName: (mac: string, lastKnownName: string) => Promise<void>;
+  updateAmpLastKnownIp: (mac: string, lastKnownIp: string) => Promise<void>;
 }
 
 function mapAssignedAmpToConfig(amp: Project["assigned_amps"][number]) {
@@ -421,6 +423,41 @@ export const useProjectStore = create<ProjectStore>()(
         });
 
         useAmpStore.getState().updateAmpStatus(mac, { lastKnownName: normalizedName });
+
+        await fetch("/api/projects", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(serializeProjectForPersistence(updatedProject))
+        });
+      },
+
+      updateAmpLastKnownIp: async (mac, lastKnownIp) => {
+        const { projects, selectedProject } = get();
+        if (!selectedProject) return;
+
+        const normalizedMac = mac.toUpperCase();
+        const normalizedIp = lastKnownIp.trim();
+        if (!normalizedIp) return;
+
+        const currentAmp = selectedProject.assigned_amps.find((amp) => amp.mac.toUpperCase() === normalizedMac);
+        if (!currentAmp) return;
+        if (currentAmp.lastKnownIp === normalizedIp) return;
+
+        const updatedProject: Project = {
+          ...selectedProject,
+          assigned_amps: selectedProject.assigned_amps.map((amp) => {
+            if (amp.mac.toUpperCase() !== normalizedMac) return amp;
+            return {
+              ...amp,
+              lastKnownIp: normalizedIp
+            };
+          })
+        };
+
+        set({
+          projects: projects.map((project) => (project.id === selectedProject.id ? updatedProject : project)),
+          selectedProject: updatedProject
+        });
 
         await fetch("/api/projects", {
           method: "PUT",

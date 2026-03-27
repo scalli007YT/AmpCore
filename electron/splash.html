@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title>AmpCore</title>
     <style>
       :root {
@@ -11,7 +12,6 @@
         --color-splash-border: #2b2b2b;
         --color-splash-border-top: #686868;
         --color-splash-status: #9d9d9d;
-        --color-splash-error: #ff6b6b;
       }
 
       @media (prefers-color-scheme: light) {
@@ -21,7 +21,6 @@
           --color-splash-border: #d6d6d6;
           --color-splash-border-top: #8f8f8f;
           --color-splash-status: #666666;
-          --color-splash-error: #c23b3b;
         }
       }
 
@@ -92,24 +91,37 @@
           spin 0.85s linear 0.25s infinite;
       }
 
-      .status {
-        margin-top: 20px;
-        min-height: 16px;
-        max-width: 70vw;
-        text-align: center;
-        font-size: 12px;
-        line-height: 1.35;
-        color: var(--color-splash-status);
-        opacity: 0;
-        transition: opacity 160ms ease;
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        border: 0;
+        white-space: nowrap;
       }
 
-      .status.visible {
-        opacity: 1;
+      @media (prefers-reduced-motion: reduce) {
+        body {
+          transition: none;
+        }
+
+        .logo,
+        .title,
+        .version,
+        .spinner {
+          opacity: 1;
+          animation: none;
+        }
       }
 
-      .status.error {
-        color: var(--color-splash-error);
+      @media (forced-colors: active) {
+        .spinner {
+          border-color: GrayText;
+          border-top-color: CanvasText;
+        }
       }
 
       @keyframes spin {
@@ -124,12 +136,12 @@
       }
     </style>
   </head>
-  <body>
-    <img class="logo" src="../public/logo.ico" alt="" />
+  <body role="status" aria-live="polite" aria-busy="true">
+    <img class="logo" src="../public/logo.ico" alt="AmpCore logo" draggable="false" />
     <div id="app-name" class="title">AmpCore</div>
     <div id="app-version" class="version">v0.0.0</div>
-    <div class="spinner"></div>
-    <div id="status" class="status" aria-live="polite"></div>
+    <div class="spinner" aria-hidden="true"></div>
+    <div class="sr-only">Loading application</div>
     <script>
       (() => {
         const params = new URLSearchParams(window.location.search);
@@ -149,20 +161,12 @@
         }
       })();
 
-      window.setSplashStatus = (text, isError = false) => {
-        const el = document.getElementById("status");
-        if (!el) return;
-        el.textContent = String(text || "");
-        el.classList.add("visible");
-        if (isError) {
-          el.classList.add("error");
-        } else {
-          el.classList.remove("error");
-        }
-      };
+      // Keep API for callers, but intentionally render no status text on splash.
+      window.setSplashStatus = () => {};
 
       window.startFadeOut = () => {
         const durationMs = 220;
+        document.body.setAttribute("aria-busy", "false");
         document.body.classList.add("fading-out");
         return durationMs;
       };

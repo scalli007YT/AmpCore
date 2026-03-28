@@ -41,6 +41,7 @@ type Channel = number;
 type BridgePair = number;
 type SourceType = 0 | 1 | 2;
 type SourceFamily = 0 | 1 | 2;
+type BackupVariant = "dual" | "triple";
 type CrossoverTarget = "input" | "output";
 type CrossoverKind = "hp" | "lp";
 type ActionValue = boolean | number | string;
@@ -154,6 +155,15 @@ interface AmpActionsHook {
     source: SourceFamily,
     trimDb: number,
     delayMs: number
+  ) => Promise<void>;
+  setBackupConfig: (
+    mac: string,
+    channel: Channel,
+    enabled: boolean,
+    variant: BackupVariant,
+    priority1: SourceFamily,
+    threshold: number,
+    priority2?: SourceFamily
   ) => Promise<void>;
   setAnalogType: (mac: string, channel: Channel, analogType: number) => Promise<void>;
 }
@@ -457,7 +467,7 @@ export function useAmpActions(): AmpActionsHook {
   // ---------------------------------------------------------------------------
   const setSourceType = useCallback(
     async (mac: string, channel: Channel, sourceType: SourceType) => {
-      await send(mac, "sourceType", channel, sourceType);
+      await send(mac, "sourceType", channel, sourceType, undefined, { throwOnError: true });
     },
     [send]
   );
@@ -504,9 +514,47 @@ export function useAmpActions(): AmpActionsHook {
     [send]
   );
 
+  const setBackupConfig = useCallback(
+    async (
+      mac: string,
+      channel: Channel,
+      enabled: boolean,
+      variant: BackupVariant,
+      priority1: SourceFamily,
+      threshold: number,
+      priority2?: SourceFamily
+    ) => {
+      const payload = {
+        mac,
+        action: "backupConfig" as const,
+        channel,
+        value: enabled,
+        variant,
+        priority1,
+        priority2,
+        threshold
+      };
+      const parsed = ampActionRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        const message = parsed.error.issues[0]?.message ?? "Invalid backupConfig payload";
+        toast.error(message);
+        throw new Error(message);
+      }
+      await send(
+        mac,
+        "backupConfig",
+        channel,
+        enabled,
+        { variant, priority1, priority2, threshold },
+        { throwOnError: true }
+      );
+    },
+    [send]
+  );
+
   const setAnalogType = useCallback(
     async (mac: string, channel: Channel, analogType: number) => {
-      await send(mac, "analogType", channel, analogType);
+      await send(mac, "analogType", channel, analogType, undefined, { throwOnError: true });
     },
     [send]
   );
@@ -700,6 +748,7 @@ export function useAmpActions(): AmpActionsHook {
     setSourceType,
     setSourceDelay,
     setSourceTrim,
+    setBackupConfig,
     setAnalogType,
     setDelayIn,
     setDelayOut,

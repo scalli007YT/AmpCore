@@ -62,6 +62,7 @@ export class FuncCode {
   static BACK_SW_FILTER = 73;
   static SOURCE_DATA = 62;
   static ANALOG_TYPE = 79;
+  static PRIORITY_INPUTS = 80;
   static POWER_ALLOT = 81;
   static SPEAKER_NAME = 77;
   static MONO_SWITCH = 78;

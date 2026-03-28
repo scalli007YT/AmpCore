@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ampController } from "@/lib/amp-controller";
 import { FuncCode } from "@/lib/amp-device";
+import { getSimulatedPresets, isSimulatedMac } from "@/lib/simulated-amps";
 
-const PRESET_DEBUG = process.env.PRESET_DEBUG === "1";
 const SLOT_SIZE = 32;
 
 /**
@@ -38,7 +38,6 @@ function parsePresetBody(body: Buffer): { slot: number; name: string }[] {
  */
 export async function POST(req: NextRequest) {
   try {
-    const startedAt = Date.now();
     const body = await req.json();
     const { mac } = body as { ip?: string; mac?: string };
 
@@ -46,8 +45,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Missing mac" }, { status: 400 });
     }
 
-    if (PRESET_DEBUG) {
-      console.info(`[amp-presets] start mac=${mac}`);
+    if (isSimulatedMac(mac)) {
+      return NextResponse.json({ success: true, mac, presets: getSimulatedPresets(mac) ?? [] });
     }
 
     // Save_Recall_data: mode(1)=0 + ch_x(1)=0 + buffers(32)=zeros = 34 bytes
@@ -55,16 +54,9 @@ export async function POST(req: NextRequest) {
     const responseBody = await ampController.requestFC(mac, FuncCode.SAVE_RECALL, 0, reqBody);
     const presets = parsePresetBody(responseBody);
 
-    if (PRESET_DEBUG) {
-      console.info(`[amp-presets] done mac=${mac} presets=${presets.length} elapsedMs=${Date.now() - startedAt}`);
-    }
-
     return NextResponse.json({ success: true, mac, presets });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (PRESET_DEBUG) {
-      console.warn(`[amp-presets] failed error=${message}`);
-    }
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

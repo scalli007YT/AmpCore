@@ -137,6 +137,7 @@
       "invalidMac": "Ungültiges MAC-Adressformat",
       "noAmpAtIp": "Kein Verstärker hat auf diese IP-Adresse geantwortet",
       "errorSavingAmp": "Fehler beim Speichern des Verstärkers",
+      "probing": "Suche...",
       "enterMac": "Bitte gib eine MAC-Adresse ein",
       "errorAddingAmp": "Fehler beim Hinzufügen des Verstärkers",
       "errorDeletingAmp": "Fehler beim Entfernen des Verstärkers",
@@ -148,13 +149,16 @@
     "sourceConfig": {
       "trigger": "Quelle",
       "title": "Quelle",
-      "description": "Quellenauswahl pro Kanal mit Delay- und Trim-Werten.",
-      "alertTitle": "Nicht in Geräte-Presets enthalten",
-      "alertDescription": "Quellenauswahl, Delay und Trim hier sind nicht im Preset-Speichern/-Laden dieser App enthalten.",
+      "description": "Quellenauswahl pro Kanal mit Matching-Reglern und Backup-Priorisierung.",
       "off": "Aus",
       "delay": "Delay",
       "trim": "Trim",
-      "notAvailable": "N/V"
+      "notAvailable": "N/V",
+      "backupActive": "Aktiv",
+      "backupFirst": "Prioritat 1",
+      "backupSecond": "Prioritat 2",
+      "backupThird": "Prioritat 3",
+      "backupThreshold": "Schwelle"
     },
     "limiterDetails": {
       "rms": "RMS",

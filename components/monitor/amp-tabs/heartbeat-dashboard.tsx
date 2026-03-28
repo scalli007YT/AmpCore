@@ -604,13 +604,15 @@ export function HeartbeatDashboard({
   mac,
   ratedRmsV,
   channelParams,
-  bridgePairs
+  bridgePairs,
+  outputChx
 }: {
   hb: HeartbeatData;
   mac: string;
   ratedRmsV?: number;
   channelParams?: ChannelParams;
   bridgePairs?: BridgeReadback[];
+  outputChx?: number;
 }) {
   const dict = useI18n();
   const byMac = useAmpActionLinkStore((state) => state.byMac);
@@ -639,13 +641,13 @@ export function HeartbeatDashboard({
   const { top: OUT_DB_TOP, bot: OUT_DB_BOT, ticks: OUT_SCALE } = outDbScale();
 
   const LABEL_H = 24;
-  const channelCount = Math.max(
-    channelParams?.channels.length ?? 0,
-    hb.outputStates.length,
-    hb.inputStates.length,
-    hb.outputVoltages.length,
-    hb.inputDbfs.length
-  );
+  // Authoritative channel count: prefer discovery (outputChx) > FC=27 (channelParams) > heartbeat arrays
+  const channelCount =
+    outputChx && outputChx > 0
+      ? outputChx
+      : channelParams?.channels.length && channelParams.channels.length > 0
+        ? channelParams.channels.length
+        : Math.max(hb.outputStates.length, hb.inputStates.length, hb.outputVoltages.length, hb.inputDbfs.length, 1);
   const channelLabels = getChannelLabels(channelCount);
   const outputPairCount = Math.ceil(channelLabels.length / 2);
   const [bridgeConfirmOpen, setBridgeConfirmOpen] = useState(false);

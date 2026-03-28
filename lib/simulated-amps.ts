@@ -1,10 +1,10 @@
 import type { AmpActionRequest } from "@/lib/validation/amp-actions";
-import type { AmpBasicInfo, BridgeReadback, HeartbeatData } from "@/stores/AmpStore";
+import type { AmpBasicInfo, AmpPreset, BridgeReadback, HeartbeatData } from "@/stores/AmpStore";
 import { isSimulatedMac as isKnownSimulatedMac } from "@/lib/simulated-amp-identity";
 
 const DEFAULT_CHANNEL_COUNT = 4;
 const FC27_BYTES_PER_CHANNEL = 515;
-const FC27_TRAILER_SIZE = 180;
+const FC27_TRAILER_SIZE = 192;
 const EQ_BAND_COUNT = 10;
 
 type EqTarget = "input" | "output";
@@ -67,6 +67,10 @@ interface SimulatedChannelState {
   powerMode: number;
   sourceTypeCode: number;
   analogInputIndex: number;
+  backupEnabled: boolean;
+  backupPriority1: number;
+  backupPriority2: number;
+  backupThreshold: number;
   sourceFamilies: [SimulatedSourceFamily, SimulatedSourceFamily, SimulatedSourceFamily];
   matrix: SimulatedMatrixSource[];
   rmsLimiter: SimulatedLimiterRms;
@@ -81,6 +85,8 @@ interface SimulatedAmpState {
   startedAtMs: number;
   channels: SimulatedChannelState[];
   bridgePairs: boolean[];
+  presets: AmpPreset[];
+  currentPreset: string | null;
 }
 
 export interface SimulatedScanDevice {
@@ -205,6 +211,10 @@ function createDefaultChannelState(channelCount: number, channelIndex: number): 
     powerMode: 0,
     sourceTypeCode: 0,
     analogInputIndex: channelIndex,
+    backupEnabled: false,
+    backupPriority1: 0,
+    backupPriority2: 1,
+    backupThreshold: -80,
     sourceFamilies: [
       { trim: 0, delay: 0 },
       { trim: 0, delay: 0 },
@@ -249,8 +259,20 @@ function getState(mac: string): SimulatedAmpState | undefined {
     const bridgePairCount = Math.max(1, Math.ceil(channelCount / 2));
     state = {
       startedAtMs: Date.now(),
-      channels: Array.from({ length: channelCount }, (_, idx) => createDefaultChannelState(channelCount, idx)),
-      bridgePairs: Array.from({ length: bridgePairCount }, () => false)
+      channels: Array.from({ length: channelCount }, (_, idx) => {
+        const channel = createDefaultChannelState(channelCount, idx);
+        if (definition.digitalInputs > 0) {
+          channel.backupEnabled = true;
+          channel.backupPriority1 = 0;
+          channel.backupPriority2 = 1;
+          channel.backupThreshold = -80;
+          channel.sourceTypeCode = 3;
+        }
+        return channel;
+      }),
+      bridgePairs: Array.from({ length: bridgePairCount }, () => false),
+      presets: [],
+      currentPreset: null
     };
     stateByMac.set(normalized, state);
   }
@@ -358,6 +380,50 @@ export function isSimulatedMac(mac: string): boolean {
 
 export function getSimulatedRuntimeMinutes(mac: string): number | null {
   return getRuntimeMinutesInternal(mac);
+}
+
+export function getSimulatedPresets(mac: string): AmpPreset[] | null {
+  const state = getState(mac);
+  if (!state) return null;
+  return state.presets.map((preset) => ({ ...preset }));
+}
+
+export function getSimulatedCurrentPreset(mac: string): string | null {
+  const state = getState(mac);
+  if (!state) return null;
+  return state.currentPreset;
+}
+
+export function storeSimulatedPreset(mac: string, slot: number, name: string): boolean {
+  const state = getState(mac);
+  if (!state) return false;
+
+  const trimmedName = name.trim();
+  if (trimmedName.length === 0) return false;
+
+  const existingIndex = state.presets.findIndex((preset) => preset.slot === slot);
+  const nextPreset = { slot, name: trimmedName };
+
+  if (existingIndex >= 0) {
+    state.presets[existingIndex] = nextPreset;
+  } else {
+    state.presets.push(nextPreset);
+    state.presets.sort((left, right) => left.slot - right.slot);
+  }
+
+  state.currentPreset = trimmedName;
+  return true;
+}
+
+export function recallSimulatedPreset(mac: string, slot: number): { success: boolean; name?: string } {
+  const state = getState(mac);
+  if (!state) return { success: false };
+
+  const preset = state.presets.find((entry) => entry.slot === slot);
+  if (!preset) return { success: false };
+
+  state.currentPreset = preset.name;
+  return { success: true, name: preset.name };
 }
 
 export function getSimulatedScanDevices(): SimulatedScanDevice[] {
@@ -479,6 +545,17 @@ export function buildSimulatedFc27Hex(mac: string): string | null {
 
     buffer.writeUInt8(channel.muteIn ? 0 : 1, trailerBase + 132 + ch);
     buffer.writeUInt8(channel.analogInputIndex & 0xff, trailerBase + 136 + ch);
+
+    const flowPriorityOffset = trailerBase + 140 + ch * 4;
+    buffer.writeUInt8(channel.backupPriority1 & 0xff, flowPriorityOffset);
+    buffer.writeUInt8(channel.backupPriority2 & 0xff, flowPriorityOffset + 1);
+    buffer.writeUInt8(channel.backupEnabled ? 1 : 0, flowPriorityOffset + 2);
+    buffer.writeInt8(channel.backupThreshold, flowPriorityOffset + 3);
+
+    const ddPriorityOffset = trailerBase + 176 + ch * 3;
+    buffer.writeUInt8(channel.backupEnabled ? 1 : 0, ddPriorityOffset);
+    buffer.writeUInt8(channel.backupPriority1 & 0xff, ddPriorityOffset + 1);
+    buffer.writeInt8(channel.backupThreshold, ddPriorityOffset + 2);
   }
 
   return buffer.toString("hex");
@@ -531,7 +608,10 @@ export function applySimulatedAction(mac: string, body: AmpActionRequest): boole
       return true;
 
     case "sourceType":
-      if (channelState) channelState.sourceTypeCode = clamp(Math.round(body.value), 0, 2);
+      if (channelState) {
+        channelState.backupEnabled = false;
+        channelState.sourceTypeCode = clamp(Math.round(body.value), 0, 2);
+      }
       return true;
 
     case "sourceDelay":
@@ -547,6 +627,18 @@ export function applySimulatedAction(mac: string, body: AmpActionRequest): boole
         const family = clamp(Math.round(body.source), 0, 2);
         channelState.sourceFamilies[family].trim = clamp(body.value, 0, 18);
         channelState.sourceFamilies[family].delay = clamp(body.delay, 0, 10);
+      }
+      return true;
+
+    case "backupConfig":
+      if (channelState) {
+        channelState.backupEnabled = Boolean(body.value);
+        channelState.backupPriority1 = clamp(Math.round(body.priority1), 0, 2);
+        channelState.backupPriority2 = clamp(Math.round(body.priority2 ?? body.priority1), 0, 2);
+        channelState.backupThreshold = clamp(Math.round(body.threshold), -80, 0);
+        if (channelState.backupEnabled) {
+          channelState.sourceTypeCode = 3 + channelState.backupPriority1;
+        }
       }
       return true;
 

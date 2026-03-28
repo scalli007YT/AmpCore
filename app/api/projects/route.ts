@@ -43,7 +43,14 @@ function createNormalizedChannels(
   linking: AmpLinkConfig
 ) {
   const linkedChannelCount = inferLinkedChannelCount(linking);
-  const targetChannelCount = Math.max(rawChannels?.length ?? 0, linkedChannelCount, DEFAULT_PROJECT_CHANNEL_COUNT);
+  // Use raw channel count if provided, otherwise linked count, otherwise default.
+  // Don't force minimum of 4 - amp may legitimately have 2 channels.
+  const targetChannelCount =
+    rawChannels && rawChannels.length > 0
+      ? Math.max(rawChannels.length, linkedChannelCount)
+      : linkedChannelCount > 0
+        ? linkedChannelCount
+        : DEFAULT_PROJECT_CHANNEL_COUNT;
 
   return Array.from({ length: targetChannelCount }, (_, index) => ({
     ohms: rawChannels?.[index]?.ohms ?? fallbackOhms
@@ -69,6 +76,7 @@ interface Project {
     id: string;
     mac: string;
     lastKnownName?: string;
+    lastKnownIp?: string;
     constants: AssignedAmpConstants;
     loadOhm?: number;
   }>;
@@ -94,6 +102,10 @@ function normalizeProject(project: Project): Project {
         lastKnownName:
           typeof amp.lastKnownName === "string" && amp.lastKnownName.trim().length > 0
             ? amp.lastKnownName.trim()
+            : undefined,
+        lastKnownIp:
+          typeof amp.lastKnownIp === "string" && /^\d+\.\d+\.\d+\.\d+$/.test(amp.lastKnownIp.trim())
+            ? amp.lastKnownIp.trim()
             : undefined,
         constants
       };

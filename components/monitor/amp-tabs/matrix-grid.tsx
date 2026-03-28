@@ -121,9 +121,10 @@ export function MatrixGrid({
 }) {
   const { setMatrixGain, setMatrixActive } = useAmpActions();
   const matrixSourceCount = channels.reduce((max, channel) => Math.max(max, channel.matrix.length), 0);
-  const headerCount = Math.max(matrixSourceCount, analogInputCount ?? 0);
+  // Prefer discovery's analogInputCount as authoritative; FC=27 may always return 4 matrix entries
+  const headerCount = analogInputCount ?? matrixSourceCount;
   const sourceLabels = Array.from({ length: headerCount }, (_, idx) => `AIn${idx + 1}`);
-  const enabledInputCount = Math.max(0, Math.min(headerCount, analogInputCount ?? headerCount));
+  const enabledInputCount = headerCount;
 
   return (
     <div className="overflow-auto">

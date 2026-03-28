@@ -24,11 +24,19 @@ import { getSimulatedDiscoveryEvents, getSimulatedHeartbeatEvents } from "@/lib/
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request): Promise<Response> {
-  const projectMode = new URL(request.url).searchParams.get("projectMode") === "demo" ? "demo" : "real";
+  const url = new URL(request.url);
+  const projectMode = url.searchParams.get("projectMode") === "demo" ? "demo" : "real";
+  const seedIps = url.searchParams.get("seedIps")?.split(",").filter(Boolean) ?? [];
 
   // Ensure the controller socket is started (idempotent) for real-device projects.
   if (projectMode === "real") {
     ampController.start();
+    // Seed remembered IPs for cross-subnet discovery (from project's lastKnownIp values)
+    for (const ip of seedIps) {
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(ip.trim())) {
+        ampController.seedIp(ip.trim());
+      }
+    }
   }
 
   let closed = false;

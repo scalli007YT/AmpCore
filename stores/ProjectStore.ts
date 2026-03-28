@@ -70,6 +70,7 @@ interface ProjectStore {
   updateAmpLinking: (mac: string, linking: AmpLinkConfig) => Promise<void>;
   updateAmpLastKnownName: (mac: string, lastKnownName: string) => Promise<void>;
   updateAmpLastKnownIp: (mac: string, lastKnownIp: string) => Promise<void>;
+  updateAmpChannelCount: (mac: string, channelCount: number) => void;
 }
 
 function mapAssignedAmpToConfig(amp: Project["assigned_amps"][number]) {
@@ -235,9 +236,10 @@ export const useProjectStore = create<ProjectStore>()(
         }
 
         const runtimeAmp = useAmpStore.getState().amps.find((amp) => amp.mac.toUpperCase() === normalizedMac);
+        // Prefer output_chx from discovery (FC=0) as authoritative channel count
         const detectedChannelCount =
-          runtimeAmp?.channelParams?.channels.length ??
           runtimeAmp?.output_chx ??
+          runtimeAmp?.channelParams?.channels.length ??
           runtimeAmp?.constants.channels.length ??
           DEFAULT_PROJECT_CHANNEL_COUNT;
 
@@ -464,6 +466,46 @@ export const useProjectStore = create<ProjectStore>()(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(serializeProjectForPersistence(updatedProject))
         });
+      },
+
+      updateAmpChannelCount: (mac, channelCount) => {
+        const { projects, selectedProject } = get();
+        if (!selectedProject) return;
+
+        const normalizedMac = mac.toUpperCase();
+        const safeCount = Math.max(1, Math.floor(channelCount));
+
+        const currentAmp = selectedProject.assigned_amps.find((amp) => amp.mac.toUpperCase() === normalizedMac);
+        if (!currentAmp) return;
+        if (currentAmp.constants.channels.length === safeCount) return;
+
+        // Resize channels array: preserve existing ohms, pad with defaults
+        const newChannels = Array.from({ length: safeCount }, (_, i) => ({
+          channel: i,
+          ohms: currentAmp.constants.channels[i]?.ohms ?? DEFAULT_CHANNEL_OHMS
+        }));
+
+        const updatedProject: Project = {
+          ...selectedProject,
+          assigned_amps: selectedProject.assigned_amps.map((amp) => {
+            if (amp.mac.toUpperCase() !== normalizedMac) return amp;
+            return {
+              ...amp,
+              constants: {
+                ...amp.constants,
+                channels: newChannels
+              }
+            };
+          })
+        };
+
+        set({
+          projects: projects.map((project) => (project.id === selectedProject.id ? updatedProject : project)),
+          selectedProject: updatedProject
+        });
+
+        // Note: We don't persist this immediately — it's a runtime optimization.
+        // The persisted project file uses defaults anyway and gets updated on next save.
       }
     }),
     {

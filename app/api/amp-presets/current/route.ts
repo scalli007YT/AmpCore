@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ampController } from "@/lib/amp-controller";
 import { FuncCode } from "@/lib/amp-device";
+import { getSimulatedCurrentPreset, isSimulatedMac } from "@/lib/simulated-amps";
 
 /**
  * POST /api/amp-presets/current
@@ -16,6 +17,10 @@ export async function POST(req: NextRequest) {
 
     if (!mac) {
       return NextResponse.json({ success: false, error: "Missing mac" }, { status: 400 });
+    }
+
+    if (isSimulatedMac(mac)) {
+      return NextResponse.json({ success: true, mac, currentPreset: getSimulatedCurrentPreset(mac) });
     }
 
     // Save_Recall_data: mode(1)=4 + ch_x(1)=0 + buffers(32)=zeros = 34 bytes

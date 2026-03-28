@@ -62,7 +62,7 @@ export function useAmpChannelData(): void {
               if (response.success && response.hex) {
                 const { syncChannelParams, updateAmpStatus } = useAmpStore.getState();
 
-                const channels = parseFC27Channels(response.hex);
+                const channels = parseFC27Channels(response.hex, amp.sourceCapabilities);
                 const locked = parseFC27RotaryLock(response.hex);
 
                 syncChannelParams(amp.mac, channels);

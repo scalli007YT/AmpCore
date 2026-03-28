@@ -40,7 +40,6 @@ process.on("message", async (msg) => {
         });
     });
 
-    console.log(`[next] Server ready on http://127.0.0.1:${port}`);
     process.send({ type: "ready" });
   } catch (err) {
     console.error("[next] Server failed to start:", err);

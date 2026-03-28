@@ -44,8 +44,10 @@ function readSBytes(body: Buffer, offset: number, count: number): number[] {
   return out;
 }
 
-function toFour(values: number[]): number[] {
-  return [values[0] ?? 0, values[1] ?? 0, values[2] ?? 0, values[3] ?? 0];
+/** Normalize array values: replace null/undefined with 0, preserve actual array length. */
+function normalizeArray(values: number[]): number[] {
+  if (values.length === 0) return [0, 0, 0, 0];
+  return values.map((v) => v ?? 0);
 }
 
 function looksLikeStateBlock(body: Buffer, offset: number, count = 4): boolean {
@@ -71,8 +73,6 @@ interface StructDecisionResult {
   fields: HeartFields;
   decision: string;
 }
-
-const loggedDecisions = new Set<string>();
 
 function parseWhole118Family(body: Buffer): StructDecisionResult {
   // Original structs place states at 52; newer 1.1.8/1.1.9 captures can shift
@@ -158,7 +158,7 @@ function parseTwoChannelWithPower(body: Buffer): StructDecisionResult {
       outputStates,
       inputVoltages,
       inputStates,
-      limiters: [0, 0, 0, 0],
+      limiters: [0, 0],
       fanVoltage: 0
     }
   };
@@ -186,7 +186,7 @@ function parseTwoChannelNoCurrent(body: Buffer): StructDecisionResult {
       outputStates,
       inputVoltages,
       inputStates,
-      limiters: [0, 0, 0, 0],
+      limiters: [0, 0],
       fanVoltage: 0
     }
   };
@@ -254,17 +254,13 @@ export function parseHeartbeat(buf: Buffer): HeartbeatData | null {
   const body = buf.slice(BODY_START, bodyEnd);
 
   const parsed = parseBodyByStructDecision(body);
-  if (!loggedDecisions.has(parsed.decision)) {
-    loggedDecisions.add(parsed.decision);
-    console.info(`[HeartbeatParser] struct decision=${parsed.decision} bodyLen=${body.length}`);
-  }
 
-  const outputVoltages = toFour(parsed.fields.outputVoltages);
-  const outputCurrents = toFour(parsed.fields.outputCurrents);
-  const outputStates = toFour(parsed.fields.outputStates);
-  const inputVoltages = toFour(parsed.fields.inputVoltages);
-  const limiters = toFour(parsed.fields.limiters);
-  const inputStates = toFour(parsed.fields.inputStates);
+  const outputVoltages = normalizeArray(parsed.fields.outputVoltages);
+  const outputCurrents = normalizeArray(parsed.fields.outputCurrents);
+  const outputStates = normalizeArray(parsed.fields.outputStates);
+  const inputVoltages = normalizeArray(parsed.fields.inputVoltages);
+  const limiters = normalizeArray(parsed.fields.limiters);
+  const inputStates = normalizeArray(parsed.fields.inputStates);
   const temperatures = [
     parsed.fields.temperatures[0] ?? 0,
     parsed.fields.temperatures[1] ?? 0,

@@ -40,9 +40,10 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
   const dict = useI18n();
   const { selectedProject, projects, addAmpToProject, deleteAmpFromProject, updateAmpLastKnownIp } = useProjectStore();
   const { amps, getDisplayName } = useAmpStore();
-  const [macInput, setMacInput] = useState("");
+  const [ipInput, setIpInput] = useState("");
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isProbing, setIsProbing] = useState(false);
   const [mode, setMode] = useState<"manual" | "scan">("scan");
   const [scannedDevices, setScannedDevices] = useState<ScannedDevice[]>([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -60,22 +61,40 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
   }
 
   const handleAddAmp = async () => {
-    const normalizedMac = macInput.trim().toUpperCase();
-    if (!normalizedMac) {
-      toast.error(dict.dialogs.assignAmps.enterMac);
+    const ip = ipInput.trim();
+    if (!ip) {
+      toast.error(dict.dialogs.assignAmps.enterIp);
+      return;
+    }
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
+      toast.error(dict.dialogs.assignAmps.invalidIp);
       return;
     }
 
-    setIsSaving(true);
+    setIsProbing(true);
     try {
-      await addAmpToProject(selectedProject.id, normalizedMac);
-      setMacInput("");
+      const response = await fetch("/api/amp-advanced/probe-ip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip })
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        toast.error(data.error ?? dict.dialogs.assignAmps.noAmpAtIp);
+        return;
+      }
+
+      await addAmpToProject(selectedProject.id, data.mac);
+      await updateAmpLastKnownIp(data.mac, ip);
+      setIpInput("");
+      toast.success(`Added ${data.name} (${data.mac})`);
     } catch (error) {
       toast.error(
         `${dict.dialogs.assignAmps.errorAddingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
       );
     } finally {
-      setIsSaving(false);
+      setIsProbing(false);
     }
   };
 
@@ -160,7 +179,7 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
       const response = await fetch("/api/amp-advanced/probe-ip", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ip, mac })
+        body: JSON.stringify({ ip })
       });
       const data = await response.json();
 
@@ -169,8 +188,15 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
         return;
       }
 
-      await updateAmpLastKnownIp(mac, ip);
-      setProbeInputByMac((prev) => ({ ...prev, [mac]: "" }));
+      // Check if the responding amp matches the expected MAC
+      if (data.mac.toUpperCase() === mac.toUpperCase()) {
+        await updateAmpLastKnownIp(mac, ip);
+        setProbeInputByMac((prev) => ({ ...prev, [mac]: "" }));
+        toast.success(`Found ${data.name} at ${ip}`);
+      } else {
+        // Different amp found at this IP
+        toast.error(`Found ${data.name} (${data.mac}) at ${ip} - expected ${mac}`);
+      }
     } catch (error) {
       toast.error(
         `${dict.dialogs.assignAmps.scanError}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
@@ -358,20 +384,25 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
             {mode === "manual" && (
               <div className="space-y-2">
                 <div>
-                  <Label htmlFor="mac-input" className="text-xs">
-                    {dict.dialogs.assignAmps.macAddress}
+                  <Label htmlFor="ip-input" className="text-xs">
+                    {dict.dialogs.assignAmps.ipAddress}
                   </Label>
                   <Input
-                    id="mac-input"
-                    placeholder={dict.dialogs.assignAmps.macPlaceholder}
-                    value={macInput}
-                    onChange={(e) => setMacInput(e.target.value)}
+                    id="ip-input"
+                    placeholder={dict.dialogs.assignAmps.ipPlaceholder}
+                    value={ipInput}
+                    onChange={(e) => setIpInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        void handleAddAmp();
+                      }
+                    }}
                     className="font-mono text-sm"
                   />
                 </div>
-                <Button onClick={handleAddAmp} disabled={isSaving} className="w-full" size="sm">
+                <Button onClick={handleAddAmp} disabled={isSaving || isProbing} className="w-full" size="sm">
                   <Plus className="h-4 w-4 mr-2" />
-                  {dict.dialogs.assignAmps.addAmp}
+                  {isProbing ? dict.dialogs.assignAmps.probing : dict.dialogs.assignAmps.addAmp}
                 </Button>
               </div>
             )}

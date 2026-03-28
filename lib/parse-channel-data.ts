@@ -1,3 +1,5 @@
+import type { SourceCapabilities } from "@/lib/source-capabilities";
+
 /**
  * Parser for FC=27 (Synchronous_data) packets from amplifier channel data
  *
@@ -31,6 +33,13 @@ export interface ChannelInputSource {
   trim: number;
   /** True when this source is currently selected for the channel. */
   selected: boolean;
+  /** Backup/auto-source settings reported by the original controller. */
+  backup?: {
+    enabled: boolean;
+    thresholdDb: number;
+    priorityOrder: Array<"analog" | "dante" | "aes3">;
+    activeSourceKey: "analog" | "dante" | "aes3";
+  };
 }
 
 /**
@@ -244,27 +253,39 @@ const CHANNEL_FIELDS = [
  */
 const TRAILER_MUTE_IN_REL_OFFSET = 132;
 const TRAILER_ANALOG_MATRIX_REL_OFFSET = 136;
+const TRAILER_FLOW_PRIORITY_REL_OFFSET = 140;
+const TRAILER_DD_PRIORITY_REL_OFFSET = 176;
 // Reverse-engineered from original C# sync structs:
 // trailer[32]=standby, trailer[33]=encoder_to_lock.Rotary_lock (0/1).
 const TRAILER_ROTARY_LOCK_REL_OFFSET = 33;
 // DP_1 variant maps lock via `DisplayLock`, located just before a 485-byte tail padding block.
 const DP1_DISPLAY_LOCK_FROM_END = 486;
 
+type PrimarySourceKey = "analog" | "dante" | "aes3";
+
 function clampSourceCode(code: number): number {
+  if (code >= 3) return 3;
   if (code <= 0) return 0;
   if (code === 1) return 1;
-  if (code === 2) return 2;
-  return 3;
+  return 2;
 }
 
-function sourceNameFromCode(code: number): "analog" | "dante" | "aes3" | "backup" {
+function resolvePrimarySourceKey(code: number, capabilities?: SourceCapabilities): PrimarySourceKey {
+  if (code <= 0) return "analog";
+  if (code === 1 && capabilities && !capabilities.hasDante && capabilities.hasAes3) {
+    return "aes3";
+  }
+  if (code === 2) return "aes3";
+  return "dante";
+}
+
+function sourceNameFromCode(code: number, capabilities?: SourceCapabilities): "analog" | "dante" | "aes3" | "backup" {
+  if (code >= 3) return "backup";
   switch (code) {
     case 1:
-      return "dante";
+      return resolvePrimarySourceKey(code, capabilities);
     case 2:
       return "aes3";
-    case 3:
-      return "backup";
     default:
       return "analog";
   }
@@ -288,7 +309,7 @@ function buildSourceTypeLabel(key: "analog" | "dante" | "aes3" | "backup", index
  * @param hexData - Raw hex string from FC=27 response
  * @returns Array of ChannelData objects (one per parsed channel)
  */
-export function parseFC27Channels(hexData: string): ChannelData[] {
+export function parseFC27Channels(hexData: string, capabilities?: SourceCapabilities): ChannelData[] {
   if (!hexData || hexData.length < 200) {
     console.warn(`FC=27 data too short: ${hexData.length} chars (need ≥200)`);
     return [];
@@ -317,7 +338,9 @@ export function parseFC27Channels(hexData: string): ChannelData[] {
         ch * BYTES_PER_CHANNEL,
         muteIn,
         analogMatrix[ch] ?? ch + 1,
-        channelCount
+        channelCount,
+        trailerBase,
+        capabilities
       );
       if (channelData) channels.push(channelData);
     }
@@ -387,7 +410,9 @@ function parseChannelFromBuffer(
   base: number,
   muteIn: boolean,
   analogInputIndex: number,
-  matrixSourceCount: number
+  matrixSourceCount: number,
+  trailerBase: number,
+  capabilities?: SourceCapabilities
 ): ChannelData | null {
   try {
     // Accumulate raw values by reading each field definition
@@ -469,13 +494,61 @@ function parseChannelFromBuffer(
     // Wire encoding: 0 = FIR enabled, 1 = FIR bypassed.
     const firBypassed = buffer.readUInt8(base + 404) !== 0;
 
-    const sourceTypeCode = clampSourceCode(buffer.readUInt8(base + 85));
+    const rawSourceTypeCode = buffer.readUInt8(base + 85);
+    const backupSelected = rawSourceTypeCode >= 3;
+    const sourceTypeCode = clampSourceCode(rawSourceTypeCode);
+    const activeSourceKey = resolvePrimarySourceKey(rawSourceTypeCode % 3, capabilities);
     const analogTrim = round2(buffer.readFloatLE(base + 36));
     const analogDelay = round2(buffer.readFloatLE(base + 40));
     const danteTrim = round2(buffer.readFloatLE(base + 44));
     const danteDelay = round2(buffer.readFloatLE(base + 48));
     const aesTrim = round2(buffer.readFloatLE(base + 52));
     const aesDelay = round2(buffer.readFloatLE(base + 56));
+
+    const availablePriorityKeys: PrimarySourceKey[] = ["analog"];
+    if (capabilities?.hasDante) availablePriorityKeys.push("dante");
+    if (capabilities?.hasAes3) availablePriorityKeys.push("aes3");
+    if (availablePriorityKeys.length === 1 && matrixSourceCount > 1) {
+      availablePriorityKeys.push("dante");
+    }
+
+    let backupSourceConfig: ChannelInputSource["backup"];
+    if (capabilities?.hasBackup) {
+      if (capabilities.hasDante && capabilities.hasAes3) {
+        const priorityBase = trailerBase + TRAILER_FLOW_PRIORITY_REL_OFFSET + channelNum * 4;
+        if (priorityBase + 3 < buffer.length) {
+          const first = resolvePrimarySourceKey(buffer.readUInt8(priorityBase), capabilities);
+          const second = resolvePrimarySourceKey(buffer.readUInt8(priorityBase + 1), capabilities);
+          const enabled = buffer.readUInt8(priorityBase + 2) === 1;
+          const thresholdDb = buffer.readInt8(priorityBase + 3);
+          const priorityOrder = Array.from(
+            new Set([first, second, ...availablePriorityKeys.filter((key) => key !== first && key !== second)])
+          );
+
+          backupSourceConfig = {
+            enabled,
+            thresholdDb,
+            priorityOrder,
+            activeSourceKey
+          };
+        }
+      } else {
+        const priorityBase = trailerBase + TRAILER_DD_PRIORITY_REL_OFFSET + channelNum * 3;
+        if (priorityBase + 2 < buffer.length) {
+          const enabled = buffer.readUInt8(priorityBase) === 1;
+          const first = resolvePrimarySourceKey(buffer.readUInt8(priorityBase + 1), capabilities);
+          const thresholdDb = buffer.readInt8(priorityBase + 2);
+          const priorityOrder = Array.from(new Set([first, ...availablePriorityKeys.filter((key) => key !== first)]));
+
+          backupSourceConfig = {
+            enabled,
+            thresholdDb,
+            priorityOrder,
+            activeSourceKey
+          };
+        }
+      }
+    }
 
     const danteIndex = channelNum + 1;
     const aesIndex = channelNum + 1;
@@ -486,32 +559,33 @@ function parseChannelFromBuffer(
         type: buildSourceTypeLabel("analog", analogInputIndex),
         delay: analogDelay,
         trim: analogTrim,
-        selected: sourceTypeCode === 0
+        selected: !backupSelected && activeSourceKey === "analog"
       },
       {
         key: "dante",
         type: buildSourceTypeLabel("dante", danteIndex),
         delay: danteDelay,
         trim: danteTrim,
-        selected: sourceTypeCode === 1
+        selected: !backupSelected && activeSourceKey === "dante"
       },
       {
         key: "aes3",
         type: buildSourceTypeLabel("aes3", aesIndex),
         delay: aesDelay,
         trim: aesTrim,
-        selected: sourceTypeCode === 2
+        selected: !backupSelected && activeSourceKey === "aes3"
       },
       {
         key: "backup",
         type: "Backup",
         delay: 0,
         trim: 0,
-        selected: sourceTypeCode === 3
+        selected: backupSelected,
+        backup: backupSourceConfig
       }
     ];
 
-    const selectedKey = sourceNameFromCode(sourceTypeCode);
+    const selectedKey = sourceNameFromCode(rawSourceTypeCode, capabilities);
     const selectedSource = sourceInputs.find((s) => s.key === selectedKey) ?? sourceInputs[0];
     const sourceType = selectedSource.type;
     const sourceDelay = selectedSource.delay;

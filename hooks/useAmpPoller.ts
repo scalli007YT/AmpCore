@@ -95,6 +95,7 @@ function fetchRuntime(mac: string): void {
 export function useAmpPoller(): UseAmpPollerReturn {
   const pollingStore = usePollingStore();
   const selectedProjectMode = useProjectStore((state) => state.selectedProject?.projectMode ?? "real");
+  const selectedProjectId = useProjectStore((state) => state.selectedProject?.id ?? null);
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -114,7 +115,22 @@ export function useAmpPoller(): UseAmpPollerReturn {
     const connect = () => {
       if (!active) return;
 
-      const es = new EventSource(`/api/amp-events?projectMode=${encodeURIComponent(selectedProjectMode)}`);
+      // Collect lastKnownIps from project's assigned amps for cross-subnet discovery
+      const projectState = useProjectStore.getState();
+      const project = projectState.projects.find((p) => p.id === projectState.selectedProject?.id);
+      const seedIps =
+        project?.assigned_amps
+          ?.map((a) => a.lastKnownIp)
+          .filter((ip): ip is string => !!ip && /^\d+\.\d+\.\d+\.\d+$/.test(ip))
+          .join(",") ?? "";
+
+      const url = new URL("/api/amp-events", window.location.origin);
+      url.searchParams.set("projectMode", selectedProjectMode);
+      if (seedIps) {
+        url.searchParams.set("seedIps", seedIps);
+      }
+
+      const es = new EventSource(url.toString());
       esRef.current = es;
 
       es.onopen = () => {
@@ -163,6 +179,11 @@ export function useAmpPoller(): UseAmpPollerReturn {
             }
             if (ip.trim().length > 0) {
               void useProjectStore.getState().updateAmpLastKnownIp(amp.mac, ip);
+            }
+            // Update channel count if discovered (resize constants.channels in project and amp store)
+            if (basicInfo.Output_chx > 0) {
+              useProjectStore.getState().updateAmpChannelCount(amp.mac, basicInfo.Output_chx);
+              useAmpStore.getState().updateAmpChannelCount(amp.mac, basicInfo.Output_chx);
             }
 
             // Runtime is independent from reachability transition; fetch once if missing.
@@ -256,7 +277,7 @@ export function useAmpPoller(): UseAmpPollerReturn {
       }
       usePollingStore.getState().setIsPolling(false);
     };
-  }, [selectedProjectMode]);
+  }, [selectedProjectMode, selectedProjectId]);
 
   return {
     isPolling: pollingStore.isPolling,

@@ -375,26 +375,56 @@ class AmpController extends EventEmitter {
     return null;
   }
 
+  /** Returns the MAC and name for a given IP, or null if not yet discovered. */
+  getMacForIp(ip: string): { mac: string; name: string } | null {
+    for (const [mac, entry] of this.knownMacs) {
+      if (entry.ip === ip) return { mac, name: entry.name };
+    }
+    return null;
+  }
+
+  /**
+   * Seed an IP into rememberedIps for cross-subnet discovery.
+   * Also sends an immediate probe if socket is ready, or schedules one for shortly after.
+   */
+  seedIp(ip: string): void {
+    this.rememberedIps.set(`__seed__${ip}`, ip);
+    // Send an immediate probe if socket is ready, otherwise retry after 500ms
+    const sendProbe = () => {
+      if (this.network.isStarted) {
+        void this.network
+          .sendRaw_shouldBeReplacedWithSendPacket(this.discoveryPacket, 0, this.discoveryPacket.length, ip, false)
+          .catch(() => {});
+      }
+    };
+    sendProbe();
+    setTimeout(sendProbe, 500);
+    setTimeout(sendProbe, 1500);
+  }
+
   /**
    * Seed a specific IP for cross-subnet discovery and immediately probe it.
    * Used when the user manually enters an IP for an unreachable amp.
+   * Sends multiple probes to handle UDP packet loss.
    */
   probeIp(ip: string): void {
-    console.log(`[AmpController.probeIp] Probing IP: ${ip}`);
     // Store with a placeholder key so it survives in rememberedIps
     this.rememberedIps.set(`__probe__${ip}`, ip);
 
-    // Immediately send a unicast FC=0 discovery probe
+    // Send multiple unicast FC=0 discovery probes to handle UDP packet loss
     if (this.network.isStarted) {
-      console.log(`[AmpController.probeIp] Sending discovery probe to ${ip}`);
-      void this.network
-        .sendRaw_shouldBeReplacedWithSendPacket(this.discoveryPacket, 0, this.discoveryPacket.length, ip, false)
-        .then(() => {
-          console.log(`[AmpController.probeIp] Discovery probe sent successfully to ${ip}`);
-        })
-        .catch((err) => {
-          console.warn(`[AmpController.probeIp] Failed to send probe to ${ip}: ${err}`);
-        });
+      const sendProbe = () => {
+        void this.network
+          .sendRaw_shouldBeReplacedWithSendPacket(this.discoveryPacket, 0, this.discoveryPacket.length, ip, false)
+          .catch(() => {});
+      };
+
+      // Send 5 probes with 200ms interval to maximize chance of delivery
+      sendProbe();
+      setTimeout(sendProbe, 200);
+      setTimeout(sendProbe, 400);
+      setTimeout(sendProbe, 600);
+      setTimeout(sendProbe, 800);
     } else {
       console.warn(`[AmpController.probeIp] Socket not ready, cannot probe ${ip}`);
     }
@@ -503,7 +533,6 @@ class AmpController extends EventEmitter {
 
         if (found || isLast) {
           chosenAddress = bindAddress;
-          console.log(`[AmpController] Socket bound on ${bindAddress}:45454 — starting loops`);
           break;
         }
       }
@@ -557,17 +586,14 @@ class AmpController extends EventEmitter {
   //   4. If all fragments have arrived: validate checksum, dispatch FC handler
   // -------------------------------------------------------------------------
   private _onPacket(raw: Buffer, ip: string): void {
-    console.log(`[AmpController._onPacket] Received from ${ip}, length=${raw.length}`);
     const nd = this.network.parseNetworkData(raw);
     if (!nd) {
       console.warn(`[AmpController._onPacket] Failed to parse NetworkData from ${ip}`);
       return;
     }
-    console.log(`[AmpController._onPacket] Parsed: dataState=${nd.dataState}, machineMode=${nd.machineMode}`);
 
     // data_state=1 means this is an ACK we sent ourselves, reflected back — ignore
     if (nd.dataState === 1) {
-      console.log(`[AmpController._onPacket] Ignoring ACK from ${ip}`);
       return;
     }
 
@@ -578,17 +604,14 @@ class AmpController extends EventEmitter {
 
     const assembled = this.network.pushFragment(ip, raw);
     if (!assembled) {
-      console.log(`[AmpController._onPacket] Fragmented, waiting for more from ${ip}`);
       return;
     }
-    console.log(`[AmpController._onPacket] Full packet assembled`);
 
     const decoded = this.network.decodeAssembled(assembled);
     if (!decoded) {
       console.warn(`[AmpController._onPacket] Failed to decode from ${ip}`);
       return;
     }
-    console.log(`[AmpController._onPacket] Decoded FC=${decoded.functionCode}`);
 
     this._dispatchFC(decoded.functionCode, decoded.body, ip, nd.machineMode, decoded.rawAssembled);
   }
@@ -614,7 +637,6 @@ class AmpController extends EventEmitter {
     switch (fc) {
       // FC=0 BASIC_INFO — device replied to our discovery broadcast
       case FuncCode.BASIC_INFO: {
-        console.log(`[_dispatchFC] BASIC_INFO from ${ip}`);
         // parseDiscoveryPacket needs the full raw packet with NetworkData header
         // re-prepend a synthetic NetworkData so offsets are correct
         const withNd = prependNetworkHeaderToAssembled(rawAssembled, machineMode);
@@ -623,10 +645,8 @@ class AmpController extends EventEmitter {
           console.warn(`[_dispatchFC] Failed to parse discovery from ${ip}`);
           return;
         }
-        console.log(`[_dispatchFC] Device: mac=${event.mac}, ip=${ip}, name=${event.name}, version=${event.version}`);
 
         this.currentWindowMacs.add(event.mac);
-        const isNew = !this.knownMacs.has(event.mac);
         this.knownMacs.set(event.mac, {
           ip,
           name: event.name,
@@ -637,9 +657,6 @@ class AmpController extends EventEmitter {
         // Remember MAC→IP for cross-subnet unicast probing (survives offline)
         this.rememberedIps.set(event.mac, ip);
 
-        if (isNew) {
-          console.log(`[AmpController] Discovered: ${event.name} (${event.mac}) @ ${ip}`);
-        }
         this.emit("discovery", event satisfies DiscoveryEvent);
         break;
       }
@@ -848,7 +865,6 @@ class AmpController extends EventEmitter {
 
       this.knownMacs.forEach((_, mac) => {
         if (!this.currentWindowMacs.has(mac)) {
-          console.log(`[AmpController] Offline (missed 2 cycles): ${mac}`);
           this.knownMacs.delete(mac);
           this.lastHeartbeatAt.delete(mac);
           this.bridgePairsByMac.delete(mac);
@@ -893,7 +909,6 @@ class AmpController extends EventEmitter {
     this.knownMacs.forEach((_, mac) => {
       const last = this.lastHeartbeatAt.get(mac);
       if (last !== undefined && now - last > HEARTBEAT_TIMEOUT_MS) {
-        console.log(`[AmpController] judgeOnline: ${mac} silent for ${now - last}ms → offline`);
         this.knownMacs.delete(mac);
         this.lastHeartbeatAt.delete(mac);
         this.currentWindowMacs.delete(mac);

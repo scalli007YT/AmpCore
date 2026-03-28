@@ -137,6 +137,7 @@
       "invalidMac": "Invalid MAC address format",
       "noAmpAtIp": "No amp responded at this IP address",
       "errorSavingAmp": "Error saving amp",
+      "probing": "Probing...",
       "enterMac": "Please enter a MAC address",
       "errorAddingAmp": "Error adding amp",
       "errorDeletingAmp": "Error deleting amp",
@@ -148,13 +149,16 @@
     "sourceConfig": {
       "trigger": "Source",
       "title": "Source",
-      "description": "Per channel source selection with delay and trim values.",
-      "alertTitle": "Not Included In Device Presets",
-      "alertDescription": "Source selection, delay, and trim shown here are not covered by the device preset store/recall flow in this app.",
+      "description": "Per channel source selection with matching controls and backup priority routing.",
       "off": "Off",
       "delay": "Delay",
       "trim": "Trim",
-      "notAvailable": "N/A"
+      "notAvailable": "N/A",
+      "backupActive": "Active",
+      "backupFirst": "Priority 1",
+      "backupSecond": "Priority 2",
+      "backupThird": "Priority 3",
+      "backupThreshold": "Threshold"
     },
     "limiterDetails": {
       "rms": "RMS",

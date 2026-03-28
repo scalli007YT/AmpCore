@@ -313,6 +313,25 @@ export async function POST(request: Request): Promise<Response> {
       }
 
       // -----------------------------------------------------------------------
+      // Backup/auto-source configuration — FC=80 Priority_inputs_code
+      // Dual-source devices use PriorityDD: [enabled][preferredSource][threshold].
+      // Three-source devices use StruPriority: [first][second][enabled][threshold].
+      // -----------------------------------------------------------------------
+      case "backupConfig": {
+        const payload =
+          body.variant === "triple"
+            ? Buffer.from([
+                body.priority1 & 0xff,
+                (body.priority2 ?? body.priority1) & 0xff,
+                value ? 0x01 : 0x00,
+                body.threshold & 0xff
+              ])
+            : Buffer.from([value ? 0x01 : 0x00, body.priority1 & 0xff, body.threshold & 0xff]);
+        await device.sendControl(FuncCode.PRIORITY_INPUTS, channel, payload, 0 /* input */);
+        break;
+      }
+
+      // -----------------------------------------------------------------------
       // Analog input type selection — FC=79 Analog_Matrix_input
       // Body: byte analog type/index (model-specific mapping)
       // Packet shape matches original capture: FC=0x4F, 1-byte payload.
@@ -531,16 +550,6 @@ export async function POST(request: Request): Promise<Response> {
           link: 0,
           inOutFlag: 0,
           body: payload
-        });
-
-        console.info("[amp-actions] renameAmp tx", {
-          mac,
-          ip,
-          fc: FuncCode.CUSTOMER_NAME_MODIFY,
-          statusCode: 1,
-          chx: 0,
-          payloadHex: payload.toString("hex"),
-          packetHex: packet.toString("hex")
         });
 
         if (ampController.network.isStarted) {

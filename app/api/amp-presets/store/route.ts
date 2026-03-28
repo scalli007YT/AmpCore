@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CvrAmpDevice } from "@/lib/amp-device";
+import { isSimulatedMac, storeSimulatedPreset } from "@/lib/simulated-amps";
 import { presetStoreRequestSchema } from "@/lib/validation/presets";
 
 /**
@@ -22,6 +23,14 @@ export async function POST(req: NextRequest) {
     }
 
     const { ip, mac, slot, name } = parsed.data;
+
+    if (isSimulatedMac(mac)) {
+      const success = storeSimulatedPreset(mac, slot, name);
+      return NextResponse.json(
+        success ? { success: true, mac, slot, name } : { success: false, error: "Failed to store simulated preset" },
+        { status: success ? 200 : 500 }
+      );
+    }
 
     const device = new CvrAmpDevice(ip);
     try {

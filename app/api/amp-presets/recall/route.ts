@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CvrAmpDevice } from "@/lib/amp-device";
+import { isSimulatedMac, recallSimulatedPreset } from "@/lib/simulated-amps";
 
 /**
  * POST /api/amp-presets/recall
@@ -22,6 +23,16 @@ export async function POST(req: NextRequest) {
 
     if (!Number.isInteger(slot) || slot < 1 || slot > 40) {
       return NextResponse.json({ success: false, error: "slot must be an integer between 1 and 40" }, { status: 400 });
+    }
+
+    if (isSimulatedMac(mac)) {
+      const result = recallSimulatedPreset(mac, slot);
+      return NextResponse.json(
+        result.success
+          ? { success: true, mac, slot, name: result.name }
+          : { success: false, error: "Simulated preset not found" },
+        { status: result.success ? 200 : 404 }
+      );
     }
 
     const device = new CvrAmpDevice(ip);

@@ -56,8 +56,8 @@ export function AmpTabs() {
 
   const selectedMac = useTabStore((state) => state.selectedAmpMac);
   const setSelectedMac = useTabStore((state) => state.setSelectedAmpMac);
-  const selectedSectionByAmpMac = useTabStore((state) => state.selectedSectionByAmpMac);
-  const setSelectedSectionForAmp = useTabStore((state) => state.setSelectedSectionForAmp);
+  const activeSection = useTabStore((state) => state.selectedSection);
+  const setSelectedSection = useTabStore((state) => state.setSelectedSection);
   const [activePreset, setActivePreset] = useState<AmpPreset | null>(null);
   const [recallDialogOpen, setRecallDialogOpen] = useState(false);
   const [storeDialogOpen, setStoreDialogOpen] = useState(false);
@@ -72,8 +72,11 @@ export function AmpTabs() {
   const selectedProject = useProjectStore((state) => state.selectedProject);
 
   const selectedAmp = amps.find((a) => a.mac === selectedMac) ?? amps[0];
-  const activeSection: AmpSection =
-    selectedAmp !== undefined ? (selectedSectionByAmpMac[selectedAmp.mac] ?? "main") : "main";
+  // Filter channels based on authoritative output_chx from discovery (FC=0)
+  // FC=27 can return more channels than the amp actually has
+  const effectiveChannelCount = selectedAmp?.output_chx ?? selectedAmp?.channelParams?.channels.length ?? 0;
+  const effectiveChannels = selectedAmp?.channelParams?.channels.slice(0, effectiveChannelCount) ?? [];
+  const effectiveChannelOhms = selectedAmp?.constants.channels.slice(0, effectiveChannelCount) ?? [];
   const presetNameBySlot = new Map<number, string>((selectedAmp?.presets ?? []).map((p) => [p.slot, p.name]));
   const presetSlots: AmpPreset[] =
     selectedAmp?.presets !== undefined
@@ -91,8 +94,8 @@ export function AmpTabs() {
     if (presetFilter === "empty") return preset.name.trim().length === 0;
     return true;
   });
-  const preferenceChannelTrees = selectedAmp?.channelParams?.channels.map((channel) => {
-    const flags = selectedAmp.channelFlags?.find((flag) => flag.channel === channel.channel) ?? null;
+  const preferenceChannelTrees = effectiveChannels.map((channel) => {
+    const flags = selectedAmp?.channelFlags?.find((flag) => flag.channel === channel.channel) ?? null;
 
     return {
       meta: {
@@ -144,12 +147,6 @@ export function AmpTabs() {
       setSelectedMac(amps[0].mac);
     }
   }, [amps, selectedMac, setSelectedMac]);
-
-  useEffect(() => {
-    if (!selectedAmp) return;
-    if (selectedSectionByAmpMac[selectedAmp.mac]) return;
-    setSelectedSectionForAmp(selectedAmp.mac, "main");
-  }, [selectedAmp, selectedSectionByAmpMac, setSelectedSectionForAmp]);
 
   useEffect(() => {
     if (!selectedAmp?.reachable || selectedAmp.presets !== undefined || fetching) return;
@@ -324,10 +321,7 @@ export function AmpTabs() {
         <div className="min-w-0 overflow-hidden rounded-lg border border-border/50 bg-card/20">
           <Tabs
             value={activeSection}
-            onValueChange={(v) => {
-              if (!selectedAmp) return;
-              setSelectedSectionForAmp(selectedAmp.mac, v as AmpSection);
-            }}
+            onValueChange={(v) => setSelectedSection(v as AmpSection)}
             orientation="horizontal"
             className="flex flex-col"
           >
@@ -442,6 +436,7 @@ export function AmpTabs() {
                     ratedRmsV={selectedAmp.ratedRmsV}
                     channelParams={selectedAmp.channelParams}
                     bridgePairs={selectedAmp.bridgePairs}
+                    outputChx={selectedAmp.output_chx}
                   />
                 </div>
               )}
@@ -459,14 +454,14 @@ export function AmpTabs() {
                           {dict.monitor.ampTabs.matrix}
                         </h3>
                         <SourceConfigDialog
-                          channels={selectedAmp.channelParams.channels}
+                          channels={effectiveChannels}
                           mac={selectedAmp.mac}
                           capabilities={selectedAmp.sourceCapabilities}
                         />
                       </div>
                       <div className="flex flex-1 items-center justify-center overflow-auto">
                         <MatrixGrid
-                          channels={selectedAmp.channelParams.channels}
+                          channels={effectiveChannels}
                           mac={selectedAmp.mac}
                           analogInputCount={selectedAmp.sourceCapabilities?.analogInputCount}
                         />
@@ -483,11 +478,14 @@ export function AmpTabs() {
                         <LimiterBlock
                           mac={selectedAmp.mac}
                           ratedRmsV={selectedAmp.ratedRmsV}
-                          channelOhms={selectedAmp.constants.channels.map((channel) => channel.ohms)}
+                          channelOhms={effectiveChannelOhms.map((channel) => channel.ohms)}
                           bridgePairs={selectedAmp.bridgePairs}
                           heartbeat={selectedAmp.heartbeat}
-                          channels={selectedAmp.channelParams.channels}
-                          limiters={selectedAmp.heartbeat?.limiters ?? selectedAmp.channelParams.channels.map(() => 0)}
+                          channels={effectiveChannels}
+                          limiters={
+                            selectedAmp.heartbeat?.limiters.slice(0, effectiveChannelCount) ??
+                            effectiveChannels.map(() => 0)
+                          }
                           showTitle={false}
                         />
                       </div>
@@ -501,7 +499,7 @@ export function AmpTabs() {
               <div className="overflow-hidden rounded-md border border-border/50 bg-background/30 p-2.5">
                 <LinkingPanel
                   mac={selectedAmp.mac}
-                  channelCount={selectedAmp.channelParams?.channels.length ?? selectedAmp.constants.channels.length}
+                  channelCount={effectiveChannelCount || selectedAmp.constants.channels.length}
                 />
               </div>
             </TabsContent>
@@ -751,11 +749,11 @@ export function AmpTabs() {
                       <ChevronRight className="shrink-0 h-3.5 w-3.5 text-muted-foreground transition-transform duration-200" />
                       <span className="text-sm font-semibold">{dict.monitor.ampTabs.channelData}</span>
                     </CollapsibleTrigger>
-                    <CopyJsonButton data={preferenceChannelTrees ?? selectedAmp.channelParams.channels} />
+                    <CopyJsonButton data={preferenceChannelTrees ?? effectiveChannels} />
                   </div>
                   <CollapsibleContent>
                     <div className="space-y-2 mt-3">
-                      {selectedAmp.channelParams.channels.map((channel, idx) => (
+                      {effectiveChannels.map((channel, idx) => (
                         <JsonTree
                           key={channel.channel}
                           label={dict.monitor.ampTabs.channelLabel

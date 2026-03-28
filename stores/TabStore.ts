@@ -7,10 +7,10 @@ export type AmpSection = "main" | "matrix" | "linking" | "preferences";
 interface TabStore {
   currentView: AppView;
   selectedAmpMac: string | null;
-  selectedSectionByAmpMac: Record<string, AmpSection>;
+  selectedSection: AmpSection;
   setCurrentView: (view: AppView) => void;
   setSelectedAmpMac: (mac: string | null) => void;
-  setSelectedSectionForAmp: (mac: string, section: AmpSection) => void;
+  setSelectedSection: (section: AmpSection) => void;
   clearSelection: () => void;
 }
 
@@ -19,24 +19,18 @@ export const useTabStore = create<TabStore>()(
     (set) => ({
       currentView: "unknown",
       selectedAmpMac: null,
-      selectedSectionByAmpMac: {},
+      selectedSection: "main",
 
       setCurrentView: (view) => set({ currentView: view }),
 
       setSelectedAmpMac: (mac) => set({ selectedAmpMac: mac }),
 
-      setSelectedSectionForAmp: (mac, section) =>
-        set((state) => ({
-          selectedSectionByAmpMac: {
-            ...state.selectedSectionByAmpMac,
-            [mac]: section
-          }
-        })),
+      setSelectedSection: (section) => set({ selectedSection: section }),
 
       clearSelection: () =>
         set({
           selectedAmpMac: null,
-          selectedSectionByAmpMac: {}
+          selectedSection: "main"
         })
     }),
     {
@@ -45,7 +39,7 @@ export const useTabStore = create<TabStore>()(
       partialize: (state) => ({
         currentView: state.currentView,
         selectedAmpMac: state.selectedAmpMac,
-        selectedSectionByAmpMac: state.selectedSectionByAmpMac
+        selectedSection: state.selectedSection
       })
     }
   )

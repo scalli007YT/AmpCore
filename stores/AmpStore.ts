@@ -126,6 +126,12 @@ export interface ChannelInputSource {
   delay: number;
   trim: number;
   selected: boolean;
+  backup?: {
+    enabled: boolean;
+    thresholdDb: number;
+    priorityOrder: Array<"analog" | "dante" | "aes3">;
+    activeSourceKey: "analog" | "dante" | "aes3";
+  };
 }
 
 export interface EqBand {
@@ -286,6 +292,9 @@ interface AmpStore {
   /** Update a single channel's ohm constant in-memory (called by ProjectStore after persist). */
   updateAmpChannelOhms: (mac: string, channelIndex: number, ohms: number) => void;
 
+  /** Resize the amp's constants.channels array to match discovered channel count. */
+  updateAmpChannelCount: (mac: string, channelCount: number) => void;
+
   // — Selectors —
   getDisplayName: (amp: Amp) => string;
 }
@@ -356,7 +365,14 @@ function deriveChannelFlags(
 ): ChannelFlags[] | undefined {
   if (!heartbeat) return undefined;
 
-  return [0, 1, 2, 3].map((channel) => {
+  // Use actual channel count from heartbeat arrays instead of hardcoded 4
+  const channelCount = Math.max(
+    heartbeat.outputStates.length,
+    heartbeat.outputVoltages.length,
+    channelParams?.channels.length ?? 0
+  );
+
+  return Array.from({ length: channelCount }, (_, channel) => {
     const rawState = heartbeat.outputStates[channel] ?? -1;
     const powerMode = channelParams?.channels[channel]?.powerMode ?? 0;
     const current = heartbeat.outputCurrents[channel] ?? 0;
@@ -508,6 +524,25 @@ export const useAmpStore = create<AmpStore>()(
             );
             const channels = Array.from({ length: targetChannelCount }, (_, i) => ({
               ohms: i === channelIndex ? ohms : (amp.constants.channels[i]?.ohms ?? DEFAULT_CHANNEL_OHMS)
+            }));
+            return {
+              ...amp,
+              constants: {
+                channels,
+                linking: amp.constants.linking
+              }
+            };
+          })
+        })),
+
+      updateAmpChannelCount: (mac, channelCount) =>
+        set((state) => ({
+          amps: state.amps.map((amp) => {
+            if (amp.mac !== mac) return amp;
+            const safeCount = Math.max(1, Math.floor(channelCount));
+            if (amp.constants.channels.length === safeCount) return amp;
+            const channels = Array.from({ length: safeCount }, (_, i) => ({
+              ohms: amp.constants.channels[i]?.ohms ?? DEFAULT_CHANNEL_OHMS
             }));
             return {
               ...amp,

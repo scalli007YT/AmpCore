@@ -31,6 +31,8 @@ export const SOURCE_DELAY_MIN_MS = 0;
 export const SOURCE_DELAY_MAX_MS = 10;
 export const SOURCE_TRIM_MIN_DB = 0;
 export const SOURCE_TRIM_MAX_DB = 18;
+export const BACKUP_THRESHOLD_MIN_DB = -80;
+export const BACKUP_THRESHOLD_MAX_DB = 0;
 
 const channelSchema = z.number().int("channel/source must be an integer").min(0, "channel/source must be >= 0");
 
@@ -188,6 +190,28 @@ const sourceTrimSchema = baseSchema.extend({
     .number()
     .min(SOURCE_DELAY_MIN_MS, `sourceDelay must be >= ${SOURCE_DELAY_MIN_MS} ms`)
     .max(SOURCE_DELAY_MAX_MS, `sourceDelay must be <= ${SOURCE_DELAY_MAX_MS} ms`)
+});
+
+const backupConfigSchema = baseSchema.extend({
+  action: z.literal("backupConfig"),
+  value: z.boolean(),
+  variant: z.enum(["dual", "triple"]),
+  priority1: z
+    .number()
+    .int("priority1 must be an integer")
+    .min(0, "priority1 must be between 0 and 2")
+    .max(2, "priority1 must be between 0 and 2"),
+  priority2: z
+    .number()
+    .int("priority2 must be an integer")
+    .min(0, "priority2 must be between 0 and 2")
+    .max(2, "priority2 must be between 0 and 2")
+    .optional(),
+  threshold: z
+    .number()
+    .int("threshold must be an integer")
+    .min(BACKUP_THRESHOLD_MIN_DB, `threshold must be >= ${BACKUP_THRESHOLD_MIN_DB} dB`)
+    .max(BACKUP_THRESHOLD_MAX_DB, `threshold must be <= ${BACKUP_THRESHOLD_MAX_DB} dB`)
 });
 
 const analogTypeSchema = baseSchema.extend({
@@ -384,6 +408,7 @@ export const ampActionRequestSchema = z.union([
   sourceTypeSchema,
   sourceDelaySchema,
   sourceTrimSchema,
+  backupConfigSchema,
   analogTypeSchema,
   delayInSchema,
   delayOutSchema,

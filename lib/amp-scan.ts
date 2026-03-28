@@ -34,7 +34,6 @@ function getDirectedBroadcasts(): string[] {
  * unicast queries needed.
  */
 export async function broadcastDiscovery(): Promise<Array<{ ip: string; mac: string; name: string; version: string }>> {
-  console.log("[broadcastDiscovery] Starting broadcast discovery scan");
   const devices: Map<string, { ip: string; mac: string; name: string; version: string }> = new Map();
   const PC_RECV_PORT = 45454; // Port to listen for AMP responses
 
@@ -46,30 +45,23 @@ export async function broadcastDiscovery(): Promise<Array<{ ip: string; mac: str
         try {
           socket.close();
         } catch {}
-        console.log(`[broadcastDiscovery] Timeout reached, found ${devices.size} device(s)`);
         resolve(Array.from(devices.values()));
       }, DISCOVERY_TIMEOUT);
 
       socket.on("message", (msg: Buffer, rinfo) => {
         try {
-          console.log(
-            `[broadcastDiscovery] Received message from ${rinfo.address}:${rinfo.port}, length=${msg.length}`
-          );
           // BASIC_INFO response layout:
           //   [0–9]   NetworkData header
           //   [10–19] StructHeader (head=0x55, FC=0)
           //   [20..]  body + checksum
           // Body supports legacy 24-byte and newer 32-byte name layouts.
           if (msg.length < 90) {
-            console.debug(`[broadcastDiscovery] Message too short from ${rinfo.address}`);
             return;
           }
           if (msg[10] !== 0x55) {
-            console.debug(`[broadcastDiscovery] Invalid header from ${rinfo.address}`);
             return;
           }
           if (msg[11] !== FuncCode.BASIC_INFO) {
-            console.debug(`[broadcastDiscovery] Not BASIC_INFO from ${rinfo.address}`);
             return;
           }
 
@@ -113,9 +105,6 @@ export async function broadcastDiscovery(): Promise<Array<{ ip: string; mac: str
             .toString("ascii")
             .trim();
 
-          console.log(
-            `[broadcastDiscovery] Device discovered: mac=${mac}, ip=${rinfo.address}, name=${name}, version=${version}`
-          );
           devices.set(mac, { ip: rinfo.address, mac, name, version });
         } catch (err) {
           console.error("[DISCOVERY] Error parsing message:", err);
@@ -134,7 +123,6 @@ export async function broadcastDiscovery(): Promise<Array<{ ip: string; mac: str
       // Bind socket to receive port BEFORE sending
       socket.bind({ port: PC_RECV_PORT, address: "0.0.0.0", exclusive: false }, () => {
         try {
-          console.log("[broadcastDiscovery] Socket bound on 0.0.0.0:45454, enabling broadcast");
           // Now that socket is bound, enable broadcast mode
           socket.setBroadcast(true);
 
@@ -177,15 +165,10 @@ export async function broadcastDiscovery(): Promise<Array<{ ip: string; mac: str
           // Send directed broadcast on every active network interface so amps
           // are discovered regardless of which subnet/adapter they're on.
           const broadcastAddrs = getDirectedBroadcasts();
-          console.log(
-            `[broadcastDiscovery] Sending discovery probe to ${broadcastAddrs.length} broadcast address(es): ${broadcastAddrs.join(", ")}`
-          );
           for (const addr of broadcastAddrs) {
             socket.send(packet, 0, packet.length, AMP_PORT, addr, (err) => {
               if (err) {
                 console.error(`[broadcastDiscovery] Send error on ${addr}:`, err);
-              } else {
-                console.log(`[broadcastDiscovery] Discovery probe sent to ${addr}:${AMP_PORT}`);
               }
             });
           }

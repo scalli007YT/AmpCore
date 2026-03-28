@@ -1,5 +1,18 @@
 const { app, BrowserWindow, ipcMain, nativeTheme } = require("electron");
 const path = require("path");
+
+// Handle Squirrel.Windows install/update/uninstall events.
+if (process.platform === "win32") {
+  const cmd = process.argv[1];
+  if (
+    cmd === "--squirrel-install" ||
+    cmd === "--squirrel-updated" ||
+    cmd === "--squirrel-uninstall" ||
+    cmd === "--squirrel-obsolete"
+  ) {
+    app.quit();
+  }
+}
 const http = require("http");
 const { name: packageName, version: packageVersion } = require("../package.json");
 
@@ -43,30 +56,36 @@ function waitForDevServer() {
   });
 }
 
-/** Prod: start Next.js server in-process (packaged-safe, no child fork). */
+/** Prod: start Next.js standalone server in-process. */
 async function startServer() {
   const appRoot = path.join(__dirname, "..");
+  const standaloneDir = path.join(appRoot, ".next", "standalone");
   process.env.APP_USER_DATA = app.getPath("userData");
+  process.env.PORT = String(PORT);
+  process.env.HOSTNAME = "127.0.0.1";
 
-  // Resolve from packaged app dependencies.
-  const next = require("next");
-  const nextApp = next({
-    dev: false,
-    dir: appRoot,
-    port: PORT,
-    hostname: "127.0.0.1"
-  });
-  const handle = nextApp.getRequestHandler();
+  // The standalone server.js calls process.chdir(__dirname) which fails
+  // inside an asar archive. Override chdir to silently ignore asar paths.
+  const originalChdir = process.chdir.bind(process);
+  process.chdir = (dir) => {
+    if (typeof dir === "string" && dir.includes(".asar")) return;
+    return originalChdir(dir);
+  };
 
-  await nextApp.prepare();
+  // The standalone server.js sets up its own http server on PORT/HOSTNAME.
+  require(path.join(standaloneDir, "server.js"));
 
-  await new Promise((resolve, reject) => {
-    server = http
-      .createServer((req, res) => handle(req, res))
-      .listen(PORT, "127.0.0.1", (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
+  // Wait until the server is actually listening.
+  await new Promise((resolve) => {
+    const poll = () => {
+      http
+        .get(`http://127.0.0.1:${PORT}/`, (res) => {
+          if (res.statusCode < 500) resolve();
+          else setTimeout(poll, 200);
+        })
+        .on("error", () => setTimeout(poll, 200));
+    };
+    poll();
   });
 }
 

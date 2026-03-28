@@ -12,9 +12,24 @@ const packagerConfig = {
     unpack: "**/*.node"
   },
   ignore: [
+    // Exclude everything except what we explicitly need
+    /^\/node_modules$/,
+    /^\/app\//,
+    /^\/components\//,
+    /^\/hooks\//,
+    /^\/lib\//,
+    /^\/stores\//,
+    /^\/storage\//,
+    /^\/Releases\//,
     /^\/\.next\/cache/,
     /^\/\.next\/dev/,
-    /^\/node_modules\/\.cache/,
+    /^\/\.next\/server/,
+    /^\/\.next\/types/,
+    /^\/\.next\/app-build-manifest\.json$/,
+    /^\/\.next\/build-manifest\.json$/,
+    /^\/\.next\/package\.json$/,
+    /^\/\.next\/react-loadable-manifest\.json$/,
+    /^\/\.next\/trace$/,
     /^\/src\//,
     /^\/\.git/,
     /^\/\.github/,
@@ -28,7 +43,11 @@ const packagerConfig = {
     /tailwind\.config/,
     /prettier/,
     /^\/BUILD\.md$/,
-    /^\/README\.md$/
+    /^\/README\.md$/,
+    /^\/pnpm-workspace\.yaml$/,
+    /^\/pnpm-lock\.yaml$/,
+    /^\/\.npmrc$/,
+    /^\/components\.json$/
   ]
 };
 
@@ -59,8 +78,15 @@ module.exports = {
 
   makers: [
     {
+      name: "@electron-forge/maker-squirrel",
+      config: {
+        name: "AmpCore",
+        setupIcon: path.join(__dirname, "public", "logo.ico")
+      }
+    },
+    {
       name: "@electron-forge/maker-zip",
-      platforms: ["win32", "darwin"]
+      platforms: ["darwin"]
     },
     {
       name: "@electron-forge/maker-dmg",
@@ -114,6 +140,22 @@ module.exports = {
       console.log("Building Next.js application...");
       execSync("pnpm run build", { stdio: "inherit", cwd: __dirname });
       console.log("✓ Next.js build complete");
+
+      // Copy public/ and .next/static/ into standalone dir for Next.js standalone mode.
+      const standaloneDir = path.join(__dirname, ".next", "standalone");
+      const publicSrc = path.join(__dirname, "public");
+      const publicDest = path.join(standaloneDir, "public");
+      const staticSrc = path.join(__dirname, ".next", "static");
+      const staticDest = path.join(standaloneDir, ".next", "static");
+
+      if (fs.existsSync(publicSrc)) {
+        fs.cpSync(publicSrc, publicDest, { recursive: true });
+        console.log("✓ Copied public/ into standalone");
+      }
+      if (fs.existsSync(staticSrc)) {
+        fs.cpSync(staticSrc, staticDest, { recursive: true });
+        console.log("✓ Copied .next/static/ into standalone");
+      }
     }
   }
 };

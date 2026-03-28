@@ -1,8 +1,8 @@
-onlyBuiltDependencies:
-  - electron
-
 ignoredBuiltDependencies:
+  - "@bitdisaster/exe-icon-extractor"
   - electron-winstaller
   - msw
   - sharp
   - unrs-resolver
+onlyBuiltDependencies:
+  - electron

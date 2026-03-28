@@ -11,65 +11,13 @@
     "start": "next start",
     "lint": "eslint",
     "electron:dev": "concurrently -k -n next,electron -c cyan,yellow \"next dev -p 3000\" \"cross-env ELECTRON_DEV=1 electron .\"",
-    "electron:build": "node electron/build-helper.js",
-    "electron:build:win": "node electron/build-helper.js win",
-    "electron:build:mac": "node electron/build-helper.js mac",
-    "electron:build:mac:unsigned": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false node electron/build-helper.js mac",
+    "electron:package": "electron-forge package",
+    "electron:make": "electron-forge make",
+    "electron:make:win": "electron-forge make --platform win32",
+    "electron:make:mac": "electron-forge make --platform darwin",
+    "electron:make:mac:unsigned": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-forge make --platform darwin",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
-  },
-  "build": {
-    "appId": "com.ampcore.app",
-    "productName": "AmpCore",
-    "icon": "public/logo",
-    "asar": true,
-    "asarUnpack": [
-      "node_modules/**/*.node"
-    ],
-    "files": [
-      "electron/**/*",
-      ".next/**/*",
-      "public/**/*",
-      "storage/**/*",
-      "package.json",
-      "!.next/cache/**/*",
-      "!.next/dev/**/*"
-    ],
-    "directories": {
-      "output": "dist",
-      "buildResources": "public"
-    },
-    "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "public/logo.ico"
-    },
-    "nsis": {
-      "oneClick": true,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": false,
-      "installerIcon": "public/logo.ico",
-      "uninstallerIcon": "public/logo.ico",
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
-    },
-    "mac": {
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "icon": "public/logo.icns",
-      "category": "public.app-category.music",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
-    },
-    "dmg": {
-      "sign": false,
-      "title": "AmpCore"
-    }
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
@@ -93,6 +41,13 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-deb": "^7.11.1",
+    "@electron-forge/maker-dmg": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
+    "@electron-forge/plugin-fuses": "^7.11.1",
+    "@electron/fuses": "^1.8.0",
     "@tailwindcss/postcss": "^4",
     "@types/negotiator": "^0.6.4",
     "@types/node": "^20",
@@ -101,7 +56,6 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^40.8.0",
-    "electron-builder": "^26.8.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "prettier": "^3.8.1",

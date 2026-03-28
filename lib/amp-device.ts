@@ -176,11 +176,20 @@ export class CvrAmpDevice {
    * @param inOutFlag  StructHeader byte 9 (in_out_flag): 0=input, 1=Output (default 0)
    * @param link       StructHeader bytes 5-8 (Link int32): link group (default 0)
    * @param segment    StructHeader byte 4 (Segment): segment selector (default 0)
+   * @param statusCode StructHeader byte 2 (default 1 for most write/control commands)
    */
-  async sendControl(fc: number, chx: number, body: Buffer, inOutFlag = 0, link = 0, segment = 0): Promise<void> {
+  async sendControl(
+    fc: number,
+    chx: number,
+    body: Buffer,
+    inOutFlag = 0,
+    link = 0,
+    segment = 0,
+    statusCode = 1
+  ): Promise<void> {
     const header: StructHeaderFields = {
       functionCode: fc,
-      statusCode: 1, // Write/control — confirmed from captured packets
+      statusCode,
       chx,
       link,
       inOutFlag,

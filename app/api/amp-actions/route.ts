@@ -136,6 +136,17 @@ export async function POST(request: Request): Promise<Response> {
       }
 
       // -----------------------------------------------------------------------
+      // Set amp standby — FC=15 STANDBY_DATA, in_out_flag=0
+      // Wire body: 0x01 = standby, 0x00 = normal
+      // Captured original-app frame uses statusCode=0x00 for this command.
+      // -----------------------------------------------------------------------
+      case "setAmpStandby": {
+        const payload = Buffer.from([value ? 0x01 : 0x00]);
+        await device.sendControl(FuncCode.STANDBY_DATA, 0, payload, 0 /* input/default */, 0, 0, 0 /* statusCode */);
+        break;
+      }
+
+      // -----------------------------------------------------------------------
       // Mute input — FC=10, in_out_flag=0 (input)
       // C# source: SendStruct(MUTE, ch, in_out_flag.input, linkNum, mute_data)
       // Wire body: 0x00=muted, 0x01=unmuted

@@ -11,18 +11,28 @@ const ACTIVE_POLL_MS = 250; // tick interval (drives active amp)
 const BACKGROUND_CHANNEL_MS = 2000; // background amps channel data interval
 const LOCK_POLL_ACTIVE_MS = 2000; // lock poll for active amp
 const LOCK_POLL_BACKGROUND_MS = 10_000; // lock poll for background amps
+const STANDBY_POLL_ACTIVE_MS = 2000; // standby poll for active amp
+const STANDBY_POLL_BACKGROUND_MS = 10_000; // standby poll for background amps
 
 let channelDataTimer: ReturnType<typeof setInterval> | null = null;
 let channelDataSubscribers = 0;
 const inFlightMacs = new Set<string>();
 const inFlightLockMacs = new Set<string>();
+const inFlightStandbyMacs = new Set<string>();
 const lastChannelPollAtByMac = new Map<string, number>();
 const lastLockPollAtByMac = new Map<string, number>();
+const lastStandbyPollAtByMac = new Map<string, number>();
 const forceLockPollMacs = new Set<string>();
+const forceStandbyPollMacs = new Set<string>();
 
 export function triggerImmediateLockPoll(mac: string): void {
   if (!mac) return;
   forceLockPollMacs.add(mac);
+}
+
+export function triggerImmediateStandbyPoll(mac: string): void {
+  if (!mac) return;
+  forceStandbyPollMacs.add(mac);
 }
 
 /**
@@ -101,6 +111,33 @@ export function useAmpChannelData(): void {
                 inFlightLockMacs.delete(amp.mac);
               });
           }
+
+          // ── Standby polling: active gets 2s, background gets 10s ──
+          const standbyInterval = isActive ? STANDBY_POLL_ACTIVE_MS : STANDBY_POLL_BACKGROUND_MS;
+          const lastStandbyPollAt = lastStandbyPollAtByMac.get(amp.mac) ?? 0;
+          const shouldForceStandbyPoll = forceStandbyPollMacs.has(amp.mac);
+          if (
+            !inFlightStandbyMacs.has(amp.mac) &&
+            (shouldForceStandbyPoll || now - lastStandbyPollAt >= standbyInterval)
+          ) {
+            inFlightStandbyMacs.add(amp.mac);
+            forceStandbyPollMacs.delete(amp.mac);
+            lastStandbyPollAtByMac.set(amp.mac, now);
+
+            fetch(`/api/amp-standby/${encodeURIComponent(amp.mac)}`)
+              .then((r) => r.json())
+              .then((response) => {
+                if (response.success && typeof response.standby === "boolean") {
+                  useAmpStore.getState().updateAmpStatus(amp.mac, { standby: response.standby });
+                }
+              })
+              .catch((err) => {
+                console.warn(`[useAmpChannelData] Error fetching standby state for ${amp.mac}:`, err);
+              })
+              .finally(() => {
+                inFlightStandbyMacs.delete(amp.mac);
+              });
+          }
         });
       }, ACTIVE_POLL_MS);
     }
@@ -112,9 +149,12 @@ export function useAmpChannelData(): void {
         channelDataTimer = null;
         inFlightMacs.clear();
         inFlightLockMacs.clear();
+        inFlightStandbyMacs.clear();
         lastChannelPollAtByMac.clear();
         lastLockPollAtByMac.clear();
+        lastStandbyPollAtByMac.clear();
         forceLockPollMacs.clear();
+        forceStandbyPollMacs.clear();
       }
     };
   }, []);

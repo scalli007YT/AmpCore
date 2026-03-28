@@ -216,6 +216,8 @@ export interface AmpStatus {
   current_preset?: string;
   /** Rotary/panel lock state read from device sync and FC17 polling. */
   locked?: boolean;
+  /** Standby state read from device sync and FC1 polling. */
+  standby?: boolean;
   /** Raw FC=0 BASIC_INFO snapshot from discovery response. */
   basic_info?: AmpBasicInfo;
   /** Convenience mirrors from BASIC_INFO for quick access. */

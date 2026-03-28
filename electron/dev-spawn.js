@@ -1,7 +1,6 @@
 /**
  * dev-spawn.js — waits for Next.js to be ready, then spawns Electron.
- * Used by the electron:spawn npm script to avoid shell && chaining,
- * which breaks on PowerShell.
+ * Used by pnpm scripts to avoid shell && chaining, which breaks on PowerShell.
  */
 const { spawn } = require("child_process");
 const waitOn = require("wait-on");

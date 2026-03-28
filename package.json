@@ -11,17 +11,17 @@
     "start": "next start",
     "lint": "eslint",
     "electron:dev": "concurrently -k -n next,electron -c cyan,yellow \"next dev -p 3000\" \"cross-env ELECTRON_DEV=1 electron .\"",
-    "electron:build": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && next build && electron-builder",
-    "electron:build:win": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && next build && electron-builder --win",
-    "electron:build:mac": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && next build && electron-builder --mac",
-    "electron:build:mac:unsigned": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && next build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
+    "electron:build": "node electron/build-helper.js",
+    "electron:build:win": "node electron/build-helper.js win",
+    "electron:build:mac": "node electron/build-helper.js mac",
+    "electron:build:mac:unsigned": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false node electron/build-helper.js mac",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "build": {
     "appId": "com.ampcore.app",
     "productName": "AmpCore",
-    "icon": "public/logo.ico",
+    "icon": "public/logo",
     "asar": true,
     "asarUnpack": [
       "node_modules/**/*.node"
@@ -35,8 +35,14 @@
       "!.next/cache/**/*",
       "!.next/dev/**/*"
     ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "public"
+    },
     "win": {
-      "target": "nsis",
+      "target": [
+        "nsis"
+      ],
       "icon": "public/logo.ico"
     },
     "nsis": {
@@ -44,11 +50,16 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
       "installerIcon": "public/logo.ico",
-      "uninstallerIcon": "public/logo.ico"
+      "uninstallerIcon": "public/logo.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "mac": {
-      "target": "dmg",
-      "icon": "public/logo.ico",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "public/logo.icns",
       "category": "public.app-category.music",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -56,7 +67,8 @@
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
-      "sign": false
+      "sign": false,
+      "title": "AmpCore"
     }
   },
   "dependencies": {

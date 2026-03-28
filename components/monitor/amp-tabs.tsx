@@ -19,7 +19,9 @@ import {
   Link2Icon,
   ChevronRight,
   Lock,
-  LockOpen
+  LockOpen,
+  Power,
+  PowerOff
 } from "lucide-react";
 import { HeartbeatDashboard } from "@/components/monitor/amp-tabs/heartbeat-dashboard";
 import { LinkingPanel } from "@/components/monitor/amp-tabs/linking-panel";
@@ -34,7 +36,7 @@ import { AmpUnreachableCard } from "@/components/custom/amp-unreachable-card";
 import { InputWithCheck } from "@/components/custom/input-with-check";
 import { useTabStore, type AmpSection } from "@/stores/TabStore";
 import { useAmpActions } from "@/hooks/useAmpActions";
-import { triggerImmediateLockPoll } from "@/hooks/useAmpChannelData";
+import { triggerImmediateLockPoll, triggerImmediateStandbyPoll } from "@/hooks/useAmpChannelData";
 import { useProjectStore } from "@/stores/ProjectStore";
 import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
 
@@ -68,7 +70,8 @@ export function AmpTabs() {
   const [pendingRename, setPendingRename] = useState("");
   const [renaming, setRenaming] = useState(false);
   const [lockUpdating, setLockUpdating] = useState(false);
-  const { setAmpLock } = useAmpActions();
+  const [standbyUpdating, setStandbyUpdating] = useState(false);
+  const { setAmpLock, setAmpStandby } = useAmpActions();
   const selectedProject = useProjectStore((state) => state.selectedProject);
 
   const selectedAmp = amps.find((a) => a.mac === selectedMac) ?? amps[0];
@@ -242,6 +245,24 @@ export function AmpTabs() {
     }
   };
 
+  const setSelectedAmpStandby = async () => {
+    if (!selectedAmp || standbyUpdating) return;
+
+    const nextStandby = !(selectedAmp.standby ?? false);
+
+    setStandbyUpdating(true);
+    try {
+      await setAmpStandby(selectedAmp.mac, nextStandby);
+      updateAmpStatus(selectedAmp.mac, { standby: nextStandby });
+      triggerImmediateStandbyPoll(selectedAmp.mac);
+      toast.success(nextStandby ? "Amp in standby" : "Amp normal");
+    } catch {
+      // Error toast is already handled in useAmpActions/send.
+    } finally {
+      setStandbyUpdating(false);
+    }
+  };
+
   if (!amps || amps.length === 0) {
     return (
       <div className="flex flex-col items-center rounded-xl border border-border/50 bg-muted/20 px-6 py-12 text-center text-sm text-muted-foreground">
@@ -384,6 +405,21 @@ export function AmpTabs() {
                       <Lock className="size-4 text-red-500" />
                     ) : (
                       <LockOpen className="size-4 text-green-500" />
+                    )}
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant={selectedAmp.standby ? "secondary" : "outline"}
+                    disabled={standbyUpdating}
+                    onClick={() => void setSelectedAmpStandby()}
+                    className="h-9 w-9"
+                    aria-label={selectedAmp.standby ? "Normal amp" : "Standby amp"}
+                    title={selectedAmp.standby ? "Normal" : "Standby"}
+                  >
+                    {selectedAmp.standby ? (
+                      <PowerOff className="size-4 text-orange-500" />
+                    ) : (
+                      <Power className="size-4 text-green-500" />
                     )}
                   </Button>
                 </div>
@@ -568,6 +604,10 @@ export function AmpTabs() {
                     <div>
                       <dt className="font-semibold">Rotary_lock:</dt>
                       <dd>{selectedAmp.locked === undefined ? "---" : selectedAmp.locked ? "Locked" : "Unlocked"}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold">Standby:</dt>
+                      <dd>{selectedAmp.standby === undefined ? "---" : selectedAmp.standby ? "Standby" : "Normal"}</dd>
                     </div>
                   </dl>
                 </CollapsibleContent>

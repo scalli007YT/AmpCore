@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Check, Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/components/layout/theme-provider";
 import { useI18n } from "@/components/layout/i18n-provider";
 
 import { Button } from "@/components/ui/button";

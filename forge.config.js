@@ -1,4 +1,5 @@
 const path = require("path");
+require("dotenv").config();
 const { FusesPlugin } = require("@electron-forge/plugin-fuses");
 const { FuseV1Options, FuseVersion } = require("@electron/fuses");
 
@@ -51,26 +52,6 @@ const packagerConfig = {
   ]
 };
 
-// macOS code signing (only add if identity is available)
-if (process.env.MAC_IDENTITY) {
-  packagerConfig.osxSign = {
-    identity: process.env.MAC_IDENTITY,
-    entitlements: path.join(__dirname, "build", "entitlements.mac.plist"),
-    "entitlements-inherit": path.join(__dirname, "build", "entitlements.mac.plist"),
-    "gatekeeper-assess": false,
-    "hardened-runtime": true
-  };
-}
-
-// macOS notarization (only add if credentials are available)
-if (process.env.APPLE_ID && process.env.APPLE_ID_PASSWORD && process.env.APPLE_TEAM_ID) {
-  packagerConfig.osxNotarize = {
-    appleId: process.env.APPLE_ID,
-    appleIdPassword: process.env.APPLE_ID_PASSWORD,
-    teamId: process.env.APPLE_TEAM_ID
-  };
-}
-
 module.exports = {
   packagerConfig,
 
@@ -87,25 +68,19 @@ module.exports = {
     {
       name: "@electron-forge/maker-zip",
       platforms: ["darwin"]
-    },
+    }
+  ],
+
+  publishers: [
     {
-      name: "@electron-forge/maker-dmg",
+      name: "@electron-forge/publisher-github",
       config: {
-        name: "AmpCore",
-        icon: path.join(__dirname, "public", "logo.icns"),
-        format: "ULFO"
-      }
-    },
-    {
-      name: "@electron-forge/maker-deb",
-      config: {
-        options: {
-          name: "ampcore",
-          productName: "AmpCore",
-          icon: path.join(__dirname, "public", "logo.png"),
-          categories: ["Audio", "Utility"],
-          maintainer: "scalli007"
-        }
+        repository: {
+          owner: "scalli007YT",
+          name: "AmpCore"
+        },
+        prerelease: true,
+        draft: true
       }
     }
   ],

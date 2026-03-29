@@ -47,5 +47,4 @@ storage
 original_app_analyses
 
 dist
-
-.github
+.github/copilot-instructions.md

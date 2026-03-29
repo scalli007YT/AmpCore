@@ -13,13 +13,17 @@ if (process.platform === "win32") {
     app.quit();
   }
 }
-const { updateElectronApp } = require("update-electron-app");
 const http = require("http");
 const { name: packageName, version: packageVersion } = require("../package.json");
 
 // Auto-update from GitHub Releases (no-op in dev)
 if (!process.env.ELECTRON_DEV) {
-  updateElectronApp();
+  try {
+    const { updateElectronApp } = require("update-electron-app");
+    updateElectronApp();
+  } catch (e) {
+    console.warn("Auto-update unavailable:", e.message);
+  }
 }
 
 const PORT = 3000;

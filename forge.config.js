@@ -13,8 +13,7 @@ const packagerConfig = {
     unpack: "**/*.node"
   },
   ignore: [
-    // Exclude everything except what we explicitly need
-    /^\/node_modules$/,
+    // Exclude source directories (not needed in packaged app)
     /^\/app\//,
     /^\/components\//,
     /^\/hooks\//,

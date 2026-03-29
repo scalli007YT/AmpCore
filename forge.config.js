@@ -1,4 +1,5 @@
 const path = require("path");
+require("dotenv").config();
 const { FusesPlugin } = require("@electron-forge/plugin-fuses");
 const { FuseV1Options, FuseVersion } = require("@electron/fuses");
 
@@ -86,6 +87,20 @@ module.exports = {
           categories: ["Audio", "Utility"],
           maintainer: "scalli007"
         }
+      }
+    }
+  ],
+
+  publishers: [
+    {
+      name: "@electron-forge/publisher-github",
+      config: {
+        repository: {
+          owner: "scalli007YT",
+          name: "AmpCore"
+        },
+        prerelease: true,
+        draft: true
       }
     }
   ],

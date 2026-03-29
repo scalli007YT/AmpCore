@@ -42,5 +42,6 @@ jobs:
       - name: Publish (${{ matrix.platform }})
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: pnpm exec electron-forge publish --platform ${{ matrix.platform }}
         timeout-minutes: 30

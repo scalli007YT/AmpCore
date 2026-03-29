@@ -39,6 +39,10 @@ jobs:
         run: pnpm install --frozen-lockfile
         timeout-minutes: 10
 
+      - name: Rebuild native modules
+        if: matrix.platform == 'darwin'
+        run: pnpm rebuild
+
       - name: Publish (${{ matrix.platform }})
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

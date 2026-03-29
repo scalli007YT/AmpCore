@@ -51,26 +51,6 @@ const packagerConfig = {
   ]
 };
 
-// macOS code signing (only add if identity is available)
-if (process.env.MAC_IDENTITY) {
-  packagerConfig.osxSign = {
-    identity: process.env.MAC_IDENTITY,
-    entitlements: path.join(__dirname, "build", "entitlements.mac.plist"),
-    "entitlements-inherit": path.join(__dirname, "build", "entitlements.mac.plist"),
-    "gatekeeper-assess": false,
-    "hardened-runtime": true
-  };
-}
-
-// macOS notarization (only add if credentials are available)
-if (process.env.APPLE_ID && process.env.APPLE_ID_PASSWORD && process.env.APPLE_TEAM_ID) {
-  packagerConfig.osxNotarize = {
-    appleId: process.env.APPLE_ID,
-    appleIdPassword: process.env.APPLE_ID_PASSWORD,
-    teamId: process.env.APPLE_TEAM_ID
-  };
-}
-
 module.exports = {
   packagerConfig,
 

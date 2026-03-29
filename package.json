@@ -14,8 +14,7 @@
     "electron:package": "electron-forge package",
     "electron:make": "electron-forge make",
     "electron:make:win": "electron-forge make --platform win32",
-    "electron:make:mac": "electron-forge make --platform darwin",
-    "electron:make:mac:unsigned": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-forge make --platform darwin",
+    "electron:make:mac": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-forge make --platform darwin",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

@@ -37,9 +37,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
 
       - name: Publish (${{ matrix.platform }})
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: pnpm exec electron-forge publish --platform ${{ matrix.platform }}
+        timeout-minutes: 30

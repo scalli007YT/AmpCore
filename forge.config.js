@@ -68,14 +68,6 @@ module.exports = {
     {
       name: "@electron-forge/maker-zip",
       platforms: ["darwin"]
-    },
-    {
-      name: "@electron-forge/maker-dmg",
-      config: {
-        name: "AmpCore",
-        icon: path.join(__dirname, "public", "logo.icns"),
-        format: "ULFO"
-      }
     }
   ],
 

@@ -28,6 +28,7 @@ import { LinkingPanel } from "@/components/monitor/amp-tabs/linking-panel";
 import { LimiterBlock } from "@/components/monitor/amp-tabs/limiter-panel";
 import { MatrixGrid } from "@/components/monitor/amp-tabs/matrix-grid";
 import { AssignAmpsDialog } from "@/components/dialogs/assign-amps-dialog";
+import { StatusLed } from "@/components/custom/status-led";
 import { SourceConfigDialog } from "@/components/dialogs/source-config-dialog";
 import { CopyJsonButton, JsonTree, type JsonValue } from "@/components/monitor/amp-tabs/json-viewer";
 import { useI18n } from "@/components/layout/i18n-provider";
@@ -279,8 +280,8 @@ export function AmpTabs() {
   }
 
   return (
-    <div className="grid w-full gap-3 xl:grid-cols-[220px_minmax(0,1fr)]">
-      <aside className="rounded-lg border border-border/50 bg-card/25 p-2">
+    <div className="grid min-h-0 w-full flex-1 gap-3 xl:grid-cols-[220px_minmax(0,1fr)]">
+      <aside className="max-h-48 overflow-y-auto rounded-lg border border-border/50 bg-card/25 p-2 xl:max-h-none">
         <div className="mb-2 flex items-center justify-between border-b border-border/50 px-2 pb-2">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] leading-tight whitespace-normal break-words text-muted-foreground">
@@ -339,12 +340,12 @@ export function AmpTabs() {
       )}
 
       {selectedAmp && selectedAmp.reachable && (
-        <div className="min-w-0 overflow-hidden rounded-lg border border-border/50 bg-card/20">
+        <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-border/50 bg-card/20">
           <Tabs
             value={activeSection}
             onValueChange={(v) => setSelectedSection(v as AmpSection)}
             orientation="horizontal"
-            className="flex flex-col"
+            className="flex min-h-0 flex-1 flex-col"
           >
             <div className="border-b border-border/50 px-3 pb-2 pt-2">
               <div className="relative flex flex-wrap items-center justify-between gap-3">
@@ -389,6 +390,7 @@ export function AmpTabs() {
                   {dict.monitor.ampTabs.currentPresetLabel}: {selectedAmp.current_preset?.trim() || "---"}
                 </span>
                 <div className="flex items-center gap-2 text-[11px]">
+                  <StatusLed channelFlags={selectedAmp.channelFlags} standby={selectedAmp.standby} />
                   <Badge variant="outline" className="font-mono">
                     {selectedAmp.ip ?? dict.monitor.ampTabs.noIp}
                   </Badge>
@@ -426,21 +428,21 @@ export function AmpTabs() {
               </div>
 
               <TabsList className="mt-2 grid h-9 w-full grid-cols-4 gap-1 px-1">
-                <TabsTrigger value="main" className="h-7 w-full justify-center px-3">
-                  <LayoutDashboardIcon className="size-4" />
-                  {dict.monitor.ampTabs.tabMain}
+                <TabsTrigger value="main" className="h-7 w-full justify-center px-1 sm:px-3">
+                  <LayoutDashboardIcon className="size-4 shrink-0" />
+                  <span className="hidden sm:inline">{dict.monitor.ampTabs.tabMain}</span>
                 </TabsTrigger>
-                <TabsTrigger value="matrix" className="h-7 w-full justify-center px-3">
-                  <GridIcon className="size-4" />
-                  {dict.monitor.ampTabs.tabMatrixLimiter}
+                <TabsTrigger value="matrix" className="h-7 w-full justify-center px-1 sm:px-3">
+                  <GridIcon className="size-4 shrink-0" />
+                  <span className="hidden sm:inline">{dict.monitor.ampTabs.tabMatrixLimiter}</span>
                 </TabsTrigger>
-                <TabsTrigger value="linking" className="h-7 w-full justify-center px-3">
-                  <Link2Icon className="size-4" />
-                  {dict.dialogs.linkingGroups.panelTitle}
+                <TabsTrigger value="linking" className="h-7 w-full justify-center px-1 sm:px-3">
+                  <Link2Icon className="size-4 shrink-0" />
+                  <span className="hidden sm:inline">{dict.dialogs.linkingGroups.panelTitle}</span>
                 </TabsTrigger>
-                <TabsTrigger value="preferences" className="h-7 w-full justify-center px-3">
-                  <SlidersHorizontalIcon className="size-4" />
-                  {dict.monitor.ampTabs.tabPreferences}
+                <TabsTrigger value="preferences" className="h-7 w-full justify-center px-1 sm:px-3">
+                  <SlidersHorizontalIcon className="size-4 shrink-0" />
+                  <span className="hidden sm:inline">{dict.monitor.ampTabs.tabPreferences}</span>
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -461,7 +463,7 @@ export function AmpTabs() {
               onConfirm={submitRename}
             />
 
-            <TabsContent value="main" className="p-4 mt-0">
+            <TabsContent value="main" className="min-h-0 flex-1 overflow-y-auto p-4 mt-0">
               {!selectedAmp.heartbeat ? (
                 <p className="text-sm text-muted-foreground animate-pulse">{dict.monitor.ampTabs.waitingForData}</p>
               ) : (
@@ -473,12 +475,13 @@ export function AmpTabs() {
                     channelParams={selectedAmp.channelParams}
                     bridgePairs={selectedAmp.bridgePairs}
                     outputChx={selectedAmp.output_chx}
+                    channelFlags={selectedAmp.channelFlags}
                   />
                 </div>
               )}
             </TabsContent>
 
-            <TabsContent value="matrix" className="p-4 mt-0">
+            <TabsContent value="matrix" className="min-h-0 flex-1 overflow-y-auto p-4 mt-0">
               {!selectedAmp.channelParams ? (
                 <p className="text-sm text-muted-foreground animate-pulse">{dict.monitor.ampTabs.waitingForData}</p>
               ) : (
@@ -531,7 +534,7 @@ export function AmpTabs() {
               )}
             </TabsContent>
 
-            <TabsContent value="linking" className="p-4 mt-0">
+            <TabsContent value="linking" className="min-h-0 flex-1 overflow-y-auto p-4 mt-0">
               <div className="overflow-hidden rounded-md border border-border/50 bg-background/30 p-2.5">
                 <LinkingPanel
                   mac={selectedAmp.mac}
@@ -540,7 +543,7 @@ export function AmpTabs() {
               </div>
             </TabsContent>
 
-            <TabsContent value="preferences" className="p-4 mt-0">
+            <TabsContent value="preferences" className="min-h-0 flex-1 overflow-y-auto p-4 mt-0">
               <Collapsible defaultOpen={false} className="mb-4">
                 <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-muted/50 transition-colors [&[data-state=open]>svg]:rotate-90">
                   <ChevronRight className="shrink-0 h-3.5 w-3.5 text-muted-foreground transition-transform duration-200" />

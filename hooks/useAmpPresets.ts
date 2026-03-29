@@ -175,27 +175,37 @@ export function useAmpPresets(): UseAmpPresetsReturn {
           throw new Error(data.error ?? `HTTP ${res.status}`);
         }
 
-        const currentRes = await fetch("/api/amp-presets/current", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ip: amp.ip, mac })
-        });
-
-        const currentData = (await currentRes.json()) as {
-          success: boolean;
-          currentPreset?: string | null;
-        };
-
-        if (currentRes.ok && currentData.success) {
-          syncCurrentPreset(mac, currentData.currentPreset);
-        } else {
-          const fallbackName = amp.presets?.find((preset) => preset.slot === slot)?.name?.trim() || name?.trim();
-          if (fallbackName) {
-            updateAmpStatus(mac, { current_preset: fallbackName });
-          }
+        // Optimistic update: set the preset name immediately from known slot data
+        const optimisticName = amp.presets?.find((preset) => preset.slot === slot)?.name?.trim() || name?.trim();
+        if (optimisticName) {
+          updateAmpStatus(mac, { current_preset: optimisticName });
         }
 
         toast.success(name ? `Recalled preset ${slot}: ${name}` : `Recalled preset ${slot}`);
+
+        // Background readback after a short delay to confirm the device applied the preset
+        const ip = amp.ip;
+        setTimeout(async () => {
+          try {
+            const currentRes = await fetch("/api/amp-presets/current", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ip, mac })
+            });
+
+            const currentData = (await currentRes.json()) as {
+              success: boolean;
+              currentPreset?: string | null;
+            };
+
+            if (currentRes.ok && currentData.success) {
+              syncCurrentPreset(mac, currentData.currentPreset);
+            }
+          } catch {
+            // Non-critical: optimistic name is already set
+          }
+        }, 500);
+
         return true;
       } catch (err) {
         const message = err instanceof Error ? err.message : "Recall failed";

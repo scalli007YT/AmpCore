@@ -910,7 +910,8 @@ export function HeartbeatDashboard({
                         const a = hb.outputCurrents[i];
                         const dbu = vuOutputDbu[i];
                         const temp = hb.temperatures[i] ?? 0;
-                        const isLimit = st === 5;
+                        const isClip = st === 5;
+                        const isLimit = st === 5 || st === 10;
                         const isActive = st === 0 || st === 8;
                         const isDisabledByBridge = isBridgedSecondColumn(i);
                         const dbuVal = dbu === null || dbu <= OUT_DB_BOT ? null : Math.min(dbu, OUT_DB_TOP);
@@ -962,7 +963,7 @@ export function HeartbeatDashboard({
                                     value={dbuVal}
                                     dbTop={OUT_DB_TOP}
                                     dbBottom={OUT_DB_BOT}
-                                    limit={isLimit}
+                                    limit={isClip || isLimit}
                                     width={220}
                                     height={28}
                                     thresholdLines={thresholdLines}

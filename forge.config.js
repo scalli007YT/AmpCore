@@ -13,6 +13,8 @@ const packagerConfig = {
     unpack: "**/*.node"
   },
   ignore: [
+    // Exclude node_modules (Next.js standalone has its own)
+    /^\/node_modules$/,
     // Exclude source directories (not needed in packaged app)
     /^\/app\//,
     /^\/components\//,

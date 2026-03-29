@@ -15,9 +15,7 @@
     "electron:make": "electron-forge make",
     "electron:make:win": "electron-forge make --platform win32",
     "electron:make:mac": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-forge make --platform darwin",
-    "electron:publish": "electron-forge publish",
-    "electron:publish:win": "electron-forge publish --platform win32",
-    "electron:publish:mac": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-forge publish --platform darwin",
+    "electron:publish:branch": "node -e \"const v='v'+require('./package.json').version; const {execSync}=require('child_process'); execSync('git tag -f '+v,{stdio:'inherit'}); execSync('git push origin '+v+' -f',{stdio:'inherit'}); console.log('Retagged '+v)\"",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

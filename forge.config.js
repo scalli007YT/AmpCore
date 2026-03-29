@@ -76,18 +76,6 @@ module.exports = {
         icon: path.join(__dirname, "public", "logo.icns"),
         format: "ULFO"
       }
-    },
-    {
-      name: "@electron-forge/maker-deb",
-      config: {
-        options: {
-          name: "ampcore",
-          productName: "AmpCore",
-          icon: path.join(__dirname, "public", "logo.png"),
-          categories: ["Audio", "Utility"],
-          maintainer: "scalli007"
-        }
-      }
     }
   ],
 

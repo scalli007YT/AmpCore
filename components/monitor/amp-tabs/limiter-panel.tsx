@@ -18,6 +18,7 @@ import { getChannelLabels } from "@/lib/channel-labels";
 export function LimiterBlock({
   mac,
   ratedRmsV,
+  limiterLineVoltageOffset = 0,
   channelOhms,
   bridgePairs,
   heartbeat,
@@ -27,6 +28,7 @@ export function LimiterBlock({
 }: {
   mac: string;
   ratedRmsV?: number;
+  limiterLineVoltageOffset?: number;
   channelOhms: number[];
   bridgePairs?: BridgeReadback[];
   heartbeat?: HeartbeatData;
@@ -81,8 +83,10 @@ export function LimiterBlock({
           const loadOhm = pairBridged
             ? normalizeLimiterLoadOhm(channelOhms[pairIndex * 2], true)
             : normalizeLimiterLoadOhm(channelOhms[i], false);
-          const displayRmsThreshold = toLimiterDisplayVoltage(rms.thresholdVrms, bridgeMaster);
-          const displayPeakThreshold = toLimiterDisplayVoltage(peak.thresholdVp, bridgeMaster);
+          const displayRmsThreshold =
+            toLimiterDisplayVoltage(rms.thresholdVrms, bridgeMaster) + limiterLineVoltageOffset;
+          const displayPeakThreshold =
+            toLimiterDisplayVoltage(peak.thresholdVp, bridgeMaster) + limiterLineVoltageOffset * Math.SQRT2;
           const displayPrmsW = limiterPowerFromDisplayVoltage(displayRmsThreshold, loadOhm);
           const displayPpeakW = limiterPowerFromDisplayVoltage(displayPeakThreshold, loadOhm);
 
@@ -173,6 +177,7 @@ export function LimiterBlock({
               bridgeMode={pairBridged && !isSecondInPair}
               disabled={disabledByBridge}
               ratedRmsV={ratedRmsV}
+              limiterLineVoltageOffset={limiterLineVoltageOffset}
               loadOhm={loadOhm}
               rms={rms}
               peak={peak}

@@ -25,7 +25,7 @@ export function MonitorPage({ dictionary }: MonitorPageProps) {
   }, [setCurrentView]);
 
   return (
-    <div className="flex flex-1 flex-col space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col space-y-4">
       <PrereleaseStartupDialog />
 
       {selectedProject && (
@@ -40,7 +40,7 @@ export function MonitorPage({ dictionary }: MonitorPageProps) {
         </section>
       )}
 
-      <div className="flex flex-1">{selectedProject ? <AmpTabs /> : <NoProjectCard />}</div>
+      <div className="flex min-h-0 flex-1">{selectedProject ? <AmpTabs /> : <NoProjectCard />}</div>
     </div>
   );
 }

@@ -42,8 +42,8 @@ export function LayoutContent({ children, lang, dictionary }: LayoutContentProps
   return (
     <div className="flex h-screen min-h-0 flex-col overflow-hidden">
       <Header lang={lang} dictionary={dictionary} projects={projects} loading={loading} />
-      <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-        <div className="flex h-full flex-col px-3 py-3">{children}</div>
+      <main className="min-h-0 flex-1 overflow-hidden">
+        <div className="flex h-full flex-col overflow-hidden px-3 py-3">{children}</div>
       </main>
     </div>
   );

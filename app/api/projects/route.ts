@@ -78,6 +78,7 @@ interface Project {
     lastKnownName?: string;
     lastKnownIp?: string;
     constants: AssignedAmpConstants;
+    options?: Record<string, unknown>;
     loadOhm?: number;
   }>;
 }
@@ -107,7 +108,8 @@ function normalizeProject(project: Project): Project {
           typeof amp.lastKnownIp === "string" && /^\d+\.\d+\.\d+\.\d+$/.test(amp.lastKnownIp.trim())
             ? amp.lastKnownIp.trim()
             : undefined,
-        constants
+        constants,
+        ...(amp.options != null ? { options: amp.options } : {})
       };
     })
   };

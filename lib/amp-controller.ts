@@ -281,6 +281,7 @@ class AmpController extends EventEmitter {
 
   constructor() {
     super();
+    this.setMaxListeners(30);
     this.network.on("message", (msg, rinfo) => {
       this._onPacket(msg, rinfo.address);
     });

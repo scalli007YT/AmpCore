@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ConfirmActionDialog } from "@/components/dialogs/confirm-action-dialog";
 import { formatRuntime } from "@/lib/generic";
@@ -39,6 +41,7 @@ import { useTabStore, type AmpSection } from "@/stores/TabStore";
 import { useAmpActions } from "@/hooks/useAmpActions";
 import { triggerImmediateLockPoll, triggerImmediateStandbyPoll } from "@/hooks/useAmpChannelData";
 import { useProjectStore } from "@/stores/ProjectStore";
+import { useAmpOptionStore } from "@/stores/AmpOptionStore";
 import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
 
 type PresetFilter = "all" | "used" | "empty";
@@ -74,6 +77,8 @@ export function AmpTabs() {
   const [standbyUpdating, setStandbyUpdating] = useState(false);
   const { setAmpLock, setAmpStandby } = useAmpActions();
   const selectedProject = useProjectStore((state) => state.selectedProject);
+  const ampOptionsRaw = useAmpOptionStore((s) => s.options[(selectedMac ?? "").toUpperCase()]);
+  const ampOptions = { ...{ debugMode: false, limiterLineVoltageOffset: 0 }, ...ampOptionsRaw };
 
   const selectedAmp = amps.find((a) => a.mac === selectedMac) ?? amps[0];
   // Filter channels based on authoritative output_chx from discovery (FC=0)
@@ -476,6 +481,7 @@ export function AmpTabs() {
                     bridgePairs={selectedAmp.bridgePairs}
                     outputChx={selectedAmp.output_chx}
                     channelFlags={selectedAmp.channelFlags}
+                    limiterLineVoltageOffset={ampOptions.limiterLineVoltageOffset}
                   />
                 </div>
               )}
@@ -517,6 +523,7 @@ export function AmpTabs() {
                         <LimiterBlock
                           mac={selectedAmp.mac}
                           ratedRmsV={selectedAmp.ratedRmsV}
+                          limiterLineVoltageOffset={ampOptions.limiterLineVoltageOffset}
                           channelOhms={effectiveChannelOhms.map((channel) => channel.ohms)}
                           bridgePairs={selectedAmp.bridgePairs}
                           heartbeat={selectedAmp.heartbeat}
@@ -544,272 +551,353 @@ export function AmpTabs() {
             </TabsContent>
 
             <TabsContent value="preferences" className="min-h-0 flex-1 overflow-y-auto p-4 mt-0">
-              <Collapsible defaultOpen={false} className="mb-4">
-                <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-muted/50 transition-colors [&[data-state=open]>svg]:rotate-90">
-                  <ChevronRight className="shrink-0 h-3.5 w-3.5 text-muted-foreground transition-transform duration-200" />
-                  <div
-                    className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                      selectedAmp.reachable ? "bg-green-500" : "bg-red-500"
-                    }`}
+              <div className="space-y-5">
+                {/* Presets */}
+                <section>
+                  <ConfirmActionDialog
+                    open={recallDialogOpen}
+                    onOpenChange={setRecallDialogOpen}
+                    title={dict.dialogs.presets.recallTitle}
+                    description={
+                      activePreset
+                        ? dict.dialogs.presets.recallDescription
+                            .replace("{slot}", String(activePreset.slot))
+                            .replace(
+                              "{name}",
+                              activePreset.name.trim().length > 0 ? activePreset.name : `Slot ${activePreset.slot}`
+                            )
+                        : dict.dialogs.presets.recallFallbackDescription
+                    }
+                    confirmLabel={
+                      recallingSlot === activePreset?.slot
+                        ? dict.dialogs.presets.recalling
+                        : dict.dialogs.presets.recall
+                    }
+                    confirmDisabled={
+                      !selectedAmp?.reachable ||
+                      activePreset === null ||
+                      activePreset.name.trim().length === 0 ||
+                      recallingSlot !== null
+                    }
+                    onConfirm={async () => {
+                      if (!selectedAmp || !activePreset) return;
+                      const ok = await recallPreset(selectedAmp.mac, activePreset.slot, activePreset.name);
+                      if (ok) setRecallDialogOpen(false);
+                    }}
                   />
-                  <span className="text-sm font-semibold">{getDisplayName(selectedAmp)}</span>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <dl className="grid grid-cols-2 gap-2 text-xs text-muted-foreground mt-3 px-1">
-                    <div>
-                      <dt className="font-semibold">MAC:</dt>
-                      <dd className="font-mono">{selectedAmp.mac}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold">Version:</dt>
-                      <dd>{selectedAmp.version || "---"}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold">ID:</dt>
-                      <dd>{selectedAmp.id || "---"}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold">Runtime:</dt>
-                      <dd>{selectedAmp.run_time !== undefined ? formatRuntime(selectedAmp.run_time) : "---"}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold">Rated Output:</dt>
-                      <dd>{selectedAmp.ratedRmsV !== undefined ? `${selectedAmp.ratedRmsV} V RMS` : "---"}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold">Analog_signal_Input_chx:</dt>
-                      <dd>
-                        {selectedAmp.analog_signal_input_chx !== undefined
-                          ? selectedAmp.analog_signal_input_chx
-                          : "---"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold">Output_chx:</dt>
-                      <dd>{selectedAmp.output_chx !== undefined ? selectedAmp.output_chx : "---"}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold">Digital_signal_input_chx:</dt>
-                      <dd>
-                        {selectedAmp.basic_info?.Digital_signal_input_chx !== undefined
-                          ? selectedAmp.basic_info.Digital_signal_input_chx
-                          : "---"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold">Gain_max:</dt>
-                      <dd>{selectedAmp.gain_max !== undefined ? selectedAmp.gain_max : "---"}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold">Machine_state:</dt>
-                      <dd>{selectedAmp.machine_state !== undefined ? selectedAmp.machine_state : "---"}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold">Rotary_lock:</dt>
-                      <dd>{selectedAmp.locked === undefined ? "---" : selectedAmp.locked ? "Locked" : "Unlocked"}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold">Standby:</dt>
-                      <dd>{selectedAmp.standby === undefined ? "---" : selectedAmp.standby ? "Standby" : "Normal"}</dd>
-                    </div>
-                  </dl>
-                </CollapsibleContent>
-              </Collapsible>
 
-              <div>
-                <ConfirmActionDialog
-                  open={recallDialogOpen}
-                  onOpenChange={setRecallDialogOpen}
-                  title={dict.dialogs.presets.recallTitle}
-                  description={
-                    activePreset
-                      ? dict.dialogs.presets.recallDescription
-                          .replace("{slot}", String(activePreset.slot))
-                          .replace(
-                            "{name}",
-                            activePreset.name.trim().length > 0 ? activePreset.name : `Slot ${activePreset.slot}`
-                          )
-                      : dict.dialogs.presets.recallFallbackDescription
-                  }
-                  confirmLabel={
-                    recallingSlot === activePreset?.slot ? dict.dialogs.presets.recalling : dict.dialogs.presets.recall
-                  }
-                  confirmDisabled={
-                    !selectedAmp?.reachable ||
-                    activePreset === null ||
-                    activePreset.name.trim().length === 0 ||
-                    recallingSlot !== null
-                  }
-                  onConfirm={async () => {
-                    if (!selectedAmp || !activePreset) return;
-                    const ok = await recallPreset(selectedAmp.mac, activePreset.slot, activePreset.name);
-                    if (ok) setRecallDialogOpen(false);
-                  }}
-                />
+                  <ConfirmActionDialog
+                    open={storeDialogOpen}
+                    onOpenChange={(open) => {
+                      setStoreDialogOpen(open);
+                      if (!open && activePreset) setStorePresetName(activePreset.name);
+                    }}
+                    title={dict.dialogs.presets.storeTitle}
+                    description={
+                      activePreset
+                        ? dict.dialogs.presets.storeDescription.replace("{slot}", String(activePreset.slot))
+                        : dict.dialogs.presets.storeFallbackDescription
+                    }
+                    confirmLabel={
+                      storingSlot === activePreset?.slot ? dict.dialogs.presets.storing : dict.dialogs.presets.store
+                    }
+                    confirmDisabled={
+                      !selectedAmp?.reachable ||
+                      activePreset === null ||
+                      storingSlot !== null ||
+                      storePresetName.trim().length === 0
+                    }
+                    onConfirm={async () => {
+                      if (!selectedAmp || !activePreset) return;
+                      const ok = await storePreset(selectedAmp.mac, activePreset.slot, storePresetName);
+                      if (ok) setStoreDialogOpen(false);
+                    }}
+                  >
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        {dict.dialogs.presets.presetName}
+                      </label>
+                      <Input
+                        value={storePresetName}
+                        onChange={(e) => setStorePresetName(e.target.value)}
+                        placeholder={dict.dialogs.presets.presetNamePlaceholder}
+                        maxLength={32}
+                      />
+                      <p className="text-[11px] text-muted-foreground text-right">{storePresetName.length}/32</p>
+                    </div>
+                  </ConfirmActionDialog>
 
-                <ConfirmActionDialog
-                  open={storeDialogOpen}
-                  onOpenChange={(open) => {
-                    setStoreDialogOpen(open);
-                    if (!open && activePreset) setStorePresetName(activePreset.name);
-                  }}
-                  title={dict.dialogs.presets.storeTitle}
-                  description={
-                    activePreset
-                      ? dict.dialogs.presets.storeDescription.replace("{slot}", String(activePreset.slot))
-                      : dict.dialogs.presets.storeFallbackDescription
-                  }
-                  confirmLabel={
-                    storingSlot === activePreset?.slot ? dict.dialogs.presets.storing : dict.dialogs.presets.store
-                  }
-                  confirmDisabled={
-                    !selectedAmp?.reachable ||
-                    activePreset === null ||
-                    storingSlot !== null ||
-                    storePresetName.trim().length === 0
-                  }
-                  onConfirm={async () => {
-                    if (!selectedAmp || !activePreset) return;
-                    const ok = await storePreset(selectedAmp.mac, activePreset.slot, storePresetName);
-                    if (ok) setStoreDialogOpen(false);
-                  }}
-                >
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground">
-                      {dict.dialogs.presets.presetName}
-                    </label>
-                    <Input
-                      value={storePresetName}
-                      onChange={(e) => setStorePresetName(e.target.value)}
-                      placeholder={dict.dialogs.presets.presetNamePlaceholder}
-                      maxLength={32}
-                    />
-                    <p className="text-[11px] text-muted-foreground text-right">{storePresetName.length}/32</p>
-                  </div>
-                </ConfirmActionDialog>
-
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <h3 className="text-sm font-semibold">{dict.monitor.ampTabs.presets}</h3>
-                    {fetching && (
-                      <span className="text-xs text-muted-foreground animate-pulse">
-                        {dict.monitor.ampTabs.loading}
-                      </span>
-                    )}
-                    {!fetching && selectedAmp.presets !== undefined && (
-                      <span className="text-xs text-muted-foreground">
-                        {dict.monitor.ampTabs.usedCount.replace("{count}", String(usedPresetCount))}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {selectedAmp.presets !== undefined && (
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant={presetFilter === "all" ? "default" : "outline"}
-                      onClick={() => setPresetFilter("all")}
-                    >
-                      {dict.monitor.ampTabs.filterAll}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={presetFilter === "used" ? "default" : "outline"}
-                      onClick={() => setPresetFilter("used")}
-                    >
-                      {dict.monitor.ampTabs.filterUsed}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={presetFilter === "empty" ? "default" : "outline"}
-                      onClick={() => setPresetFilter("empty")}
-                    >
-                      {dict.monitor.ampTabs.filterEmpty}
-                    </Button>
-                  </div>
-                )}
-
-                {presetsError && <p className="text-xs text-destructive mb-2">{presetsError}</p>}
-
-                {!fetching && !selectedAmp.presets && !presetsError && (
-                  <p className="text-xs text-muted-foreground">
-                    {selectedAmp.reachable
-                      ? dict.monitor.ampTabs.loadingPresets
-                      : dict.monitor.ampTabs.presetsUnavailable}
-                  </p>
-                )}
-
-                {selectedAmp.presets !== undefined && (
-                  <ul className="space-y-1 max-h-[360px] overflow-y-auto pr-2 -mr-2">
-                    {shownPresetSlots.map((preset) => (
-                      <li key={preset.slot} className="list-none group">
-                        <div
-                          className={`flex w-full items-center gap-3 rounded-md border px-3 py-1.5 text-sm text-left transition-colors select-none ${"hover:bg-accent hover:border-primary/30"} ${!selectedAmp.reachable ? "pointer-events-none opacity-50" : ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60`}
+                  <div className="flex items-center justify-between mb-2.5">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold">{dict.monitor.ampTabs.presets}</h3>
+                      {fetching && (
+                        <span className="text-xs text-muted-foreground animate-pulse">
+                          {dict.monitor.ampTabs.loading}
+                        </span>
+                      )}
+                      {!fetching && selectedAmp.presets !== undefined && (
+                        <span className="text-xs text-muted-foreground">
+                          {dict.monitor.ampTabs.usedCount.replace("{count}", String(usedPresetCount))}
+                        </span>
+                      )}
+                    </div>
+                    {selectedAmp.presets !== undefined && (
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant={presetFilter === "all" ? "default" : "outline"}
+                          className="h-6 px-2 text-xs"
+                          onClick={() => setPresetFilter("all")}
                         >
-                          <span className="w-6 text-center text-xs font-mono text-muted-foreground">{preset.slot}</span>
-                          <span
-                            className={`font-medium flex-1 min-w-0 truncate ${preset.name.trim().length === 0 ? "text-muted-foreground" : ""}`}
-                          >
-                            {preset.name.trim().length > 0 ? preset.name : dict.monitor.ampTabs.emptySlotLabel}
-                          </span>
-                          <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActivePreset(preset);
-                                setStorePresetName(preset.name);
-                                setStoreDialogOpen(true);
-                              }}
+                          {dict.monitor.ampTabs.filterAll}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={presetFilter === "used" ? "default" : "outline"}
+                          className="h-6 px-2 text-xs"
+                          onClick={() => setPresetFilter("used")}
+                        >
+                          {dict.monitor.ampTabs.filterUsed}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={presetFilter === "empty" ? "default" : "outline"}
+                          className="h-6 px-2 text-xs"
+                          onClick={() => setPresetFilter("empty")}
+                        >
+                          {dict.monitor.ampTabs.filterEmpty}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {presetsError && <p className="text-xs text-destructive mb-2">{presetsError}</p>}
+
+                  {!fetching && !selectedAmp.presets && !presetsError && (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedAmp.reachable
+                        ? dict.monitor.ampTabs.loadingPresets
+                        : dict.monitor.ampTabs.presetsUnavailable}
+                    </p>
+                  )}
+
+                  {selectedAmp.presets !== undefined && (
+                    <div className="overflow-hidden rounded-md border border-border/50">
+                      <ul className="divide-y divide-border/40 max-h-[360px] overflow-y-auto">
+                        {shownPresetSlots.map((preset) => (
+                          <li key={preset.slot} className="list-none group">
+                            <div
+                              className={`flex w-full items-center gap-3 px-3 py-2 text-sm text-left transition-colors select-none hover:bg-accent ${!selectedAmp.reachable ? "pointer-events-none opacity-50" : ""}`}
                             >
-                              {dict.dialogs.presets.store}
-                            </Button>
-                            <Button
-                              size="sm"
-                              disabled={preset.name.trim().length === 0}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActivePreset(preset);
-                                setRecallDialogOpen(true);
-                              }}
-                            >
-                              {dict.dialogs.presets.recall}
-                            </Button>
+                              <span className="w-5 text-center text-xs font-mono text-muted-foreground">
+                                {preset.slot}
+                              </span>
+                              <span
+                                className={`flex-1 min-w-0 truncate ${preset.name.trim().length === 0 ? "text-muted-foreground italic" : ""}`}
+                              >
+                                {preset.name.trim().length > 0 ? preset.name : dict.monitor.ampTabs.emptySlotLabel}
+                              </span>
+                              <div className="flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 text-xs px-2"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActivePreset(preset);
+                                    setStorePresetName(preset.name);
+                                    setStoreDialogOpen(true);
+                                  }}
+                                >
+                                  {dict.dialogs.presets.store}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  className="h-6 text-xs px-2"
+                                  disabled={preset.name.trim().length === 0}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActivePreset(preset);
+                                    setRecallDialogOpen(true);
+                                  }}
+                                >
+                                  {dict.dialogs.presets.recall}
+                                </Button>
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </section>
+
+                {/* Options */}
+                <section>
+                  <h3 className="text-sm font-semibold mb-2.5">{dict.monitor.ampTabs.options}</h3>
+                  <div className="overflow-hidden rounded-md border border-border/50 divide-y divide-border/40">
+                    <div className="flex items-center justify-between px-3 py-2.5">
+                      <Label htmlFor={`debug-mode-${selectedAmp.mac}`} className="text-sm cursor-pointer">
+                        {dict.monitor.ampTabs.debugMode}
+                      </Label>
+                      <Checkbox
+                        id={`debug-mode-${selectedAmp.mac}`}
+                        checked={ampOptions.debugMode}
+                        onCheckedChange={(checked) =>
+                          useAmpOptionStore.getState().setOption(selectedAmp.mac, "debugMode", checked === true)
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center justify-between px-3 py-2 opacity-50 pointer-events-none">
+                      <Label className="text-sm">{dict.monitor.ampTabs.limiterVoltageOffset}</Label>
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="0.0"
+                          disabled
+                          className="w-20 h-7 text-sm text-right"
+                          value=""
+                        />
+                        <span className="text-xs text-muted-foreground">V</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between px-3 py-2">
+                      <Label htmlFor={`limiter-offset-${selectedAmp.mac}`} className="text-sm">
+                        {dict.monitor.ampTabs.limiterLineVoltageOffset}
+                      </Label>
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          id={`limiter-offset-${selectedAmp.mac}`}
+                          type="number"
+                          min={0}
+                          max={1.5}
+                          step="0.1"
+                          placeholder="0.0"
+                          className="w-20 h-7 text-sm text-right"
+                          value={ampOptions.limiterLineVoltageOffset}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            useAmpOptionStore
+                              .getState()
+                              .setOption(selectedAmp.mac, "limiterLineVoltageOffset", Number.isFinite(val) ? val : 0);
+                          }}
+                        />
+                        <span className="text-xs text-muted-foreground">V</span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Debug: Device Info + Channel Data — only shown when debug mode is on */}
+                {ampOptions.debugMode && (
+                  <div className="border-t pt-4">
+                    <h3 className="text-sm font-semibold mb-3">{dict.monitor.ampTabs.debugInfo}</h3>
+
+                    <Collapsible defaultOpen={false} className="mb-3">
+                      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-muted/50 transition-colors [&[data-state=open]>svg]:rotate-90">
+                        <ChevronRight className="shrink-0 h-3.5 w-3.5 text-muted-foreground transition-transform duration-200" />
+                        <div
+                          className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                            selectedAmp.reachable ? "bg-green-500" : "bg-red-500"
+                          }`}
+                        />
+                        <span className="text-sm font-semibold">{getDisplayName(selectedAmp)}</span>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <dl className="grid grid-cols-2 gap-2 text-xs text-muted-foreground mt-3 px-1">
+                          <div>
+                            <dt className="font-semibold">MAC:</dt>
+                            <dd className="font-mono">{selectedAmp.mac}</dd>
                           </div>
+                          <div>
+                            <dt className="font-semibold">Version:</dt>
+                            <dd>{selectedAmp.version || "---"}</dd>
+                          </div>
+                          <div>
+                            <dt className="font-semibold">ID:</dt>
+                            <dd>{selectedAmp.id || "---"}</dd>
+                          </div>
+                          <div>
+                            <dt className="font-semibold">Runtime:</dt>
+                            <dd>{selectedAmp.run_time !== undefined ? formatRuntime(selectedAmp.run_time) : "---"}</dd>
+                          </div>
+                          <div>
+                            <dt className="font-semibold">Rated Output:</dt>
+                            <dd>{selectedAmp.ratedRmsV !== undefined ? `${selectedAmp.ratedRmsV} V RMS` : "---"}</dd>
+                          </div>
+                          <div>
+                            <dt className="font-semibold">Analog_signal_Input_chx:</dt>
+                            <dd>
+                              {selectedAmp.analog_signal_input_chx !== undefined
+                                ? selectedAmp.analog_signal_input_chx
+                                : "---"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="font-semibold">Output_chx:</dt>
+                            <dd>{selectedAmp.output_chx !== undefined ? selectedAmp.output_chx : "---"}</dd>
+                          </div>
+                          <div>
+                            <dt className="font-semibold">Digital_signal_input_chx:</dt>
+                            <dd>
+                              {selectedAmp.basic_info?.Digital_signal_input_chx !== undefined
+                                ? selectedAmp.basic_info.Digital_signal_input_chx
+                                : "---"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="font-semibold">Gain_max:</dt>
+                            <dd>{selectedAmp.gain_max !== undefined ? selectedAmp.gain_max : "---"}</dd>
+                          </div>
+                          <div>
+                            <dt className="font-semibold">Machine_state:</dt>
+                            <dd>{selectedAmp.machine_state !== undefined ? selectedAmp.machine_state : "---"}</dd>
+                          </div>
+                          <div>
+                            <dt className="font-semibold">Rotary_lock:</dt>
+                            <dd>
+                              {selectedAmp.locked === undefined ? "---" : selectedAmp.locked ? "Locked" : "Unlocked"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="font-semibold">Standby:</dt>
+                            <dd>
+                              {selectedAmp.standby === undefined ? "---" : selectedAmp.standby ? "Standby" : "Normal"}
+                            </dd>
+                          </div>
+                        </dl>
+                      </CollapsibleContent>
+                    </Collapsible>
+
+                    {selectedAmp.channelParams && (
+                      <Collapsible defaultOpen={false}>
+                        <div className="flex items-center justify-between">
+                          <CollapsibleTrigger className="flex items-center gap-1.5 rounded-md px-1 py-1 text-left hover:bg-muted/50 transition-colors [&[data-state=open]>svg]:rotate-90">
+                            <ChevronRight className="shrink-0 h-3.5 w-3.5 text-muted-foreground transition-transform duration-200" />
+                            <span className="text-sm font-semibold">{dict.monitor.ampTabs.channelData}</span>
+                          </CollapsibleTrigger>
+                          <CopyJsonButton data={preferenceChannelTrees ?? effectiveChannels} />
                         </div>
-                      </li>
-                    ))}
-                  </ul>
+                        <CollapsibleContent>
+                          <div className="space-y-2 mt-3">
+                            {effectiveChannels.map((channel, idx) => (
+                              <JsonTree
+                                key={channel.channel}
+                                label={dict.monitor.ampTabs.channelLabel
+                                  .replace("{channel}", String(channel.channel))
+                                  .replace("{input}", channel.inputName)
+                                  .replace("{output}", channel.outputName)}
+                                value={(preferenceChannelTrees?.[idx] ?? channel) as unknown as JsonValue}
+                              />
+                            ))}
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )}
+                  </div>
                 )}
               </div>
-
-              {selectedAmp.channelParams && (
-                <Collapsible defaultOpen={false} className="mt-6 border-t pt-4">
-                  <div className="flex items-center justify-between">
-                    <CollapsibleTrigger className="flex items-center gap-1.5 rounded-md px-1 py-1 text-left hover:bg-muted/50 transition-colors [&[data-state=open]>svg]:rotate-90">
-                      <ChevronRight className="shrink-0 h-3.5 w-3.5 text-muted-foreground transition-transform duration-200" />
-                      <span className="text-sm font-semibold">{dict.monitor.ampTabs.channelData}</span>
-                    </CollapsibleTrigger>
-                    <CopyJsonButton data={preferenceChannelTrees ?? effectiveChannels} />
-                  </div>
-                  <CollapsibleContent>
-                    <div className="space-y-2 mt-3">
-                      {effectiveChannels.map((channel, idx) => (
-                        <JsonTree
-                          key={channel.channel}
-                          label={dict.monitor.ampTabs.channelLabel
-                            .replace("{channel}", String(channel.channel))
-                            .replace("{input}", channel.inputName)
-                            .replace("{output}", channel.outputName)}
-                          value={(preferenceChannelTrees?.[idx] ?? channel) as unknown as JsonValue}
-                        />
-                      ))}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              )}
             </TabsContent>
           </Tabs>
         </div>

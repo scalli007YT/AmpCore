@@ -635,7 +635,8 @@ export function HeartbeatDashboard({
   channelParams,
   bridgePairs,
   outputChx,
-  channelFlags
+  channelFlags,
+  limiterLineVoltageOffset = 0
 }: {
   hb: HeartbeatData;
   mac: string;
@@ -644,6 +645,7 @@ export function HeartbeatDashboard({
   bridgePairs?: BridgeReadback[];
   outputChx?: number;
   channelFlags?: ChannelFlags[];
+  limiterLineVoltageOffset?: number;
 }) {
   const dict = useI18n();
   const byMac = useAmpActionLinkStore((state) => state.byMac);
@@ -920,7 +922,8 @@ export function HeartbeatDashboard({
                         const thresholdLines: { db: number; color: string; label: string }[] = [];
 
                         if (chParam?.rmsLimiter.enabled) {
-                          const d = voltageToMeterDb(chParam.rmsLimiter.thresholdVrms, ratedRmsV);
+                          const offsetVrms = chParam.rmsLimiter.thresholdVrms + limiterLineVoltageOffset;
+                          const d = voltageToMeterDb(offsetVrms, ratedRmsV);
                           if (d !== null) {
                             thresholdLines.push({
                               db: d,
@@ -931,7 +934,8 @@ export function HeartbeatDashboard({
                         }
 
                         if (chParam?.peakLimiter.enabled) {
-                          const d = voltageToMeterDb(chParam.peakLimiter.thresholdVp, rmsToPeakVoltage(ratedRmsV));
+                          const offsetVp = chParam.peakLimiter.thresholdVp + limiterLineVoltageOffset * Math.SQRT2;
+                          const d = voltageToMeterDb(offsetVp, rmsToPeakVoltage(ratedRmsV));
                           if (d !== null) {
                             thresholdLines.push({
                               db: d,

@@ -51,7 +51,12 @@
       "filterEmpty": "Empty",
       "emptySlotLabel": "(empty)",
       "channelData": "Channel Data",
-      "channelLabel": "Channel {channel} - {input} -> {output}"
+      "channelLabel": "Channel {channel} - {input} -> {output}",
+      "options": "Options",
+      "debugMode": "Debug Mode",
+      "limiterVoltageOffset": "Limiter Voltage Offset",
+      "limiterLineVoltageOffset": "Limiter Line Voltage Offset (0 – 1.5 V)",
+      "debugInfo": "Debug Info"
     }
   },
   "menus": {

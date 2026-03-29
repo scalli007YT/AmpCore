@@ -220,6 +220,7 @@ export function LimiterDetailsDialog({
   bridgeMode = false,
   disabled = false,
   ratedRmsV,
+  limiterLineVoltageOffset = 0,
   loadOhm,
   rms,
   peak,
@@ -242,6 +243,7 @@ export function LimiterDetailsDialog({
   bridgeMode?: boolean;
   disabled?: boolean;
   ratedRmsV?: number;
+  limiterLineVoltageOffset?: number;
   loadOhm?: number;
   rms: {
     enabled: boolean;
@@ -368,7 +370,8 @@ export function LimiterDetailsDialog({
   const thresholdLines: { db: number; color: string; label: string }[] = [];
 
   if (rms.enabled) {
-    const d = voltageToMeterDb(rmsRawThreshold, ratedRmsV);
+    const offsetRmsRaw = rmsRawThreshold + limiterLineVoltageOffset;
+    const d = voltageToMeterDb(offsetRmsRaw, ratedRmsV);
     if (d !== null) {
       thresholdLines.push({
         db: d,
@@ -379,7 +382,8 @@ export function LimiterDetailsDialog({
   }
 
   if (peak.enabled) {
-    const d = voltageToMeterDb(peakRawThreshold, rmsToPeakVoltage(ratedRmsV));
+    const offsetPeakRaw = peakRawThreshold + limiterLineVoltageOffset * Math.SQRT2;
+    const d = voltageToMeterDb(offsetPeakRaw, rmsToPeakVoltage(ratedRmsV));
     if (d !== null) {
       thresholdLines.push({
         db: d,

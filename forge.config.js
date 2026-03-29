@@ -53,6 +53,13 @@ const packagerConfig = {
   ]
 };
 
+// macOS ad-hoc signing (free, no Apple Developer account needed)
+if (process.platform === "darwin") {
+  packagerConfig.osxSign = {
+    identity: "-"
+  };
+}
+
 module.exports = {
   packagerConfig,
 

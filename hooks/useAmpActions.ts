@@ -275,9 +275,16 @@ export function useAmpActions(): AmpActionsHook {
 
   // ---------------------------------------------------------------------------
   // setAmpStandby
+  // Send the command 3 times with small gaps to improve reliability
+  // (amp may silently drop a single frame).
   // ---------------------------------------------------------------------------
   const setAmpStandby = useCallback(
     async (mac: string, standby: boolean) => {
+      const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+      await send(mac, "setAmpStandby", 0, standby, undefined, { suppressToast: true, throwOnError: false });
+      await delay(80);
+      await send(mac, "setAmpStandby", 0, standby, undefined, { suppressToast: true, throwOnError: false });
+      await delay(80);
       await send(mac, "setAmpStandby", 0, standby, undefined, { throwOnError: true });
     },
     [send]

@@ -601,7 +601,6 @@ const IN_SCALE = [-60, -48, -36, -24, -12, 0];
 
 const FLAG_DEFS: { key: keyof ChannelFlags; label: string; color: string }[] = [
   { key: "fault", label: "Fault", color: "border-red-500/60 bg-red-500/15 text-red-400" },
-  { key: "load", label: "Load", color: "border-amber-500/60 bg-amber-500/15 text-amber-400" },
   { key: "open", label: "Open", color: "border-orange-500/60 bg-orange-500/15 text-orange-400" },
   { key: "temp", label: "Temp", color: "border-red-500/60 bg-red-500/15 text-red-400" },
   { key: "clip", label: "Clip", color: "border-yellow-500/60 bg-yellow-500/15 text-yellow-400" },

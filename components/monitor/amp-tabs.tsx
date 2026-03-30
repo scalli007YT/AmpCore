@@ -255,13 +255,36 @@ export function AmpTabs() {
     if (!selectedAmp || standbyUpdating) return;
 
     const nextStandby = !(selectedAmp.standby ?? false);
+    const mac = selectedAmp.mac;
 
     setStandbyUpdating(true);
     try {
-      await setAmpStandby(selectedAmp.mac, nextStandby);
-      updateAmpStatus(selectedAmp.mac, { standby: nextStandby });
-      triggerImmediateStandbyPoll(selectedAmp.mac);
-      toast.success(nextStandby ? "Amp in standby" : "Amp normal");
+      await setAmpStandby(mac, nextStandby);
+
+      // Kick off an immediate poll and wait for the amp to confirm the new state.
+      triggerImmediateStandbyPoll(mac);
+      const confirmed = await new Promise<boolean>((resolve) => {
+        const deadline = Date.now() + 5000;
+        const check = () => {
+          const amp = useAmpStore.getState().amps.find((a) => a.mac === mac);
+          if (amp?.standby === nextStandby) {
+            resolve(true);
+            return;
+          }
+          if (Date.now() >= deadline) {
+            resolve(false);
+            return;
+          }
+          setTimeout(check, 100);
+        };
+        setTimeout(check, 100);
+      });
+
+      if (confirmed) {
+        toast.success(nextStandby ? "Amp in standby" : "Amp normal");
+      } else {
+        toast.error("Standby command was not confirmed by the amp");
+      }
     } catch {
       // Error toast is already handled in useAmpActions/send.
     } finally {

@@ -98,8 +98,6 @@ export interface ChannelFlags {
   temp: boolean;
   limit: boolean;
   sleep: boolean;
-  /** Heuristic: a load is present when output current/impedance are non-zero. */
-  load: boolean;
   /** Mirrors the original UI's Hi Z indicator: active when CPCR/power mode > 0. */
   hiZ: boolean;
   /** Truthful bridge readback from FC=50. */
@@ -398,7 +396,6 @@ function deriveChannelFlags(
       temp: rawState === 9,
       limit: rawState === 10,
       sleep: rawState === 11,
-      load: current > 0 && impedance > 0,
       hiZ: powerMode > 0,
       bridged: bridgeReadback?.bridged ?? null
     };

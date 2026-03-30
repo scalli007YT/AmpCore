@@ -1,6 +1,6 @@
 "use client";
 
-import { type DragEvent, useMemo, useRef, useState } from "react";
+import { type DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link2, SplitSquareVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -61,11 +61,53 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
   const setOutputChannels = useSpeakerConfigStore((state) => state.setOutputChannels);
   const clearOutputChannels = useSpeakerConfigStore((state) => state.clearOutputChannels);
   const assignItemToOutputs = useSpeakerConfigStore((state) => state.assignItemToOutputs);
+  const hydrateScopeFromGlobalStore = useSpeakerConfigStore((state) => state.hydrateScopeFromGlobalStore);
+  const persistScopeToGlobalStore = useSpeakerConfigStore((state) => state.persistScopeToGlobalStore);
   const selectedOutputChannels = selectedOutputChannelsByScope[scopeKey] ?? EMPTY_SELECTION;
   const outputAssignments = outputAssignmentsByScope[scopeKey] ?? EMPTY_ASSIGNMENTS;
   const channelGroups = channelGroupsByScope[scopeKey] ?? EMPTY_GROUPS;
+  const [hydratedScopeKey, setHydratedScopeKey] = useState<string | null>(null);
 
   const segments = useMemo(() => buildRowSegments(rowCount, channelGroups), [rowCount, channelGroups]);
+
+  useEffect(() => {
+    if (!scope) {
+      setHydratedScopeKey(null);
+      return;
+    }
+
+    const key = scope.trim().toUpperCase();
+    let cancelled = false;
+
+    void (async () => {
+      await hydrateScopeFromGlobalStore(scope);
+      if (!cancelled) {
+        setHydratedScopeKey(key);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [scope, hydrateScopeFromGlobalStore]);
+
+  useEffect(() => {
+    if (!scope || hydratedScopeKey !== scopeKey) return;
+
+    const timer = setTimeout(() => {
+      void persistScopeToGlobalStore(scope);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [
+    scope,
+    scopeKey,
+    hydratedScopeKey,
+    selectedOutputChannels,
+    channelGroups,
+    outputAssignments,
+    persistScopeToGlobalStore
+  ]);
 
   const buildRangeSelection = (from: number, to: number): number[] => {
     const min = Math.min(from, to);

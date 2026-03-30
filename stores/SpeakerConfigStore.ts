@@ -27,6 +27,12 @@ export interface SpeakerOutputAssignment {
   wayCount: number;
 }
 
+export interface PersistedSpeakerScopeState {
+  selectedOutputChannels: number[];
+  channelGroups: ChannelGroup[];
+  outputAssignments: Record<number, SpeakerOutputAssignment>;
+}
+
 interface SpeakerConfigStore {
   selectedOutputChannelsByScope: Record<string, number[]>;
   channelGroupsByScope: Record<string, ChannelGroup[]>;
@@ -45,6 +51,8 @@ interface SpeakerConfigStore {
     item: SpeakerDragItem;
     scope?: string | null;
   }) => { ok: boolean; error?: string };
+  hydrateScopeFromGlobalStore: (scope?: string | null) => Promise<void>;
+  persistScopeToGlobalStore: (scope?: string | null) => Promise<void>;
 }
 
 function toScopeKey(scope?: string | null): string {
@@ -59,6 +67,92 @@ function sanitizeChannels(channels: number[]): number[] {
 function sanitizeWayCount(count: number): number {
   if (!Number.isFinite(count) || count <= 0) return 1;
   return Math.max(1, Math.min(16, Math.round(count)));
+}
+
+function sanitizeGroupChannels(channels: unknown): number[] {
+  if (!Array.isArray(channels)) return [];
+  return sanitizeChannels(channels.filter((v): v is number => typeof v === "number"));
+}
+
+function sanitizeChannelGroups(groups: unknown): ChannelGroup[] {
+  if (!Array.isArray(groups)) return [];
+
+  const normalized: ChannelGroup[] = [];
+  for (const group of groups) {
+    if (!group || typeof group !== "object") continue;
+
+    const candidate = group as Partial<ChannelGroup>;
+    const type = candidate.type === "bridge" ? "bridge" : candidate.type === "join" ? "join" : null;
+    if (!type) continue;
+
+    const channels = sanitizeGroupChannels(candidate.channels);
+    if (type === "bridge" && channels.length !== 2) continue;
+    if (type === "join" && channels.length < 2) continue;
+    if (!isContiguous(channels)) continue;
+
+    normalized.push({
+      id:
+        typeof candidate.id === "string" && candidate.id.trim().length > 0
+          ? candidate.id
+          : `${type}:${Date.now()}:${channels[0]}`,
+      type,
+      channels
+    });
+  }
+
+  return normalized;
+}
+
+function sanitizeOutputAssignments(assignments: unknown): Record<number, SpeakerOutputAssignment> {
+  if (!assignments || typeof assignments !== "object") return {};
+
+  const normalized: Record<number, SpeakerOutputAssignment> = {};
+  for (const [channelKey, value] of Object.entries(assignments as Record<string, unknown>)) {
+    const channel = Number(channelKey);
+    if (!Number.isInteger(channel) || channel <= 0) continue;
+    if (!value || typeof value !== "object") continue;
+
+    const candidate = value as Partial<SpeakerOutputAssignment>;
+    if (typeof candidate.model !== "string" || typeof candidate.wayLabel !== "string") continue;
+
+    normalized[channel] = {
+      channel,
+      groupId:
+        typeof candidate.groupId === "string" && candidate.groupId.trim().length > 0
+          ? candidate.groupId
+          : `item:${Date.now()}:${channel}`,
+      itemId:
+        typeof candidate.itemId === "string" && candidate.itemId.trim().length > 0
+          ? candidate.itemId
+          : `item:${channel}`,
+      model: candidate.model,
+      wayLabel: candidate.wayLabel,
+      wayIndex:
+        typeof candidate.wayIndex === "number" && Number.isFinite(candidate.wayIndex)
+          ? Math.max(0, Math.floor(candidate.wayIndex))
+          : 0,
+      wayCount:
+        typeof candidate.wayCount === "number" && Number.isFinite(candidate.wayCount)
+          ? sanitizeWayCount(candidate.wayCount)
+          : 1
+    };
+  }
+
+  return normalized;
+}
+
+function toPersistedScopeState(input: unknown): PersistedSpeakerScopeState {
+  const raw = input && typeof input === "object" ? (input as Partial<PersistedSpeakerScopeState>) : {};
+
+  return {
+    selectedOutputChannels: sanitizeChannels(
+      Array.isArray(raw.selectedOutputChannels)
+        ? raw.selectedOutputChannels.filter((v): v is number => typeof v === "number")
+        : []
+    ),
+    channelGroups: sanitizeChannelGroups(raw.channelGroups),
+    outputAssignments: sanitizeOutputAssignments(raw.outputAssignments)
+  };
 }
 
 function deriveWayLabels(waysText: string, wayCount: number): string[] {
@@ -99,7 +193,7 @@ function removeOverlappingGroups(groups: ChannelGroup[], channels: number[]): Ch
   return groups.filter((g) => !g.channels.some((ch) => set.has(ch)));
 }
 
-export const useSpeakerConfigStore = create<SpeakerConfigStore>((set) => ({
+export const useSpeakerConfigStore = create<SpeakerConfigStore>((set, get) => ({
   selectedOutputChannelsByScope: {},
   channelGroupsByScope: {},
   outputAssignmentsByScope: {},
@@ -365,5 +459,64 @@ export const useSpeakerConfigStore = create<SpeakerConfigStore>((set) => ({
     });
 
     return { ok: true };
+  },
+
+  hydrateScopeFromGlobalStore: async (scope) => {
+    const scopeKey = toScopeKey(scope);
+
+    try {
+      const response = await fetch(
+        `/api/global-store/${encodeURIComponent(scopeKey)}?section=${encodeURIComponent("speakerConfig")}`
+      );
+      if (!response.ok) return;
+
+      const payload = (await response.json()) as {
+        success?: boolean;
+        data?: unknown;
+      };
+
+      const persisted = toPersistedScopeState(payload?.data);
+
+      set((state) => ({
+        selectedOutputChannelsByScope: {
+          ...state.selectedOutputChannelsByScope,
+          [scopeKey]: persisted.selectedOutputChannels
+        },
+        channelGroupsByScope: {
+          ...state.channelGroupsByScope,
+          [scopeKey]: persisted.channelGroups
+        },
+        outputAssignmentsByScope: {
+          ...state.outputAssignmentsByScope,
+          [scopeKey]: persisted.outputAssignments
+        }
+      }));
+    } catch {
+      // Persistence failures should not break the editing workflow.
+    }
+  },
+
+  persistScopeToGlobalStore: async (scope) => {
+    const scopeKey = toScopeKey(scope);
+
+    try {
+      const state = get();
+      const persisted: PersistedSpeakerScopeState = {
+        selectedOutputChannels: state.selectedOutputChannelsByScope[scopeKey] ?? [],
+        channelGroups: state.channelGroupsByScope[scopeKey] ?? [],
+        outputAssignments: state.outputAssignmentsByScope[scopeKey] ?? {}
+      };
+
+      await fetch(`/api/global-store/${encodeURIComponent(scopeKey)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          section: "speakerConfig",
+          value: persisted
+        })
+      });
+    } catch {
+      // Persistence failures should not break the editing workflow.
+    }
   }
 }));

@@ -42,7 +42,7 @@ import { useTabStore, type AmpSection } from "@/stores/TabStore";
 import { useAmpActions } from "@/hooks/useAmpActions";
 import { triggerImmediateLockPoll, triggerImmediateStandbyPoll } from "@/hooks/useAmpChannelData";
 import { useProjectStore } from "@/stores/ProjectStore";
-import { useAmpOptionStore } from "@/stores/AmpOptionStore";
+import { DEFAULT_AMP_OPTIONS, useAmpOptionStore } from "@/stores/AmpOptionStore";
 import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
 import { SpeakerLibraryBrowser } from "@/components/monitor/amp-tabs/speaker-library-browser";
 import { SpeakerModelDraft } from "@/components/monitor/amp-tabs/speaker-device";
@@ -82,7 +82,7 @@ export function AmpTabs() {
   const { setAmpLock, setAmpStandby } = useAmpActions();
   const selectedProject = useProjectStore((state) => state.selectedProject);
   const ampOptionsRaw = useAmpOptionStore((s) => s.options[(selectedMac ?? "").toUpperCase()]);
-  const ampOptions = { ...{ debugMode: false, limiterLineVoltageOffset: 0 }, ...ampOptionsRaw };
+  const ampOptions = { ...DEFAULT_AMP_OPTIONS, ...ampOptionsRaw };
 
   const selectedAmp = amps.find((a) => a.mac === selectedMac) ?? amps[0];
   // Filter channels based on authoritative output_chx from discovery (FC=0)
@@ -149,6 +149,11 @@ export function AmpTabs() {
       flags
     } as unknown as JsonValue;
   });
+
+  useEffect(() => {
+    if (!selectedAmp?.mac) return;
+    void useAmpOptionStore.getState().ensureHydrated(selectedAmp.mac);
+  }, [selectedAmp?.mac]);
 
   useEffect(() => {
     if (!amps.length) {

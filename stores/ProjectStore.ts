@@ -11,7 +11,6 @@ import {
 } from "@/lib/amp-action-linking";
 import { isSimulatedMac } from "@/lib/simulated-amp-identity";
 import { useAmpActionLinkStore } from "./AmpActionLinkStore";
-import { useAmpOptionStore, type AmpOptions } from "./AmpOptionStore";
 
 export type ProjectMode = "real" | "demo";
 
@@ -50,7 +49,6 @@ export interface Project {
     lastKnownName?: string;
     lastKnownIp?: string;
     constants: AssignedAmpConstants;
-    options?: Partial<AmpOptions>;
   }>;
 }
 
@@ -73,7 +71,6 @@ interface ProjectStore {
   updateAmpLastKnownName: (mac: string, lastKnownName: string) => Promise<void>;
   updateAmpLastKnownIp: (mac: string, lastKnownIp: string) => Promise<void>;
   updateAmpChannelCount: (mac: string, channelCount: number) => void;
-  updateAmpOptions: (mac: string, options: AmpOptions) => Promise<void>;
 }
 
 function mapAssignedAmpToConfig(amp: Project["assigned_amps"][number]) {
@@ -112,20 +109,6 @@ function syncAmpLinkingFromProject(project: Project | null) {
   );
 }
 
-function syncAmpOptionsFromProject(project: Project | null) {
-  if (!project) {
-    useAmpOptionStore.getState().clear();
-    return;
-  }
-
-  useAmpOptionStore.getState().hydrate(
-    project.assigned_amps.map((amp) => ({
-      mac: amp.mac,
-      options: amp.options
-    }))
-  );
-}
-
 export const useProjectStore = create<ProjectStore>()(
   persist(
     (set, get) => ({
@@ -154,7 +137,6 @@ export const useProjectStore = create<ProjectStore>()(
         }
 
         syncAmpLinkingFromProject(nextSelectedProject);
-        syncAmpOptionsFromProject(nextSelectedProject);
       },
 
       setSelectedProject: (project) => {
@@ -167,7 +149,6 @@ export const useProjectStore = create<ProjectStore>()(
         }
 
         syncAmpLinkingFromProject(project);
-        syncAmpOptionsFromProject(project);
       },
 
       setLoading: (loading) => set({ loading }),
@@ -525,31 +506,6 @@ export const useProjectStore = create<ProjectStore>()(
 
         // Note: We don't persist this immediately — it's a runtime optimization.
         // The persisted project file uses defaults anyway and gets updated on next save.
-      },
-
-      updateAmpOptions: async (mac, options) => {
-        const { projects, selectedProject } = get();
-        if (!selectedProject) return;
-
-        const normalizedMac = mac.toUpperCase();
-        const updatedProject: Project = {
-          ...selectedProject,
-          assigned_amps: selectedProject.assigned_amps.map((amp) => {
-            if (amp.mac.toUpperCase() !== normalizedMac) return amp;
-            return { ...amp, options };
-          })
-        };
-
-        set({
-          projects: projects.map((p) => (p.id === selectedProject.id ? updatedProject : p)),
-          selectedProject: updatedProject
-        });
-
-        await fetch("/api/projects", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(serializeProjectForPersistence(updatedProject))
-        });
       }
     }),
     {

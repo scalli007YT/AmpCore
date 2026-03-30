@@ -16,7 +16,18 @@ This project combines:
 - Live monitoring and amp control
 - Matrix/Limiter view
 - Preset recall/store workflow
-- Electron packaging for Windows (NSIS)
+- Electron packaging for Windows and macOS
+
+## macOS Note
+
+The app is not notarized with Apple. After downloading and extracting the zip, macOS may block it.  
+Run this command in Terminal to fix it:
+
+```bash
+xattr -cr ~/Downloads/AmpCore.app
+```
+
+Then open the app normally.
 
 ## Requirements
 

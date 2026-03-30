@@ -53,6 +53,13 @@ const packagerConfig = {
   ]
 };
 
+// macOS ad-hoc signing (prevents "damaged" error on downloaded apps)
+if (process.platform === "darwin") {
+  packagerConfig.osxSign = {
+    identity: "-"
+  };
+}
+
 module.exports = {
   packagerConfig,
 

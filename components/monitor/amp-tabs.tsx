@@ -46,6 +46,7 @@ import { useAmpOptionStore } from "@/stores/AmpOptionStore";
 import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
 import { SpeakerLibraryBrowser } from "@/components/monitor/amp-tabs/speaker-library-browser";
 import { SpeakerModelDraft } from "@/components/monitor/amp-tabs/speaker-device";
+import { SpeakerControlBar } from "@/components/monitor/amp-tabs/speaker-control-bar";
 
 type PresetFilter = "all" | "used" | "empty";
 
@@ -931,8 +932,10 @@ export function AmpTabs() {
             </TabsContent>
 
             <TabsContent value="speaker-config" className="min-h-0 flex-1 overflow-y-auto p-4 mt-0">
-              <div className="grid min-h-[24rem] gap-4 md:grid-cols-2">
+              <div className="grid min-h-[24rem] gap-4 lg:grid-cols-[minmax(0,1.1fr)_200px_minmax(0,0.9fr)]">
                 <SpeakerModelDraft channelCount={effectiveChannelCount || 4} scope={selectedMac} />
+
+                <SpeakerControlBar scope={selectedMac} />
 
                 <SpeakerLibraryBrowser isActive={activeSection === "speaker-config"} />
               </div>

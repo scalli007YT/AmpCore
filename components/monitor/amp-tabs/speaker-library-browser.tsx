@@ -8,6 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLibraryStore } from "@/stores/LibraryStore";
+import { useSpeakerConfigStore } from "@/stores/SpeakerConfigStore";
+
+const SPEAKER_DRAG_MIME = "application/x-ampcore-speaker-item";
 
 interface SpeakerLibraryBrowserProps {
   isActive: boolean;
@@ -19,6 +22,7 @@ export function SpeakerLibraryBrowser({ isActive }: SpeakerLibraryBrowserProps) 
   const error = useLibraryStore((state) => state.error);
   const hasLoaded = useLibraryStore((state) => state.hasLoaded);
   const loadLibrary = useLibraryStore((state) => state.loadLibrary);
+  const setActiveDraggedItem = useSpeakerConfigStore((state) => state.setActiveDraggedItem);
 
   const [brandFilter, setBrandFilter] = useState("");
   const [familyFilter, setFamilyFilter] = useState("");
@@ -145,7 +149,7 @@ export function SpeakerLibraryBrowser({ isActive }: SpeakerLibraryBrowserProps) 
 
       {!loading && !error && filteredFiles.length > 0 && (
         <div className="overflow-hidden rounded-md border border-border/50">
-          <div className="grid grid-cols-[56px_minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_64px_96px] gap-2 border-b border-border/50 bg-muted/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <div className="grid grid-cols-[56px_minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_64px_96px] gap-2 border-b border-border/50 bg-muted/20 px-3 py-2 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground">
             <span className="text-center">Note</span>
             <span>Brand</span>
             <span>Family</span>
@@ -158,11 +162,29 @@ export function SpeakerLibraryBrowser({ isActive }: SpeakerLibraryBrowserProps) 
               {filteredFiles.map((file) => {
                 const note = file.notes?.trim() ?? "";
                 const hasNote = note.length > 0 && note.toLowerCase() !== "notes";
+                const wayCount = Math.max(1, file.tdNum || 1);
+                const modelLabel = [file.brand, file.model].filter(Boolean).join(" ").trim() || file.name;
 
                 return (
                   <div
                     key={file.name}
-                    className="border-b border-border/40 px-3 py-2 text-sm transition-colors hover:bg-muted/20 last:border-b-0"
+                    className="cursor-grab border-b border-border/40 px-3 py-2 text-sm transition-colors hover:bg-muted/20 active:cursor-grabbing last:border-b-0"
+                    draggable
+                    title="Drag to a Physical Output channel"
+                    onDragStart={(event) => {
+                      const payload = {
+                        id: file.name,
+                        model: modelLabel,
+                        ways: file.ways || "",
+                        wayCount
+                      };
+
+                      setActiveDraggedItem(payload);
+                      event.dataTransfer.effectAllowed = "copy";
+                      event.dataTransfer.setData(SPEAKER_DRAG_MIME, JSON.stringify(payload));
+                      event.dataTransfer.setData("text/plain", modelLabel);
+                    }}
+                    onDragEnd={() => setActiveDraggedItem(null)}
                   >
                     <div className="grid grid-cols-[56px_minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,1.2fr)_64px_96px] gap-2">
                       <div className="flex items-center justify-center">

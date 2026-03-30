@@ -14,7 +14,7 @@
     "electron:package": "electron-forge package",
     "electron:make": "electron-forge make",
     "electron:make:win": "electron-forge make --platform win32",
-    "electron:make:mac": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-forge make --platform darwin",
+    "electron:make:mac": "electron-forge make --platform darwin",
     "electron:publish:branch": "node -e \"const v='v'+require('./package.json').version; const {execSync}=require('child_process'); execSync('git tag -f '+v,{stdio:'inherit'}); execSync('git push origin '+v+' -f',{stdio:'inherit'}); console.log('Retagged '+v)\"",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
@@ -37,15 +37,12 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tw-animate-css": "^1.4.0",
-    "update-electron-app": "^3.1.2",
     "uuid": "^13.0.0",
     "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.1",
-    "@electron-forge/maker-deb": "^7.11.1",
-    "@electron-forge/maker-dmg": "^7.11.1",
     "@electron-forge/maker-squirrel": "^7.11.1",
     "@electron-forge/maker-zip": "^7.11.1",
     "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",

@@ -16,16 +16,6 @@ if (process.platform === "win32") {
 const http = require("http");
 const { name: packageName, version: packageVersion } = require("../package.json");
 
-// Auto-update from GitHub Releases (no-op in dev)
-if (!process.env.ELECTRON_DEV) {
-  try {
-    const { updateElectronApp } = require("update-electron-app");
-    updateElectronApp();
-  } catch (e) {
-    console.warn("Auto-update unavailable:", e.message);
-  }
-}
-
 const PORT = 3000;
 const MIN_SPLASH_MS = 900;
 const MAIN_READY_TIMEOUT_MS = 12000;

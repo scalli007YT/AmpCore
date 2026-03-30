@@ -19,6 +19,7 @@ import {
   GridIcon,
   SlidersHorizontalIcon,
   Link2Icon,
+  LibraryBig,
   ChevronRight,
   Lock,
   LockOpen,
@@ -43,6 +44,8 @@ import { triggerImmediateLockPoll, triggerImmediateStandbyPoll } from "@/hooks/u
 import { useProjectStore } from "@/stores/ProjectStore";
 import { useAmpOptionStore } from "@/stores/AmpOptionStore";
 import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
+import { SpeakerLibraryBrowser } from "@/components/monitor/amp-tabs/speaker-library-browser";
+import { SpeakerModelDraft } from "@/components/monitor/amp-tabs/speaker-device";
 
 type PresetFilter = "all" | "used" | "empty";
 
@@ -455,7 +458,7 @@ export function AmpTabs() {
                 </div>
               </div>
 
-              <TabsList className="mt-2 grid h-9 w-full grid-cols-4 gap-1 px-1">
+              <TabsList className="mt-2 grid h-9 w-full grid-cols-5 gap-1 px-1">
                 <TabsTrigger value="main" className="h-7 w-full justify-center px-1 sm:px-3">
                   <LayoutDashboardIcon className="size-4 shrink-0" />
                   <span className="hidden sm:inline">{dict.monitor.ampTabs.tabMain}</span>
@@ -471,6 +474,10 @@ export function AmpTabs() {
                 <TabsTrigger value="preferences" className="h-7 w-full justify-center px-1 sm:px-3">
                   <SlidersHorizontalIcon className="size-4 shrink-0" />
                   <span className="hidden sm:inline">{dict.monitor.ampTabs.tabPreferences}</span>
+                </TabsTrigger>
+                <TabsTrigger value="speaker-config" className="h-7 w-full justify-center px-1 sm:px-3">
+                  <LibraryBig className="size-4 shrink-0" />
+                  <span className="hidden sm:inline">Speaker Config</span>
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -920,6 +927,14 @@ export function AmpTabs() {
                     )}
                   </div>
                 )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="speaker-config" className="min-h-0 flex-1 overflow-y-auto p-4 mt-0">
+              <div className="grid min-h-[24rem] gap-4 md:grid-cols-2">
+                <SpeakerModelDraft channelCount={effectiveChannelCount || 4} scope={selectedMac} />
+
+                <SpeakerLibraryBrowser isActive={activeSection === "speaker-config"} />
               </div>
             </TabsContent>
           </Tabs>

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 export type AppView = "monitor" | "unknown";
-export type AmpSection = "main" | "matrix" | "linking" | "preferences";
+export type AmpSection = "main" | "matrix" | "linking" | "preferences" | "speaker-config";
 
 interface TabStore {
   currentView: AppView;

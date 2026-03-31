@@ -8,11 +8,24 @@ import { LoadSpeakerConfigDialog, type LoadWaySelection } from "@/components/dia
 import { Button } from "@/components/ui/button";
 import { type ApplyWayMapping, type LibraryFileEntry, useLibraryStore } from "@/stores/LibraryStore";
 import { fileKey, formatChannelList, toScopeKey } from "@/lib/speaker-config";
-import { type SpeakerOutputAssignment, useSpeakerConfigStore } from "@/stores/SpeakerConfigStore";
+import {
+  type ChannelGroup,
+  type SpeakerOutputAssignment,
+  useSpeakerConfigStore,
+  findGroupForChannel
+} from "@/stores/SpeakerConfigStore";
+import {
+  formatPostApplyResultSummary,
+  runPostApplyActions,
+  type PostApplyContext,
+  type SpeakerApplyPolicy
+} from "@/lib/speaker-apply-policy";
+import { useAmpActions } from "@/hooks/useAmpActions";
 
 type QueuedApplyItem = {
   model: string;
   channels: number[];
+  segmentType: "single" | "join" | "bridge";
   wayMappings: ApplyWayMapping[];
   missingReason?: string;
 };
@@ -24,7 +37,8 @@ interface SpeakerControlBarProps {
 
 function buildQueuedApplyItems(
   assignments: Record<number, SpeakerOutputAssignment>,
-  files: LibraryFileEntry[]
+  files: LibraryFileEntry[],
+  channelGroups: ChannelGroup[]
 ): QueuedApplyItem[] {
   const groupedAssignments = new Map<string, SpeakerOutputAssignment[]>();
 
@@ -49,10 +63,15 @@ function buildQueuedApplyItems(
       const profile = files.find((file) => file.id === firstAssignment.itemId);
       const channels = orderedAssignments.map((assignment) => assignment.channel);
 
+      // Determine segment type from channel groups
+      const group = findGroupForChannel(channelGroups, channels[0]);
+      const segmentType: "single" | "join" | "bridge" = group?.type ?? "single";
+
       if (!profile) {
         return {
           model: firstAssignment.model,
           channels,
+          segmentType,
           wayMappings: [],
           missingReason: "Missing linked library profile"
         };
@@ -64,6 +83,7 @@ function buildQueuedApplyItems(
           return {
             model: firstAssignment.model,
             channels,
+            segmentType,
             wayMappings: [],
             missingReason: "Missing stored speaker payload"
           };
@@ -72,6 +92,7 @@ function buildQueuedApplyItems(
         return {
           model: firstAssignment.model,
           channels,
+          segmentType,
           wayMappings: [{ hex: wayData.hex, channels: channels.map((channel) => channel - 1) }]
         };
       }
@@ -84,6 +105,7 @@ function buildQueuedApplyItems(
           return {
             model: firstAssignment.model,
             channels,
+            segmentType,
             wayMappings: [],
             missingReason: `Missing stored payload for ${assignment.wayLabel}`
           };
@@ -98,6 +120,7 @@ function buildQueuedApplyItems(
       return {
         model: firstAssignment.model,
         channels,
+        segmentType,
         wayMappings
       };
     })
@@ -108,10 +131,17 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
   const scopeKey = toScopeKey(scope);
   const selectedOutputChannelsByScope = useSpeakerConfigStore((state) => state.selectedOutputChannelsByScope);
   const outputAssignmentsByScope = useSpeakerConfigStore((state) => state.outputAssignmentsByScope);
+  const channelGroupsByScope = useSpeakerConfigStore((state) => state.channelGroupsByScope);
   const joinSelected = useSpeakerConfigStore((state) => state.joinSelected);
   const bridgeSelected = useSpeakerConfigStore((state) => state.bridgeSelected);
   const splitReset = useSpeakerConfigStore((state) => state.splitReset);
   const assignItemToOutputs = useSpeakerConfigStore((state) => state.assignItemToOutputs);
+
+  // Post-apply policy state
+  const postApplyEnabled = useSpeakerConfigStore((state) => state.postApplyEnabled);
+  const postApplyChannelActions = useSpeakerConfigStore((state) => state.postApplyChannelActions);
+  const postApplyTopologyActions = useSpeakerConfigStore((state) => state.postApplyTopologyActions);
+
   const files = useLibraryStore((state) => state.files);
   const selectedFileId = useLibraryStore((state) => state.selectedFileId);
   const applyToDevice = useLibraryStore((state) => state.applyToDevice);
@@ -121,8 +151,31 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
 
+  // Amp actions for post-apply operations
+  const { muteOut, noiseGateOut, setTrimOut, setBridgePair } = useAmpActions();
+
+  // Build the post-apply policy from store state
+  const applyPolicy = useMemo<SpeakerApplyPolicy>(
+    () => ({
+      enabled: postApplyEnabled,
+      channelActions: {
+        enabled: postApplyEnabled && postApplyChannelActions.length > 0,
+        actions: postApplyChannelActions
+      },
+      topologyActions: {
+        enabled: postApplyEnabled && postApplyTopologyActions.length > 0,
+        actions: postApplyTopologyActions
+      },
+      behavior: {
+        failureMode: "continue-and-report"
+      }
+    }),
+    [postApplyEnabled, postApplyChannelActions, postApplyTopologyActions]
+  );
+
   const selection = [...(selectedOutputChannelsByScope[scopeKey] ?? [])].sort((a, b) => a - b);
   const scopedAssignments = outputAssignmentsByScope[scopeKey] ?? {};
+  const channelGroups = channelGroupsByScope[scopeKey] ?? [];
   const selectionCount = selection.length;
   const canJoin =
     selectionCount >= 2 && selection.every((channel, idx) => idx === 0 || channel === selection[idx - 1] + 1);
@@ -134,7 +187,10 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
     });
   const canReset = selectionCount > 0;
   const selectedLibraryFile = files.find((file) => fileKey(file) === selectedFileId) ?? null;
-  const queuedApplyItems = useMemo(() => buildQueuedApplyItems(scopedAssignments, files), [scopedAssignments, files]);
+  const queuedApplyItems = useMemo(
+    () => buildQueuedApplyItems(scopedAssignments, files, channelGroups),
+    [scopedAssignments, files, channelGroups]
+  );
   const readyQueuedApplyItems = queuedApplyItems.filter((item) => item.wayMappings.length > 0);
   const skippedQueuedApplyItems = queuedApplyItems.filter((item) => item.wayMappings.length === 0);
   const canApplyAll = Boolean(scope && !applying && readyQueuedApplyItems.length > 0);
@@ -156,10 +212,12 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
     const toastId = `speaker-apply-all-${scope}`;
     let appliedCount = 0;
     let failedCount = 0;
-    let totalFragmentRetries = 0;
-    let maxFrameAttempts = 1;
-    let recoveredItems = 0;
     let firstError: string | null = null;
+
+    // Track post-apply results across all items
+    let postApplySucceeded = 0;
+    let postApplyFailed = 0;
+    const postApplyActionTypes = new Set<string>();
 
     toast.loading("Applying queued speaker configs", {
       id: toastId,
@@ -189,15 +247,60 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
       }
 
       appliedCount += 1;
-      const itemFragmentRetries = outcome.results.reduce((sum, result) => sum + result.fragmentRetries, 0);
-      const itemMaxFrameAttempts = outcome.results.reduce((max, result) => Math.max(max, result.frameAttemptsMax), 1);
 
-      totalFragmentRetries += itemFragmentRetries;
-      maxFrameAttempts = Math.max(maxFrameAttempts, itemMaxFrameAttempts);
-      if (itemFragmentRetries > 0 || itemMaxFrameAttempts > 1) {
-        recoveredItems += 1;
+      // Run post-apply actions for this item
+      const allAppliedChannels0Based = Array.from(new Set(item.wayMappings.flatMap((m) => m.channels))).sort(
+        (a, b) => a - b
+      );
+
+      // Compute bridgePairsToEnable for adjustBridgeMode
+      // Each bridge group in channelGroups with 2 channels means that pair should be bridged
+      const totalOutputChannels = channelCount;
+      const bridgePairsToEnable = channelGroups
+        .filter((g) => g.type === "bridge" && g.channels.length === 2)
+        .map((g) => Math.floor((Math.min(...g.channels) - 1) / 2));
+
+      const postApplyContext: PostApplyContext = {
+        mac: scope,
+        segmentType: item.segmentType,
+        segmentChannels1Based: item.channels,
+        appliedTargets0Based: allAppliedChannels0Based,
+        totalOutputChannels,
+        bridgePairsToEnable
+      };
+
+      const postApplyResult = await runPostApplyActions(applyPolicy, postApplyContext, {
+        muteOut,
+        noiseGateOut,
+        setTrimOut,
+        setBridgePair
+      });
+
+      if (postApplyResult) {
+        postApplySucceeded += postApplyResult.succeeded;
+        postApplyFailed += postApplyResult.failed;
+
+        // Collect action types for summary
+        for (const r of postApplyResult.results) {
+          if (r.ok) {
+            const actionType = r.id.startsWith("bridge-pair")
+              ? "Bridge enabled"
+              : r.id.includes("unmuteOut")
+                ? "Unmuted"
+                : r.id.includes("disableNoiseGateOut")
+                  ? "Gate off"
+                  : r.id.includes("resetTrimOut")
+                    ? "Trim reset"
+                    : r.id;
+            postApplyActionTypes.add(actionType);
+          }
+        }
       }
     }
+
+    // Build summary
+    const postApplySummary = postApplyActionTypes.size > 0 ? [...postApplyActionTypes].join(", ") : null;
+    const hasPostApplyIssues = postApplyFailed > 0;
 
     if (failedCount > 0) {
       toast.error("Queued apply completed with errors", {
@@ -207,18 +310,20 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
       return;
     }
 
-    toast.success(
-      recoveredItems > 0
-        ? "Queued speaker configs applied with transport recovery"
-        : "Queued speaker configs applied cleanly",
-      {
+    if (hasPostApplyIssues) {
+      toast.warning("Queued speaker configs applied, but post-apply had issues", {
         id: toastId,
-        description:
-          recoveredItems > 0
-            ? `Applied ${appliedCount}, skipped ${skippedQueuedApplyItems.length}, recovered items ${recoveredItems}, fragment retries ${totalFragmentRetries}, max frame attempts ${maxFrameAttempts}`
-            : `Applied ${appliedCount} queued item(s)${skippedQueuedApplyItems.length > 0 ? `, skipped ${skippedQueuedApplyItems.length}` : ""}`
-      }
-    );
+        description: `Applied ${appliedCount} item(s). Post-apply: ${postApplySucceeded} ok, ${postApplyFailed} failed`
+      });
+      return;
+    }
+
+    toast.success("Queued speaker configs applied", {
+      id: toastId,
+      description: postApplySummary
+        ? `Applied ${appliedCount} item(s). ${postApplySummary}`
+        : `Applied ${appliedCount} queued item(s)${skippedQueuedApplyItems.length > 0 ? `, skipped ${skippedQueuedApplyItems.length}` : ""}`
+    });
   };
 
   const handleDeleteSelected = async () => {

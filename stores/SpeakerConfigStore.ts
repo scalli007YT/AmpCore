@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { toScopeKey } from "@/lib/speaker-config";
+import { type PostApplyChannelAction, type PostApplyTopologyAction } from "@/lib/speaker-apply-policy";
 
 // Re-export so store consumers can get it from their existing store import.
 export { toScopeKey } from "@/lib/speaker-config";
@@ -41,6 +42,12 @@ interface SpeakerConfigStore {
   outputAssignmentsByScope: Record<string, Record<number, SpeakerOutputAssignment>>;
   activeDraggedItem: SpeakerDragItem | null;
   dragHoverChannel: number | null;
+
+  // Post-apply policy toggles
+  postApplyEnabled: boolean;
+  postApplyChannelActions: PostApplyChannelAction[];
+  postApplyTopologyActions: PostApplyTopologyAction[];
+
   toggleOutputChannel: (channel: number, scope?: string | null) => void;
   setOutputChannels: (channels: number[], scope?: string | null) => void;
   clearOutputChannels: (scope?: string | null) => void;
@@ -57,6 +64,11 @@ interface SpeakerConfigStore {
   }) => { ok: boolean; error?: string };
   hydrateScopeFromGlobalStore: (scope?: string | null) => Promise<void>;
   persistScopeToGlobalStore: (scope?: string | null) => Promise<void>;
+
+  // Post-apply policy setters
+  setPostApplyEnabled: (enabled: boolean) => void;
+  togglePostApplyChannelAction: (action: PostApplyChannelAction) => void;
+  togglePostApplyTopologyAction: (action: PostApplyTopologyAction) => void;
 }
 
 function sanitizeChannels(channels: number[]): number[] {
@@ -198,6 +210,11 @@ export const useSpeakerConfigStore = create<SpeakerConfigStore>((set, get) => ({
   outputAssignmentsByScope: {},
   activeDraggedItem: null,
   dragHoverChannel: null,
+
+  // Post-apply policy defaults — all enabled
+  postApplyEnabled: true,
+  postApplyChannelActions: ["unmuteOut", "disableNoiseGateOut", "resetTrimOut"],
+  postApplyTopologyActions: ["adjustBridgeMode"],
 
   toggleOutputChannel: (channel, scope) => {
     if (!Number.isInteger(channel) || channel <= 0) return;
@@ -557,5 +574,33 @@ export const useSpeakerConfigStore = create<SpeakerConfigStore>((set, get) => ({
     } catch {
       // Persistence failures should not break the editing workflow.
     }
+  },
+
+  // ---------------------------------------------------------------------------
+  // Post-apply policy setters
+  // ---------------------------------------------------------------------------
+
+  setPostApplyEnabled: (enabled) => {
+    set({ postApplyEnabled: enabled });
+  },
+
+  togglePostApplyChannelAction: (action) => {
+    set((state) => {
+      const current = state.postApplyChannelActions;
+      const has = current.includes(action);
+      return {
+        postApplyChannelActions: has ? current.filter((a) => a !== action) : [...current, action]
+      };
+    });
+  },
+
+  togglePostApplyTopologyAction: (action) => {
+    set((state) => {
+      const current = state.postApplyTopologyActions;
+      const has = current.includes(action);
+      return {
+        postApplyTopologyActions: has ? current.filter((a) => a !== action) : [...current, action]
+      };
+    });
   }
 }));

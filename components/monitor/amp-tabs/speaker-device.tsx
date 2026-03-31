@@ -1,10 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link2, SplitSquareVertical, Upload } from "lucide-react";
+import { Link2, Settings2, SplitSquareVertical, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { buildRowSegments, formatChannelList, toScopeKey, type RowSegment } from "@/lib/speaker-config";
+import {
+  formatPostApplyResultSummary,
+  runPostApplyActions,
+  type PostApplyContext,
+  type SpeakerApplyPolicy
+} from "@/lib/speaker-apply-policy";
+import { useAmpActions } from "@/hooks/useAmpActions";
 import {
   type LibraryFileEntry,
   useLibraryStore,
@@ -21,6 +28,9 @@ import {
   findGroupForChannel,
   useSpeakerConfigStore
 } from "@/stores/SpeakerConfigStore";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const EMPTY_SELECTION: number[] = [];
 const EMPTY_ASSIGNMENTS: Record<number, SpeakerOutputAssignment> = {};
@@ -126,12 +136,42 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
   const assignItemToOutputs = useSpeakerConfigStore((state) => state.assignItemToOutputs);
   const hydrateScopeFromGlobalStore = useSpeakerConfigStore((state) => state.hydrateScopeFromGlobalStore);
   const persistScopeToGlobalStore = useSpeakerConfigStore((state) => state.persistScopeToGlobalStore);
+
+  // Post-apply policy state
+  const postApplyEnabled = useSpeakerConfigStore((state) => state.postApplyEnabled);
+  const postApplyChannelActions = useSpeakerConfigStore((state) => state.postApplyChannelActions);
+  const postApplyTopologyActions = useSpeakerConfigStore((state) => state.postApplyTopologyActions);
+  const setPostApplyEnabled = useSpeakerConfigStore((state) => state.setPostApplyEnabled);
+  const togglePostApplyChannelAction = useSpeakerConfigStore((state) => state.togglePostApplyChannelAction);
+  const togglePostApplyTopologyAction = useSpeakerConfigStore((state) => state.togglePostApplyTopologyAction);
+
+  // Amp actions for post-apply operations
+  const { muteOut, noiseGateOut, setTrimOut, setBridgePair } = useAmpActions();
   const selectedOutputChannels = selectedOutputChannelsByScope[scopeKey] ?? EMPTY_SELECTION;
   const outputAssignments = outputAssignmentsByScope[scopeKey] ?? EMPTY_ASSIGNMENTS;
   const channelGroups = channelGroupsByScope[scopeKey] ?? EMPTY_GROUPS;
   const [hydratedScopeKey, setHydratedScopeKey] = useState<string | null>(null);
 
   const segments = useMemo(() => buildRowSegments(rowCount, channelGroups), [rowCount, channelGroups]);
+
+  // Build the post-apply policy from store state
+  const applyPolicy = useMemo<SpeakerApplyPolicy>(
+    () => ({
+      enabled: postApplyEnabled,
+      channelActions: {
+        enabled: postApplyEnabled && postApplyChannelActions.length > 0,
+        actions: postApplyChannelActions
+      },
+      topologyActions: {
+        enabled: postApplyEnabled && postApplyTopologyActions.length > 0,
+        actions: postApplyTopologyActions
+      },
+      behavior: {
+        failureMode: "continue-and-report"
+      }
+    }),
+    [postApplyEnabled, postApplyChannelActions, postApplyTopologyActions]
+  );
 
   useEffect(() => {
     if (libraryHasLoaded) return;
@@ -429,6 +469,11 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
         return;
       }
 
+      // Collect all 0-based channels that will be targeted
+      const allAppliedChannels0Based = Array.from(new Set(wayMappings.flatMap((m) => m.channels))).sort(
+        (a, b) => a - b
+      );
+
       void (async () => {
         const toastId = `speaker-apply-${scope}-${segment.channels.join("-")}`;
         toast.loading("Applying speaker config", {
@@ -454,24 +499,63 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
           return;
         }
 
-        const totalFragmentRetries = outcome.results.reduce((sum, r) => sum + r.fragmentRetries, 0);
-        const retriedWays = outcome.results.filter((r) => r.retriedChannels > 0).length;
-        const maxFrameAttempts = outcome.results.reduce((max, r) => Math.max(max, r.frameAttemptsMax), 1);
-        const totalTargets = outcome.results.reduce((sum, r) => sum + r.channels.length, 0);
-        const recovered = retriedWays > 0 || totalFragmentRetries > 0 || maxFrameAttempts > 1;
+        // Payload apply succeeded — run post-apply actions if enabled
+        const hasPostApplyActions =
+          applyPolicy.enabled &&
+          ((applyPolicy.channelActions.enabled && applyPolicy.channelActions.actions.length > 0) ||
+            (applyPolicy.topologyActions.enabled && applyPolicy.topologyActions.actions.length > 0));
 
-        toast.success(
-          recovered ? "Speaker config applied after automatic transport recovery" : "Speaker config applied cleanly",
-          {
+        if (hasPostApplyActions) {
+          toast.loading("Running post-apply actions", {
             id: toastId,
-            description: recovered
-              ? `Targets=${totalTargets}, retried ways=${retriedWays}, fragment retries=${totalFragmentRetries}, max frame attempts=${maxFrameAttempts}`
-              : `Applied to ${totalTargets} output${totalTargets === 1 ? "" : "s"} with no transport retries`
-          }
-        );
+            description: "Configuring channel settings..."
+          });
+        }
+
+        // Compute bridgePairsToEnable for adjustBridgeMode
+        // Each bridge group in channelGroups with 2 channels means that pair should be bridged
+        const totalOutputChannels = rowCount;
+        const bridgePairsToEnable = channelGroups
+          .filter((g) => g.type === "bridge" && g.channels.length === 2)
+          .map((g) => Math.floor((Math.min(...g.channels) - 1) / 2));
+
+        const postApplyContext: PostApplyContext = {
+          mac: scope,
+          segmentType: segment.type,
+          segmentChannels1Based: segment.channels,
+          appliedTargets0Based: allAppliedChannels0Based,
+          totalOutputChannels,
+          bridgePairsToEnable
+        };
+
+        const postApplyResult = await runPostApplyActions(applyPolicy, postApplyContext, {
+          muteOut,
+          noiseGateOut,
+          setTrimOut,
+          setBridgePair
+        });
+
+        // Build final status message
+        const totalTargets = outcome.results.reduce((sum, r) => sum + r.channels.length, 0);
+        const postApplyOk = !postApplyResult || postApplyResult.failed === 0;
+        const postApplySummary = postApplyResult ? formatPostApplyResultSummary(postApplyResult) : null;
+
+        const baseDescription = `Applied to ${totalTargets} output${totalTargets === 1 ? "" : "s"}`;
+
+        if (postApplyOk) {
+          toast.success("Speaker config applied", {
+            id: toastId,
+            description: postApplySummary ? `${baseDescription}. ${postApplySummary}` : baseDescription
+          });
+        } else {
+          toast.warning("Speaker config applied, but post-apply had issues", {
+            id: toastId,
+            description: postApplySummary ?? "Some post-apply actions failed"
+          });
+        }
       })();
     },
-    [scope, applying, applyToDevice]
+    [scope, applying, applyToDevice, applyPolicy, muteOut, noiseGateOut, setTrimOut, setBridgePair]
   );
 
   return (
@@ -489,8 +573,96 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
         }
       }}
     >
-      <div className="mb-3 flex items-center">
+      <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold">Speaker Model</h3>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-md border transition-colors",
+                postApplyEnabled
+                  ? "border-primary/30 bg-primary/5 text-primary hover:border-primary/60 hover:bg-primary/15"
+                  : "border-border/40 bg-muted/10 text-muted-foreground hover:border-border/60 hover:bg-muted/20"
+              )}
+              title="Post-apply settings"
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-64">
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <h4 className="text-sm font-medium">Post-Apply Actions</h4>
+                <p className="text-xs text-muted-foreground">Actions to run after applying speaker config</p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="post-apply-enabled"
+                    checked={postApplyEnabled}
+                    onCheckedChange={(checked) => setPostApplyEnabled(checked === true)}
+                  />
+                  <Label htmlFor="post-apply-enabled" className="text-sm font-medium">
+                    Enable post-apply actions
+                  </Label>
+                </div>
+
+                <div className={cn("space-y-2 pl-1", !postApplyEnabled && "opacity-50 pointer-events-none")}>
+                  <p className="text-xs font-medium text-muted-foreground">Channel Actions</p>
+                  <div className="space-y-2 pl-2">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="post-apply-unmute"
+                        checked={postApplyChannelActions.includes("unmuteOut")}
+                        onCheckedChange={() => togglePostApplyChannelAction("unmuteOut")}
+                      />
+                      <Label htmlFor="post-apply-unmute" className="text-sm">
+                        Unmute outputs
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="post-apply-gate"
+                        checked={postApplyChannelActions.includes("disableNoiseGateOut")}
+                        onCheckedChange={() => togglePostApplyChannelAction("disableNoiseGateOut")}
+                      />
+                      <Label htmlFor="post-apply-gate" className="text-sm">
+                        Disable noise gate
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="post-apply-trim"
+                        checked={postApplyChannelActions.includes("resetTrimOut")}
+                        onCheckedChange={() => togglePostApplyChannelAction("resetTrimOut")}
+                      />
+                      <Label htmlFor="post-apply-trim" className="text-sm">
+                        Reset trim to 0 dB
+                      </Label>
+                    </div>
+                  </div>
+
+                  <p className="text-xs font-medium text-muted-foreground pt-2">Topology Actions</p>
+                  <div className="space-y-2 pl-2">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="post-apply-bridge"
+                        checked={postApplyTopologyActions.includes("adjustBridgeMode")}
+                        onCheckedChange={() => togglePostApplyTopologyAction("adjustBridgeMode")}
+                      />
+                      <Label htmlFor="post-apply-bridge" className="text-sm">
+                        Adjust bridge mode to match config
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">

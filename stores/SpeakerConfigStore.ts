@@ -1,6 +1,8 @@
 import { create } from "zustand";
+import { toScopeKey } from "@/lib/speaker-config";
 
-const GLOBAL_SCOPE = "__global__";
+// Re-export so store consumers can get it from their existing store import.
+export { toScopeKey } from "@/lib/speaker-config";
 
 export interface SpeakerDragItem {
   id: string;
@@ -55,11 +57,6 @@ interface SpeakerConfigStore {
   }) => { ok: boolean; error?: string };
   hydrateScopeFromGlobalStore: (scope?: string | null) => Promise<void>;
   persistScopeToGlobalStore: (scope?: string | null) => Promise<void>;
-}
-
-function toScopeKey(scope?: string | null): string {
-  const normalized = scope?.trim().toUpperCase();
-  return normalized && normalized.length > 0 ? normalized : GLOBAL_SCOPE;
 }
 
 function sanitizeChannels(channels: number[]): number[] {

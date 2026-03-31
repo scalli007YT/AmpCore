@@ -49,8 +49,8 @@ export function useAmpChannelData(): void {
 
     if (!channelDataTimer) {
       channelDataTimer = setInterval(() => {
-        const { applying, applyQuietUntil } = useLibraryStore.getState();
-        if (applying || Date.now() < applyQuietUntil) {
+        const { applying } = useLibraryStore.getState();
+        if (applying) {
           return;
         }
 

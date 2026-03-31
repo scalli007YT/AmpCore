@@ -12,23 +12,13 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  type ChannelGroup,
-  type SpeakerOutputAssignment,
-  findGroupForChannel,
-  useSpeakerConfigStore
-} from "@/stores/SpeakerConfigStore";
+import { type ChannelGroup, type SpeakerOutputAssignment, useSpeakerConfigStore } from "@/stores/SpeakerConfigStore";
+import { buildRowSegments, toScopeKey, type RowSegment } from "@/lib/speaker-config";
 import { type LibraryFileEntry } from "@/stores/LibraryStore";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-type RowSegment = {
-  channels: number[];
-  group: ChannelGroup | null;
-  type: "single" | "join" | "bridge";
-};
 
 export interface LoadWaySelection {
   channel: number;
@@ -53,26 +43,6 @@ interface LoadSpeakerConfigDialogProps {
 
 const NO_CHANGES = "__no_changes__";
 
-function buildRowSegments(rowCount: number, groups: ChannelGroup[]) {
-  const segments: RowSegment[] = [];
-  const visited = new Set<number>();
-
-  for (let ch = 1; ch <= rowCount; ch++) {
-    if (visited.has(ch)) continue;
-
-    const group = findGroupForChannel(groups, ch);
-    if (group) {
-      for (const gch of group.channels) visited.add(gch);
-      segments.push({ channels: group.channels, group, type: group.type });
-    } else {
-      visited.add(ch);
-      segments.push({ channels: [ch], group: null, type: "single" });
-    }
-  }
-
-  return segments;
-}
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -85,7 +55,7 @@ export function LoadSpeakerConfigDialog({
   profile,
   onLoad
 }: LoadSpeakerConfigDialogProps) {
-  const scopeKey = scope?.trim().toUpperCase() || "__global__";
+  const scopeKey = toScopeKey(scope);
   const channelGroupsByScope = useSpeakerConfigStore((s) => s.channelGroupsByScope);
   const outputAssignmentsByScope = useSpeakerConfigStore((s) => s.outputAssignmentsByScope);
 
@@ -139,7 +109,11 @@ export function LoadSpeakerConfigDialog({
     const profileWays = profile.ways ?? [];
 
     for (const segment of segments) {
-      for (const ch of segment.channels) {
+      // For bridge segments emit only the first channel — assignItemToOutputs
+      // is bridge-aware and will expand the single assignment to both channels.
+      const channelsToEmit = segment.type === "bridge" ? [segment.channels[0]] : segment.channels;
+
+      for (const ch of channelsToEmit) {
         const selectedWayId = selections[ch];
         if (!selectedWayId) continue;
 
@@ -209,7 +183,7 @@ export function LoadSpeakerConfigDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Way Description</DialogTitle>
+          <DialogTitle>Load Speaker Config</DialogTitle>
           <DialogDescription>
             Assign ways from <span className="font-medium text-foreground">{profileDisplayName}</span> to each output
             channel.

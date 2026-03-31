@@ -84,7 +84,6 @@ export function AmpTabs() {
   const selectedProject = useProjectStore((state) => state.selectedProject);
   const ampOptionsRaw = useAmpOptionStore((s) => s.options[(selectedMac ?? "").toUpperCase()]);
   const speakerApplying = useLibraryStore((state) => state.applying);
-  const speakerApplyQuietUntil = useLibraryStore((state) => state.applyQuietUntil);
   const ampOptions = { ...DEFAULT_AMP_OPTIONS, ...ampOptionsRaw };
 
   const selectedAmp = amps.find((a) => a.mac === selectedMac) ?? amps[0];
@@ -176,19 +175,19 @@ export function AmpTabs() {
 
   useEffect(() => {
     if (!selectedAmp?.reachable) return;
-    if (speakerApplying || Date.now() < speakerApplyQuietUntil) return;
+    if (speakerApplying) return;
 
     void refreshCurrentPreset(selectedAmp.mac);
 
     const timer = setInterval(() => {
-      if (useLibraryStore.getState().applying || Date.now() < useLibraryStore.getState().applyQuietUntil) {
+      if (useLibraryStore.getState().applying) {
         return;
       }
       void refreshCurrentPreset(selectedAmp.mac);
     }, 4000);
 
     return () => clearInterval(timer);
-  }, [selectedAmp?.mac, selectedAmp?.reachable, refreshCurrentPreset, speakerApplying, speakerApplyQuietUntil]);
+  }, [selectedAmp?.mac, selectedAmp?.reachable, refreshCurrentPreset, speakerApplying]);
 
   useEffect(() => {
     setActivePreset(null);

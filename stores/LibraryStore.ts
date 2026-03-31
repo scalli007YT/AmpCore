@@ -134,7 +134,6 @@ interface LibraryStore {
   saving: boolean;
   applying: boolean;
   deleting: boolean;
-  applyQuietUntil: number;
   error: string | null;
   hasLoaded: boolean;
   setSelectedFileId: (fileId: string | null) => void;
@@ -151,7 +150,6 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   saving: false,
   applying: false,
   deleting: false,
-  applyQuietUntil: 0,
   error: null,
   hasLoaded: false,
 
@@ -160,6 +158,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   loadLibrary: async () => {
+    if (get().loading) return;
     set({ loading: true, error: null });
 
     try {
@@ -474,11 +473,11 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       }
 
       const allOk = results.every((r) => r.sent);
-      set({ applying: false, applyQuietUntil: Date.now() + 2500 });
+      set({ applying: false });
       return { ok: allOk, results };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to apply to device";
-      set({ applying: false, applyQuietUntil: Date.now() + 2500, error: message });
+      set({ applying: false, error: message });
       return { ok: false, results: [], error: message };
     }
   }

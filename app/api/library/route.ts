@@ -247,12 +247,12 @@ export async function GET() {
       .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".json"))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    const files: LibrarySpeakerProfileRecord[] = [];
-
-    for (const entry of libraryFiles) {
-      const raw = await fs.readFile(path.join(libraryDir, entry.name), "utf-8");
-      files.push(parseSpeakerLibraryFile(entry.name, raw));
-    }
+    const files = await Promise.all(
+      libraryFiles.map(async (entry) => {
+        const raw = await fs.readFile(path.join(libraryDir, entry.name), "utf-8");
+        return parseSpeakerLibraryFile(entry.name, raw);
+      })
+    );
 
     return NextResponse.json({ success: true, files });
   } catch (err) {
@@ -302,7 +302,6 @@ export async function DELETE(request: Request) {
 
     const profileId = normalizeRequestedId(requestedId);
     const libraryDir = getLibraryDir();
-    await fs.mkdir(libraryDir, { recursive: true });
 
     try {
       await fs.unlink(path.join(libraryDir, `${profileId}.json`));

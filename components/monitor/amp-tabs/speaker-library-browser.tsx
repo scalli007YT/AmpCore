@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { type LibraryFileEntry, useLibraryStore } from "@/stores/LibraryStore";
+import { fileKey as getFileKey } from "@/lib/speaker-config";
 import { useSpeakerConfigStore } from "@/stores/SpeakerConfigStore";
 
 interface SpeakerLibraryBrowserProps {
@@ -52,22 +53,22 @@ function DraggableLibraryRow({
   const note = file.notes?.trim() ?? "";
   const hasNote = note.length > 0;
   const waysText = file.wayLabelsText?.trim() || file.ways.map((way) => way.label).join(" & ");
-  const fileKey = file.id || file.name;
+  const fk = getFileKey(file);
 
   return (
     <Draggable
       nodeRef={nodeRef}
       axis="both"
-      handle={`.speaker-library-drag-handle-${fileKey}`}
+      handle="[data-drag-handle='true']"
       position={{ x: 0, y: 0 }}
       onStart={(event) => {
-        setSelectedFileId(fileKey);
+        setSelectedFileId(fk);
         setActiveDraggedItem(dragPayload);
-        setDragState({ id: fileKey, x: 0, y: 0 });
+        setDragState({ id: fk, x: 0, y: 0 });
         beginDragPreview(file, event);
       }}
       onDrag={(event, data: DraggableData) => {
-        setDragState({ id: fileKey, x: data.x, y: data.y });
+        setDragState({ id: fk, x: data.x, y: data.y });
         updateDragPreview(event);
       }}
       onStop={(event) => {
@@ -84,17 +85,18 @@ function DraggableLibraryRow({
         role="button"
         tabIndex={0}
         title="Drag to a Physical Output channel"
-        onClick={() => setSelectedFileId(fileKey)}
+        onClick={() => setSelectedFileId(fk)}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            setSelectedFileId(fileKey);
+            setSelectedFileId(fk);
           }
         }}
       >
         <div className="grid grid-cols-[40px_56px_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)_56px_110px] gap-2">
           <div
-            className={`speaker-library-drag-handle-${fileKey} flex items-center justify-center text-muted-foreground/60 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+            data-drag-handle="true"
+            className={`flex items-center justify-center text-muted-foreground/60 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
           >
             <GripVertical className="h-4 w-4" aria-hidden="true" />
           </div>
@@ -372,19 +374,19 @@ export function SpeakerLibraryBrowser({ isActive }: SpeakerLibraryBrowserProps) 
                 const wayCount = Math.max(1, file.wayCount || file.ways.length || 1);
                 const waysText = file.wayLabelsText?.trim() || file.ways.map((way) => way.label).join(" & ");
                 const modelLabel = [file.brand, file.model].filter(Boolean).join(" ").trim() || file.id || file.name;
-                const fileKey = file.id || file.name;
-                const selected = selectedFileId === fileKey;
+                const fk = getFileKey(file);
+                const selected = selectedFileId === fk;
                 const dragPayload = {
-                  id: fileKey,
+                  id: fk,
                   model: modelLabel,
                   ways: waysText,
                   wayCount
                 };
-                const isDragging = dragState?.id === fileKey;
+                const isDragging = dragState?.id === fk;
 
                 return (
                   <DraggableLibraryRow
-                    key={fileKey}
+                    key={fk}
                     file={file}
                     selected={selected}
                     isDragging={isDragging}

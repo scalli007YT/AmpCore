@@ -7,6 +7,7 @@ import { ConfirmActionDialog } from "@/components/dialogs/confirm-action-dialog"
 import { LoadSpeakerConfigDialog, type LoadWaySelection } from "@/components/dialogs/load-speaker-config-dialog";
 import { Button } from "@/components/ui/button";
 import { type ApplyWayMapping, type LibraryFileEntry, useLibraryStore } from "@/stores/LibraryStore";
+import { fileKey, formatChannelList, toScopeKey } from "@/lib/speaker-config";
 import { type SpeakerOutputAssignment, useSpeakerConfigStore } from "@/stores/SpeakerConfigStore";
 
 type QueuedApplyItem = {
@@ -19,10 +20,6 @@ type QueuedApplyItem = {
 interface SpeakerControlBarProps {
   scope?: string | null;
   channelCount?: number;
-}
-
-function formatChannelList(channels: number[]): string {
-  return channels.map((channel) => `CH ${channel}`).join(", ");
 }
 
 function buildQueuedApplyItems(
@@ -108,7 +105,7 @@ function buildQueuedApplyItems(
 }
 
 export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBarProps) {
-  const scopeKey = scope?.trim().toUpperCase() || "__global__";
+  const scopeKey = toScopeKey(scope);
   const selectedOutputChannelsByScope = useSpeakerConfigStore((state) => state.selectedOutputChannelsByScope);
   const outputAssignmentsByScope = useSpeakerConfigStore((state) => state.outputAssignmentsByScope);
   const joinSelected = useSpeakerConfigStore((state) => state.joinSelected);
@@ -136,7 +133,7 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
       return selection.includes(start) && selection.includes(start + 1);
     });
   const canReset = selectionCount > 0;
-  const selectedLibraryFile = files.find((file) => (file.id || file.name) === selectedFileId) ?? null;
+  const selectedLibraryFile = files.find((file) => fileKey(file) === selectedFileId) ?? null;
   const queuedApplyItems = useMemo(() => buildQueuedApplyItems(scopedAssignments, files), [scopedAssignments, files]);
   const readyQueuedApplyItems = queuedApplyItems.filter((item) => item.wayMappings.length > 0);
   const skippedQueuedApplyItems = queuedApplyItems.filter((item) => item.wayMappings.length === 0);
@@ -227,7 +224,7 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
   const handleDeleteSelected = async () => {
     if (!selectedLibraryFile) return;
 
-    const outcome = await deleteLibraryFile(selectedLibraryFile.id || selectedLibraryFile.name);
+    const outcome = await deleteLibraryFile(fileKey(selectedLibraryFile));
     if (!outcome.ok) {
       toast.error("Failed to delete library config", {
         description: outcome.error ?? "The selected library config could not be deleted"
@@ -365,7 +362,7 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
                 startChannel: sel.channel,
                 maxChannels: channelCount,
                 item: {
-                  id: selectedLibraryFile.id || selectedLibraryFile.name,
+                  id: fileKey(selectedLibraryFile),
                   model:
                     [selectedLibraryFile.brand, selectedLibraryFile.model].filter(Boolean).join(" ").trim() ||
                     selectedLibraryFile.name,

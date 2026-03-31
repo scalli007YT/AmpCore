@@ -1,9 +1,10 @@
 "use client";
 
-import { type DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link2, SplitSquareVertical, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { buildRowSegments, formatChannelList, toScopeKey, type RowSegment } from "@/lib/speaker-config";
 import {
   type LibraryFileEntry,
   useLibraryStore,
@@ -20,25 +21,14 @@ import {
   findGroupForChannel,
   useSpeakerConfigStore
 } from "@/stores/SpeakerConfigStore";
-import { SPEAKER_DRAG_MIME } from "@/lib/constants";
 
 const EMPTY_SELECTION: number[] = [];
-const EMPTY_ASSIGNMENTS: Record<number, { model: string; wayLabel: string }> = {};
+const EMPTY_ASSIGNMENTS: Record<number, SpeakerOutputAssignment> = {};
 const EMPTY_GROUPS: ChannelGroup[] = [];
 
 interface SpeakerDeviceDraftProps {
   channelCount?: number;
   scope?: string | null;
-}
-
-type RowSegment = {
-  channels: number[];
-  group: ChannelGroup | null;
-  type: "single" | "join" | "bridge";
-};
-
-function formatChannelList(channels: number[]): string {
-  return channels.map((channel) => `CH ${channel + 1}`).join(", ");
 }
 
 function buildSaveProgressMessage(progress: SaveProgress): { title: string; description?: string } {
@@ -63,7 +53,8 @@ function buildSaveProgressMessage(progress: SaveProgress): { title: string; desc
 }
 
 function buildApplyProgressMessage(progress: ApplyProgress): { title: string; description?: string } {
-  const channelText = formatChannelList(progress.channels);
+  // progress.channels are 0-based (API convention); convert to 1-based for display
+  const channelText = formatChannelList(progress.channels.map((ch) => ch + 1));
 
   if (progress.stage === "sending-way") {
     return {
@@ -97,30 +88,9 @@ function buildApplyProgressMessage(progress: ApplyProgress): { title: string; de
 }
 
 /** Build a list of visual row segments from channel groups. */
-function buildRowSegments(rowCount: number, groups: ChannelGroup[]) {
-  const segments: RowSegment[] = [];
-
-  const visited = new Set<number>();
-
-  for (let ch = 1; ch <= rowCount; ch++) {
-    if (visited.has(ch)) continue;
-
-    const group = findGroupForChannel(groups, ch);
-    if (group) {
-      for (const gch of group.channels) visited.add(gch);
-      segments.push({ channels: group.channels, group, type: group.type });
-    } else {
-      visited.add(ch);
-      segments.push({ channels: [ch], group: null, type: "single" });
-    }
-  }
-
-  return segments;
-}
-
 export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraftProps) {
   const rowCount = Math.max(1, Math.min(channelCount, 8));
-  const scopeKey = scope?.trim().toUpperCase() || "__global__";
+  const scopeKey = toScopeKey(scope);
   const lastClickedChannelRef = useRef<number | null>(null);
   const [previewChannels, setPreviewChannels] = useState<number[]>([]);
   const [previewValid, setPreviewValid] = useState(true);
@@ -290,27 +260,6 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
     setEditorOpen(true);
   };
 
-  const parseDragItem = (event: DragEvent<HTMLElement>): SpeakerDragItem | null => {
-    const payload = event.dataTransfer.getData(SPEAKER_DRAG_MIME);
-    if (!payload) return null;
-
-    try {
-      const parsed = JSON.parse(payload) as SpeakerDragItem;
-      if (!parsed || typeof parsed !== "object") return null;
-      if (typeof parsed.id !== "string" || typeof parsed.model !== "string" || typeof parsed.ways !== "string") {
-        return null;
-      }
-      if (typeof parsed.wayCount !== "number" || parsed.wayCount <= 0) return null;
-      return parsed;
-    } catch {
-      return null;
-    }
-  };
-
-  const resolveDraggedItem = (event: DragEvent<HTMLElement>): SpeakerDragItem | null => {
-    return activeDraggedItem ?? parseDragItem(event);
-  };
-
   const buildDropSpan = (startChannel: number, wayCount: number) => {
     const count = Math.max(1, Math.round(wayCount));
     // Bridge-aware: if dropping a 1-way config on a bridged channel, expand to the full bridge pair
@@ -443,6 +392,88 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
     );
   };
 
+  const applySegment = useCallback(
+    (segment: RowSegment, linkedProfile: LibraryFileEntry) => {
+      if (!scope || applying) return;
+
+      // Build per-way apply mappings from the library profile.
+      // For bridges: all bridge channels receive the single way's data.
+      // For joins: each way maps to its corresponding channel.
+      // For singles: way 0 → the single channel.
+      const wayMappings: ApplyWayMapping[] = [];
+      const wayCount = segment.type === "join" ? segment.channels.length : 1;
+
+      if (segment.type === "bridge") {
+        const wayData = linkedProfile.deviceData?.[0];
+        if (wayData?.hex) {
+          wayMappings.push({
+            hex: wayData.hex,
+            channels: segment.channels.map((ch) => ch - 1) // 1-based → 0-based
+          });
+        }
+      } else {
+        for (let idx = 0; idx < wayCount; idx++) {
+          const wayData = linkedProfile.deviceData?.[idx];
+          const ch = segment.channels[idx];
+          if (wayData?.hex && ch !== undefined) {
+            wayMappings.push({
+              hex: wayData.hex,
+              channels: [ch - 1] // 1-based → 0-based
+            });
+          }
+        }
+      }
+
+      if (wayMappings.length === 0) {
+        toast.error("No speaker payload found for this profile");
+        return;
+      }
+
+      void (async () => {
+        const toastId = `speaker-apply-${scope}-${segment.channels.join("-")}`;
+        toast.loading("Applying speaker config", {
+          id: toastId,
+          description: `Preparing ${wayMappings.length} way${wayMappings.length === 1 ? "" : "s"}`
+        });
+
+        const outcome = await applyToDevice({
+          mac: scope,
+          wayMappings,
+          onProgress: (progress) => {
+            const next = buildApplyProgressMessage(progress);
+            toast.loading(next.title, { id: toastId, description: next.description });
+          }
+        });
+
+        if (!outcome.ok) {
+          const firstError = outcome.results.find((r) => !r.sent)?.error;
+          toast.error("Speaker config apply failed", {
+            id: toastId,
+            description: firstError ?? outcome.error ?? "The amp did not accept the speaker payload"
+          });
+          return;
+        }
+
+        const totalFragmentRetries = outcome.results.reduce((sum, r) => sum + r.fragmentRetries, 0);
+        const retriedWays = outcome.results.filter((r) => r.retriedChannels > 0).length;
+        const maxFrameAttempts = outcome.results.reduce((max, r) => Math.max(max, r.frameAttemptsMax), 1);
+        const totalTargets = outcome.results.reduce((sum, r) => sum + r.channels.length, 0);
+        const recovered = retriedWays > 0 || totalFragmentRetries > 0 || maxFrameAttempts > 1;
+
+        toast.success(
+          recovered ? "Speaker config applied after automatic transport recovery" : "Speaker config applied cleanly",
+          {
+            id: toastId,
+            description: recovered
+              ? `Targets=${totalTargets}, retried ways=${retriedWays}, fragment retries=${totalFragmentRetries}, max frame attempts=${maxFrameAttempts}`
+              : `Applied to ${totalTargets} output${totalTargets === 1 ? "" : "s"} with no transport retries`
+          }
+        );
+      })();
+    },
+    [scope, applying, applyToDevice]
+  );
+
   return (
     <section
       className="flex h-full min-h-0 flex-col rounded-md border border-border/50 bg-background/30 p-4"
@@ -496,88 +527,6 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                 : undefined;
               const hasDeviceData = linkedProfile?.deviceData?.some((d) => d?.hex) ?? false;
 
-              const handleApply = () => {
-                if (!scope || !linkedProfile || applying) return;
-
-                // Build per-way apply mappings from the library profile.
-                // For bridges: all bridge channels receive the single way's data.
-                // For joins: each way maps to its corresponding channel.
-                // For singles: way 0 → the single channel.
-                const wayMappings: ApplyWayMapping[] = [];
-
-                if (segment.type === "bridge") {
-                  // 1-way config applied to the full bridge pair
-                  const wayData = linkedProfile.deviceData?.[0];
-                  if (wayData?.hex) {
-                    wayMappings.push({
-                      hex: wayData.hex,
-                      channels: segment.channels.map((ch) => ch - 1) // 1-based → 0-based
-                    });
-                  }
-                } else {
-                  // Join or single: one way per channel
-                  for (let idx = 0; idx < wayCount; idx++) {
-                    const wayData = linkedProfile.deviceData?.[idx];
-                    const ch = segment.channels[idx];
-                    if (wayData?.hex && ch !== undefined) {
-                      wayMappings.push({
-                        hex: wayData.hex,
-                        channels: [ch - 1] // 1-based → 0-based
-                      });
-                    }
-                  }
-                }
-
-                if (wayMappings.length === 0) {
-                  toast.error("No speaker payload found for this profile");
-                  return;
-                }
-
-                void (async () => {
-                  const toastId = `speaker-apply-${scope}-${segment.channels.join("-")}`;
-                  toast.loading("Applying speaker config", {
-                    id: toastId,
-                    description: `Preparing ${wayMappings.length} way${wayMappings.length === 1 ? "" : "s"}`
-                  });
-
-                  const outcome = await applyToDevice({
-                    mac: scope,
-                    wayMappings,
-                    onProgress: (progress) => {
-                      const next = buildApplyProgressMessage(progress);
-                      toast.loading(next.title, { id: toastId, description: next.description });
-                    }
-                  });
-
-                  if (!outcome.ok) {
-                    const firstError = outcome.results.find((r) => !r.sent)?.error;
-                    toast.error("Speaker config apply failed", {
-                      id: toastId,
-                      description: firstError ?? outcome.error ?? "The amp did not accept the speaker payload"
-                    });
-                    return;
-                  }
-
-                  const totalFragmentRetries = outcome.results.reduce((sum, r) => sum + r.fragmentRetries, 0);
-                  const retriedWays = outcome.results.filter((r) => r.retriedChannels > 0).length;
-                  const maxFrameAttempts = outcome.results.reduce((max, r) => Math.max(max, r.frameAttemptsMax), 1);
-                  const totalTargets = outcome.results.reduce((sum, r) => sum + r.channels.length, 0);
-                  const recovered = retriedWays > 0 || totalFragmentRetries > 0 || maxFrameAttempts > 1;
-
-                  toast.success(
-                    recovered
-                      ? "Speaker config applied after automatic transport recovery"
-                      : "Speaker config applied cleanly",
-                    {
-                      id: toastId,
-                      description: recovered
-                        ? `Targets=${totalTargets}, retried ways=${retriedWays}, fragment retries=${totalFragmentRetries}, max frame attempts=${maxFrameAttempts}`
-                        : `Applied to ${totalTargets} output${totalTargets === 1 ? "" : "s"} with no transport retries`
-                    }
-                  );
-                })();
-              };
-
               return (
                 <div key={`seg-${firstCh}`} className="col-span-3 grid grid-cols-subgrid">
                   {/* Speaker Model column — 1 row spanning the whole group */}
@@ -597,7 +546,7 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                       {hasDeviceData && (
                         <button
                           type="button"
-                          onClick={handleApply}
+                          onClick={() => linkedProfile && applySegment(segment, linkedProfile)}
                           disabled={applying}
                           className={cn(
                             "flex h-full w-8 shrink-0 items-center justify-center rounded-md border transition-colors",

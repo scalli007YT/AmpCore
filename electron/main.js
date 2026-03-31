@@ -14,6 +14,10 @@ let mainWindow;
 let splashWindow;
 let server;
 
+function getSpeakerLibraryDir() {
+  return path.join(app.getPath("userData"), "storage", "speaker-library");
+}
+
 // Prevent multiple app instances.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
@@ -246,6 +250,25 @@ ipcMain.handle("window:is-maximized", () => {
 ipcMain.handle("app:get-version", () => packageVersion);
 
 ipcMain.handle("app:get-platform", () => process.platform);
+
+ipcMain.handle("library:open-config-folder", async () => {
+  try {
+    const directory = getSpeakerLibraryDir();
+    fs.mkdirSync(directory, { recursive: true });
+
+    const error = await shell.openPath(directory);
+    if (error) {
+      return { ok: false, error };
+    }
+
+    return { ok: true, path: directory };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+});
 
 // --- Lifecycle ------------------------------------------------------------
 

@@ -29,7 +29,13 @@ import { EventEmitter } from "events";
 import { FuncCode, parseHeartbeat } from "./amp-device";
 import type { BridgeReadback, HeartbeatData } from "@/stores/AmpStore";
 import { NetworkAdapter } from "@/lib/network/network-adapter";
-import { prependNetworkHeaderToAssembled } from "@/lib/network/protocol";
+import {
+  prependNetworkHeaderToAssembled,
+  buildStructHeader,
+  buildNetworkDataHeader,
+  calcCheckCode,
+  FRAGMENT_SIZE
+} from "@/lib/network/protocol";
 
 // ---------------------------------------------------------------------------
 // Constants — matching original C# values exactly
@@ -39,6 +45,7 @@ const HEARTBEAT_MS = 140; // queryT_V_A Thread.Sleep(140)
 const DISCOVERY_MS = 4000; // TimerRefresh.Interval = 4000
 const DISCOVERY_WINDOW_MS = 1000; // MainWindow.Sleep(1000) after broadcast
 const DISCOVERY_PROBE_WINDOW_MS = 220; // initUDP2-style quick per-NIC probe
+const MAX_PACKETS_COUNT = 255; // network header packets_count is uint8
 // Watchdog: if an amp hasn't sent a heartbeat in this many ms → offline
 const HEARTBEAT_TIMEOUT_MS = 3_500; // 25 × 140 ms
 
@@ -72,6 +79,11 @@ export interface HeartbeatEvent {
 
 export interface OfflineEvent {
   mac: string;
+}
+
+export interface SendFCResult {
+  frameAttempts: number;
+  fragmentRetries: number;
 }
 
 async function getDirectedBroadcasts(): Promise<string[]> {
@@ -247,6 +259,19 @@ class AmpController extends EventEmitter {
     }
   >();
   private readonly oneShotQueueByKey = new Map<string, Promise<Buffer>>();
+  private readonly pendingSendAckByIp = new Map<
+    string,
+    {
+      timeout: ReturnType<typeof setTimeout>;
+      expectedStep: number;
+      expectedCount: number;
+      expectedLastlen: number;
+      resolve: () => void;
+      reject: (error: Error) => void;
+    }
+  >();
+  private readonly ioQueueByIp = new Map<string, Promise<void>>();
+  private readonly lastFc27ByIp = new Map<string, { body: Buffer; at: number }>();
 
   /**
    * Cross-subnet support: remembered MAC→IP pairs from discovery responses.
@@ -302,6 +327,21 @@ class AmpController extends EventEmitter {
     this.running = false;
     this._clearTimers();
     void this.network.stop();
+  }
+
+  private _handleNetworkError(err: Error): void {
+    console.error("[AmpController] network error", err);
+    if (!this.running) return;
+
+    this._clearTimers();
+    void this.network.stop().finally(() => {
+      if (!this.running) return;
+      setTimeout(() => {
+        if (this.running) {
+          void this._bindAndStart();
+        }
+      }, 200);
+    });
   }
 
   /** Pause heartbeat loop during a user command (mirrors isRefresh = false) */
@@ -384,6 +424,14 @@ class AmpController extends EventEmitter {
     return null;
   }
 
+  /** Last successful FC=27 payload for this amp, if available. */
+  getLastFC27(mac: string): { body: Buffer; at: number } | null {
+    const ip = this.getIpForMac(mac);
+    if (!ip) return null;
+    const hit = this.lastFc27ByIp.get(ip);
+    return hit ? { body: Buffer.from(hit.body), at: hit.at } : null;
+  }
+
   /**
    * Seed an IP into rememberedIps for cross-subnet discovery.
    * Also sends an immediate probe if socket is ready, or schedules one for shortly after.
@@ -449,15 +497,41 @@ class AmpController extends EventEmitter {
       throw new Error("Socket not initialized");
     }
 
-    const previous = this.fc27QueueByIp.get(ip) ?? Promise.resolve(Buffer.alloc(0));
-    const queued = previous.catch(() => Buffer.alloc(0)).then(() => this._sendAndAwaitFC27(ip, channel));
+    return this._runIpSerial(ip, async () => {
+      const timeoutMs = 2000;
 
-    this.fc27QueueByIp.set(ip, queued);
+      const previous = this.fc27QueueByIp.get(ip) ?? Promise.resolve(Buffer.alloc(0));
+      const queued = previous.catch(() => Buffer.alloc(0)).then(() => this._sendAndAwaitFC27(ip, channel, timeoutMs));
 
-    return queued.finally(() => {
-      if (this.fc27QueueByIp.get(ip) === queued) {
-        this.fc27QueueByIp.delete(ip);
-      }
+      this.fc27QueueByIp.set(ip, queued);
+
+      return queued
+        .then((buf) => {
+          this.lastFc27ByIp.set(ip, { body: Buffer.from(buf), at: Date.now() });
+          return buf;
+        })
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          const isTimeout = msg.toLowerCase().includes("timed out");
+          if (!isTimeout) {
+            throw err;
+          }
+
+          // Touring hardening: one immediate retry for transient post-apply gaps.
+          return this._sendAndAwaitFC27(ip, channel, 2200)
+            .then((retryBuf) => {
+              this.lastFc27ByIp.set(ip, { body: Buffer.from(retryBuf), at: Date.now() });
+              return retryBuf;
+            })
+            .catch((retryErr) => {
+              throw retryErr;
+            });
+        })
+        .finally(() => {
+          if (this.fc27QueueByIp.get(ip) === queued) {
+            this.fc27QueueByIp.delete(ip);
+          }
+        });
     });
   }
 
@@ -494,18 +568,145 @@ class AmpController extends EventEmitter {
       throw new Error("Socket not initialized");
     }
 
-    const key = `${ip}:${fc}`;
-    const previous = this.oneShotQueueByKey.get(key) ?? Promise.resolve(Buffer.alloc(0));
-    const queued = previous
-      .catch(() => Buffer.alloc(0))
-      .then(() => this._sendAndAwaitOneShot(ip, fc, chx, body, inOutFlag, timeoutMs));
+    return this._runIpSerial(ip, async () => {
+      const key = `${ip}:${fc}`;
+      const previous = this.oneShotQueueByKey.get(key) ?? Promise.resolve(Buffer.alloc(0));
+      const queued = previous
+        .catch(() => Buffer.alloc(0))
+        .then(() => this._sendAndAwaitOneShot(ip, fc, chx, body, inOutFlag, timeoutMs));
 
-    this.oneShotQueueByKey.set(key, queued);
+      this.oneShotQueueByKey.set(key, queued);
 
-    return queued.finally(() => {
-      if (this.oneShotQueueByKey.get(key) === queued) {
-        this.oneShotQueueByKey.delete(key);
+      return queued
+        .then((buf) => buf)
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          const isTimeout = msg.toLowerCase().includes("timed out");
+          if (!isTimeout) {
+            throw err;
+          }
+
+          // Deterministic transport hardening: one immediate retry for transient
+          // post-write response gaps observed on FC=59/FC=17/FC=15.
+          const retryTimeoutMs = Math.max(timeoutMs, 2200);
+
+          return this._sendAndAwaitOneShot(ip, fc, chx, body, inOutFlag, retryTimeoutMs)
+            .then((retryBuf) => retryBuf)
+            .catch((retryErr) => {
+              throw retryErr;
+            });
+        })
+        .finally(() => {
+          if (this.oneShotQueueByKey.get(key) === queued) {
+            this.oneShotQueueByKey.delete(key);
+          }
+        });
+    });
+  }
+
+  /**
+   * Fire-and-forget send via the persistent socket with application-level
+   * fragmentation (450-byte chunks), matching the C# UDP.SendStruct() pattern.
+   *
+   * Unlike `requestFC`, this does NOT wait for a response — it just pushes
+   * the fragmented payload and returns.  Used for large write commands like
+   * FC=57 speaker data inject where the device doesn't send a meaningful
+   * response body.
+   *
+   * @param mac        Target device MAC
+   * @param fc         Function code
+   * @param chx        Channel index
+   * @param body       Payload bytes
+   * @param inOutFlag  0=input, 1=output
+   * @param link       Link field (e.g. channel bitmask for FC=57 paste)
+   * @param statusCode Status code (0=Response/inject, 1=write, 2=request)
+   * @param interFragmentMs  Retained for API compatibility; fragment pacing is ACK-driven.
+   */
+  public async sendFC(
+    mac: string,
+    fc: number,
+    chx = 0,
+    body: Buffer = Buffer.alloc(0),
+    inOutFlag = 0,
+    link = 0,
+    statusCode = 1,
+    interFragmentMs = 10
+  ): Promise<SendFCResult> {
+    await this._socketReady;
+
+    const ip = this.getIpForMac(mac);
+    if (!ip) {
+      throw new Error(`Amp ${mac} not found or not yet discovered`);
+    }
+
+    if (!this.network.isStarted) {
+      throw new Error("Socket not initialized");
+    }
+
+    return this._runIpSerial(ip, async () => {
+      // Build the inner frame: structHeader + body + checkCode
+      const structHeader = buildStructHeader({ functionCode: fc, statusCode, chx, link, inOutFlag });
+      const inner = Buffer.concat([structHeader, body]);
+      const frame = Buffer.concat([inner, calcCheckCode(inner)]);
+
+      // Fragment at application level (450-byte chunks) matching C# UDP.cs behaviour.
+      const packetsCount = frame.length <= FRAGMENT_SIZE ? 1 : Math.ceil(frame.length / FRAGMENT_SIZE);
+      const packetsLastlen = frame.length % FRAGMENT_SIZE === 0 ? FRAGMENT_SIZE : frame.length % FRAGMENT_SIZE;
+
+      if (packetsCount > MAX_PACKETS_COUNT) {
+        throw new Error(
+          `Payload too large for one protocol transfer: frame=${frame.length} bytes requires ${packetsCount} packets, max is ${MAX_PACKETS_COUNT}`
+        );
       }
+
+      const previousRefresh = this.isRefresh;
+      this.isRefresh = false;
+
+      try {
+        const maxFrameAttempts = 2;
+        let fragmentRetries = 0;
+
+        for (let frameAttempt = 1; frameAttempt <= maxFrameAttempts; frameAttempt++) {
+          try {
+            for (let step = 1; step <= packetsCount; step++) {
+              const chunkStart = (step - 1) * FRAGMENT_SIZE;
+              const chunkLen = step === packetsCount ? packetsLastlen : FRAGMENT_SIZE;
+              const chunk = frame.slice(chunkStart, chunkStart + chunkLen);
+
+              const networkHeader = buildNetworkDataHeader({
+                frameLen: packetsLastlen,
+                machineMode: 0,
+                dataState: 0,
+                packetsCount,
+                packetsStep: step
+              });
+
+              const packet = Buffer.concat([networkHeader, chunk]);
+              const ackAttempts = await this._sendPacketAwaitAck(ip, packet, step, packetsCount, packetsLastlen);
+              fragmentRetries += Math.max(0, ackAttempts - 1);
+
+              // Match original sender pacing: even with ACK-driven flow, keep a
+              // small fixed gap between fragments to avoid overrunning DSP reassembly.
+              if (step < packetsCount && interFragmentMs > 0) {
+                await new Promise<void>((resolve) => setTimeout(resolve, interFragmentMs));
+              }
+            }
+            return { frameAttempts: frameAttempt, fragmentRetries };
+          } catch (err) {
+            if (frameAttempt >= maxFrameAttempts) {
+              throw err;
+            }
+
+            // Brief cool-down before replaying the whole frame from step 1.
+            await new Promise<void>((resolve) => setTimeout(resolve, 120));
+          }
+        }
+
+        throw new Error("sendFC exhausted frame attempts without completion");
+      } finally {
+        this.isRefresh = previousRefresh;
+      }
+      return { frameAttempts: 1, fragmentRetries: 0 };
     });
   }
 
@@ -569,32 +770,27 @@ class AmpController extends EventEmitter {
     });
   }
 
-  private _handleNetworkError(err: Error): void {
-    console.error("[AmpController] Socket error:", err.message);
-    this._clearTimers();
-    setTimeout(() => {
-      if (this.running) void this._bindAndStart();
-    }, 500);
-  }
-
-  // -------------------------------------------------------------------------
-  // Receive_Thread — full ReceiveMessage() + setReceiveData() pipeline
-  //
-  // For every arriving UDP packet:
-  //   1. Validate data_flag
-  //   2. Reassemble fragments (handleReceivedata equivalent)
-  //   3. Send ACK back to sender (setReceiveData sets data_state=1 and replies)
-  //   4. If all fragments have arrived: validate checksum, dispatch FC handler
-  // -------------------------------------------------------------------------
   private _onPacket(raw: Buffer, ip: string): void {
     const nd = this.network.parseNetworkData(raw);
-    if (!nd) {
-      console.warn(`[AmpController._onPacket] Failed to parse NetworkData from ${ip}`);
-      return;
-    }
+    if (!nd) return;
 
-    // data_state=1 means this is an ACK we sent ourselves, reflected back — ignore
     if (nd.dataState === 1) {
+      const pendingAck = this.pendingSendAckByIp.get(ip);
+      if (pendingAck) {
+        const strictMatch =
+          nd.packetsStep === pendingAck.expectedStep &&
+          nd.packetsCount === pendingAck.expectedCount &&
+          nd.packetsLastlen === pendingAck.expectedLastlen;
+
+        // Some amps ACK every fragment with a generic 1/1/0 tuple.
+        const genericMatch = nd.packetsStep === 1 && nd.packetsCount === 1 && nd.packetsLastlen === 0;
+
+        if (strictMatch || genericMatch) {
+          this.pendingSendAckByIp.delete(ip);
+          clearTimeout(pendingAck.timeout);
+          pendingAck.resolve();
+        }
+      }
       return;
     }
 
@@ -839,6 +1035,7 @@ class AmpController extends EventEmitter {
     if (this.discoveryTimer) return;
 
     this.discoveryTimer = setInterval(() => {
+      if (!this.isRefresh) return;
       this._runDiscoveryCycle();
     }, DISCOVERY_MS);
   }
@@ -951,8 +1148,9 @@ class AmpController extends EventEmitter {
     }
   }
 
-  private _sendAndAwaitFC27(ip: string, channel: number): Promise<Buffer> {
+  private _sendAndAwaitFC27(ip: string, channel: number, timeoutMs: number): Promise<Buffer> {
     return new Promise((resolve, reject) => {
+      const startedAt = Date.now();
       const timeout = setTimeout(() => {
         const pending = this.pendingFc27ByIp.get(ip);
         if (pending) {
@@ -960,7 +1158,7 @@ class AmpController extends EventEmitter {
           this.pendingFc27ByIp.delete(ip);
         }
         reject(new Error(`FC=27 request for ${ip}:${channel} timed out`));
-      }, 2000);
+      }, timeoutMs);
 
       this.pendingFc27ByIp.set(ip, {
         frames: [],
@@ -1034,6 +1232,87 @@ class AmpController extends EventEmitter {
         reject(err instanceof Error ? err : new Error(String(err)));
       });
     });
+  }
+
+  private async _sendPacketAwaitAck(
+    ip: string,
+    packet: Buffer,
+    step: number,
+    totalPackets: number,
+    packetsLastlen: number
+  ): Promise<number> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const ackPromise = new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            if (this.pendingSendAckByIp.get(ip)?.timeout === timeout) {
+              this.pendingSendAckByIp.delete(ip);
+            }
+            reject(new Error(`ACK timed out for ${ip} step=${step} attempt=${attempt}`));
+          }, 1000);
+
+          this.pendingSendAckByIp.set(ip, {
+            timeout,
+            expectedStep: step,
+            expectedCount: totalPackets,
+            expectedLastlen: packetsLastlen,
+            resolve: () => {
+              clearTimeout(timeout);
+              resolve();
+            },
+            reject: (error) => {
+              clearTimeout(timeout);
+              reject(error);
+            }
+          });
+        });
+
+        await this.network.sendRaw_shouldBeReplacedWithSendPacket(packet, 0, packet.length, ip, false);
+        await ackPromise;
+        return attempt;
+      } catch (err) {
+        const pendingAck = this.pendingSendAckByIp.get(ip);
+        if (pendingAck) {
+          clearTimeout(pendingAck.timeout);
+          this.pendingSendAckByIp.delete(ip);
+        }
+        lastError = err instanceof Error ? err : new Error(String(err));
+      }
+    }
+
+    throw lastError ?? new Error(`ACK failed for ${ip} step=${step}`);
+  }
+
+  private async _runIpSerial<T>(ip: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.ioQueueByIp.get(ip) ?? Promise.resolve();
+
+    let release: () => void = () => {};
+    const marker = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    this.ioQueueByIp.set(
+      ip,
+      previous
+        .catch(() => {
+          // ignore previous errors, keep queue progressing
+        })
+        .then(() => marker)
+    );
+
+    try {
+      await previous.catch(() => {
+        // ignore previous errors, current operation should still run
+      });
+      return await operation();
+    } finally {
+      release();
+      if (this.ioQueueByIp.get(ip) === marker) {
+        this.ioQueueByIp.delete(ip);
+      }
+    }
   }
 
   /**

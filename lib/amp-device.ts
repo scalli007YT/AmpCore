@@ -9,6 +9,7 @@ import {
 
 const AMP_SEND_PORT = 45455;
 const CROSSOVER_COMMIT_PACKET = Buffer.from("03d99401015c0001015a", "hex");
+const MAX_PACKETS_COUNT = 255; // network header packets_count is uint8
 
 export class FuncCode {
   static BASIC_INFO = 0;
@@ -215,6 +216,12 @@ export class CvrAmpDevice {
     const packetsCount = frame.length <= FRAGMENT_SIZE ? 1 : Math.ceil(frame.length / FRAGMENT_SIZE);
     const packetsLastlen = frame.length % FRAGMENT_SIZE === 0 ? FRAGMENT_SIZE : frame.length % FRAGMENT_SIZE;
 
+    if (packetsCount > MAX_PACKETS_COUNT) {
+      throw new Error(
+        `Payload too large for one protocol transfer: frame=${frame.length} bytes requires ${packetsCount} packets, max is ${MAX_PACKETS_COUNT}`
+      );
+    }
+
     for (let step = 1; step <= packetsCount; step++) {
       const chunkStart = (step - 1) * FRAGMENT_SIZE;
       const chunkLen = step === packetsCount ? packetsLastlen : FRAGMENT_SIZE;
@@ -239,14 +246,16 @@ export class CvrAmpDevice {
 
       // Wait between fragments for the device to process and ACK.
       // The C# original waits for an ACK with a 1-second timeout per fragment.
-      // We use a shorter fixed delay since we don't have ACK handling yet.
+      // Small payloads (≤ 450 B) need only a tiny gap, but large payloads like
+      // FC=57 speaker data (~2310 B, 6 fragments) need longer pauses so the
+      // embedded processor can reassemble and flush each chunk.
       if (step < packetsCount) {
-        await new Promise<void>((resolve) => setTimeout(resolve, 20));
+        await new Promise<void>((resolve) => setTimeout(resolve, packetsCount > 2 ? 150 : 20));
       }
     }
 
-    // Give the OS ~10 ms to flush — matches Python's time.sleep(0.01) throttle
-    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    // Give the OS time to flush — longer for multi-fragment sends
+    await new Promise<void>((resolve) => setTimeout(resolve, packetsCount > 2 ? 100 : 10));
     try {
       sock.close();
     } catch {

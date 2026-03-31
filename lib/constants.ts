@@ -1,3 +1,15 @@
+// Speaker config drag-and-drop MIME type (shared between library browser and device panel)
+export const SPEAKER_DRAG_MIME = "application/x-ampcore-speaker-item";
+
+// Slug helper — normalises a user string into a URL-safe kebab-case identifier
+export function toSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 // Matrix crosspoint gain limits (dB)
 export const MATRIX_GAIN_MIN_DB = -80.0;
 export const MATRIX_GAIN_MAX_DB = 18.0;

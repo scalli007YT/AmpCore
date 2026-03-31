@@ -38,6 +38,7 @@ interface SpeakerConfigStore {
   channelGroupsByScope: Record<string, ChannelGroup[]>;
   outputAssignmentsByScope: Record<string, Record<number, SpeakerOutputAssignment>>;
   activeDraggedItem: SpeakerDragItem | null;
+  dragHoverChannel: number | null;
   toggleOutputChannel: (channel: number, scope?: string | null) => void;
   setOutputChannels: (channels: number[], scope?: string | null) => void;
   clearOutputChannels: (scope?: string | null) => void;
@@ -45,6 +46,7 @@ interface SpeakerConfigStore {
   joinSelected: (scope?: string | null) => { ok: boolean; error?: string };
   bridgeSelected: (scope?: string | null) => { ok: boolean; error?: string };
   setActiveDraggedItem: (item: SpeakerDragItem | null) => void;
+  setDragHoverChannel: (channel: number | null) => void;
   assignItemToOutputs: (params: {
     startChannel: number;
     maxChannels: number;
@@ -198,6 +200,7 @@ export const useSpeakerConfigStore = create<SpeakerConfigStore>((set, get) => ({
   channelGroupsByScope: {},
   outputAssignmentsByScope: {},
   activeDraggedItem: null,
+  dragHoverChannel: null,
 
   toggleOutputChannel: (channel, scope) => {
     if (!Number.isInteger(channel) || channel <= 0) return;
@@ -383,29 +386,42 @@ export const useSpeakerConfigStore = create<SpeakerConfigStore>((set, get) => ({
     set({ activeDraggedItem: item });
   },
 
+  setDragHoverChannel: (channel) => {
+    set({ dragHoverChannel: channel });
+  },
+
   assignItemToOutputs: ({ startChannel, maxChannels, item, scope }) => {
     const scopeKey = toScopeKey(scope);
     const start = Math.max(1, Math.floor(startChannel));
     const max = Math.max(1, Math.floor(maxChannels));
     const wayCount = sanitizeWayCount(item.wayCount);
-    const end = start + wayCount - 1;
 
-    if (start > max || end > max) {
+    // Bridge-aware: if dropping a 1-way config on a bridged channel, expand to the
+    // full bridge pair so both channels get the same single-way assignment.
+    const existingGroups = get().channelGroupsByScope[scopeKey] ?? [];
+    const targetBridge =
+      wayCount === 1 ? existingGroups.find((g) => g.type === "bridge" && g.channels.includes(start)) : undefined;
+    const effectiveStart = targetBridge ? Math.min(...targetBridge.channels) : start;
+    const bridgedChannels = targetBridge ? [...targetBridge.channels].sort((a, b) => a - b) : null;
+
+    const end = effectiveStart + wayCount - 1;
+
+    if (effectiveStart > max || end > max) {
       return {
         ok: false,
-        error: `Not enough channels. Need ${wayCount} from CH ${start}, but max is CH ${max}.`
+        error: `Not enough channels. Need ${wayCount} from CH ${effectiveStart}, but max is CH ${max}.`
       };
     }
 
     const labels = deriveWayLabels(item.ways, wayCount);
-    const groupId = `${item.id}:${Date.now()}:${start}`;
+    const groupId = `${item.id}:${Date.now()}:${effectiveStart}`;
 
     set((state) => {
       const scoped = { ...(state.outputAssignmentsByScope[scopeKey] ?? {}) };
-      const droppedChannels = Array.from({ length: wayCount }, (_, index) => start + index);
+      const droppedChannels = bridgedChannels ?? Array.from({ length: wayCount }, (_, index) => effectiveStart + index);
 
       const overlappingGroupIds = new Set<string>();
-      for (let channel = start; channel <= end; channel += 1) {
+      for (const channel of droppedChannels) {
         const existing = scoped[channel];
         if (existing?.groupId) overlappingGroupIds.add(existing.groupId);
       }
@@ -419,27 +435,53 @@ export const useSpeakerConfigStore = create<SpeakerConfigStore>((set, get) => ({
         }
       }
 
-      for (let index = 0; index < wayCount; index += 1) {
-        const channel = start + index;
-        scoped[channel] = {
-          channel,
-          groupId,
-          itemId: item.id,
-          model: item.model,
-          wayLabel: labels[index] ?? `WAY ${index + 1}`,
-          wayIndex: index,
-          wayCount
-        };
+      // For a bridged 1-way drop, assign the single way to all bridge channels.
+      if (bridgedChannels) {
+        for (const channel of bridgedChannels) {
+          scoped[channel] = {
+            channel,
+            groupId,
+            itemId: item.id,
+            model: item.model,
+            wayLabel: labels[0] ?? "WAY 1",
+            wayIndex: 0,
+            wayCount
+          };
+        }
+      } else {
+        for (let index = 0; index < wayCount; index += 1) {
+          const channel = effectiveStart + index;
+          scoped[channel] = {
+            channel,
+            groupId,
+            itemId: item.id,
+            model: item.model,
+            wayLabel: labels[index] ?? `WAY ${index + 1}`,
+            wayIndex: index,
+            wayCount
+          };
+        }
       }
 
       // Drop has priority over existing link groups: remove overlapping joins/bridges,
       // then create a fresh join group for the dropped multi-way span.
+      // For bridge targets, preserve the bridge group instead of removing it.
       let scopedGroups = removeOverlappingGroups(state.channelGroupsByScope[scopeKey] ?? [], droppedChannels);
-      if (wayCount > 1) {
+      if (bridgedChannels) {
+        // Re-add the bridge group since we want to keep the bridge intact
         scopedGroups = [
           ...scopedGroups,
           {
-            id: `join:${Date.now()}:${start}`,
+            id: targetBridge!.id,
+            type: "bridge" as const,
+            channels: bridgedChannels
+          }
+        ];
+      } else if (wayCount > 1) {
+        scopedGroups = [
+          ...scopedGroups,
+          {
+            id: `join:${Date.now()}:${effectiveStart}`,
             type: "join",
             channels: droppedChannels
           }

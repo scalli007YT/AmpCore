@@ -43,6 +43,7 @@ import { useAmpActions } from "@/hooks/useAmpActions";
 import { triggerImmediateLockPoll, triggerImmediateStandbyPoll } from "@/hooks/useAmpChannelData";
 import { useProjectStore } from "@/stores/ProjectStore";
 import { DEFAULT_AMP_OPTIONS, useAmpOptionStore } from "@/stores/AmpOptionStore";
+import { useLibraryStore } from "@/stores/LibraryStore";
 import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
 import { SpeakerLibraryBrowser } from "@/components/monitor/amp-tabs/speaker-library-browser";
 import { SpeakerModelDraft } from "@/components/monitor/amp-tabs/speaker-device";
@@ -82,6 +83,8 @@ export function AmpTabs() {
   const { setAmpLock, setAmpStandby } = useAmpActions();
   const selectedProject = useProjectStore((state) => state.selectedProject);
   const ampOptionsRaw = useAmpOptionStore((s) => s.options[(selectedMac ?? "").toUpperCase()]);
+  const speakerApplying = useLibraryStore((state) => state.applying);
+  const speakerApplyQuietUntil = useLibraryStore((state) => state.applyQuietUntil);
   const ampOptions = { ...DEFAULT_AMP_OPTIONS, ...ampOptionsRaw };
 
   const selectedAmp = amps.find((a) => a.mac === selectedMac) ?? amps[0];
@@ -173,15 +176,19 @@ export function AmpTabs() {
 
   useEffect(() => {
     if (!selectedAmp?.reachable) return;
+    if (speakerApplying || Date.now() < speakerApplyQuietUntil) return;
 
     void refreshCurrentPreset(selectedAmp.mac);
 
     const timer = setInterval(() => {
+      if (useLibraryStore.getState().applying || Date.now() < useLibraryStore.getState().applyQuietUntil) {
+        return;
+      }
       void refreshCurrentPreset(selectedAmp.mac);
     }, 4000);
 
     return () => clearInterval(timer);
-  }, [selectedAmp?.mac, selectedAmp?.reachable, refreshCurrentPreset]);
+  }, [selectedAmp?.mac, selectedAmp?.reachable, refreshCurrentPreset, speakerApplying, speakerApplyQuietUntil]);
 
   useEffect(() => {
     setActivePreset(null);
@@ -937,7 +944,7 @@ export function AmpTabs() {
             </TabsContent>
 
             <TabsContent value="speaker-config" className="min-h-0 flex-1 overflow-y-auto p-4 mt-0">
-              <div className="grid min-h-[24rem] gap-4 lg:grid-cols-[minmax(0,1.1fr)_200px_minmax(0,0.9fr)]">
+              <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(0,1.1fr)_200px_minmax(0,0.9fr)]">
                 <SpeakerModelDraft channelCount={effectiveChannelCount || 4} scope={selectedMac} />
 
                 <SpeakerControlBar scope={selectedMac} />

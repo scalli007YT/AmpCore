@@ -630,7 +630,7 @@ class AmpController extends EventEmitter {
     inOutFlag = 0,
     link = 0,
     statusCode = 1,
-    interFragmentMs = 10
+    interFragmentMs = 5
   ): Promise<SendFCResult> {
     await this._socketReady;
 
@@ -663,7 +663,7 @@ class AmpController extends EventEmitter {
       this.isRefresh = false;
 
       try {
-        const maxFrameAttempts = 2;
+        const maxFrameAttempts = 3;
         let fragmentRetries = 0;
 
         for (let frameAttempt = 1; frameAttempt <= maxFrameAttempts; frameAttempt++) {

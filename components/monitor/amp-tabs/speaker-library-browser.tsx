@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Circle, GripVertical, Info } from "lucide-react";
+import { GripVertical, Info } from "lucide-react";
 import Draggable, { type DraggableData, type DraggableEvent } from "react-draggable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,19 +92,11 @@ function DraggableLibraryRow({
           }
         }}
       >
-        <div className="grid grid-cols-[40px_28px_56px_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)_56px_110px] gap-2">
+        <div className="grid grid-cols-[40px_56px_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)_56px_110px] gap-2">
           <div
             className={`speaker-library-drag-handle-${fileKey} flex items-center justify-center text-muted-foreground/60 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
           >
             <GripVertical className="h-4 w-4" aria-hidden="true" />
-          </div>
-          <div className="flex items-center justify-center">
-            <span
-              className={selected ? "text-primary" : "text-muted-foreground/50"}
-              aria-label={selected ? "Selected library entry" : "Unselected library entry"}
-            >
-              <Circle className={selected ? "h-4 w-4 fill-current" : "h-4 w-4"} />
-            </span>
           </div>
           <div className="flex items-center justify-center">
             {hasNote ? (
@@ -364,9 +356,8 @@ export function SpeakerLibraryBrowser({ isActive }: SpeakerLibraryBrowserProps) 
 
       {!loading && !error && filteredFiles.length > 0 && (
         <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border/50">
-          <div className="grid grid-cols-[40px_28px_56px_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)_56px_110px] gap-2 border-b border-border/50 bg-muted/20 px-3 py-2 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground">
+          <div className="grid grid-cols-[40px_56px_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)_56px_110px] gap-2 border-b border-border/50 bg-muted/20 px-3 py-2 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground">
             <span className="text-center">Drag</span>
-            <span className="text-center">Sel</span>
             <span className="text-center">Note</span>
             <span>Brand</span>
             <span>Family</span>

@@ -337,6 +337,21 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
     setPreviewValid(span.valid);
   }, [activeDraggedItem, dragHoverChannel, channelGroups, rowCount]);
 
+  // Set of channels that are valid starting positions for the current drag item.
+  // Used to highlight/dim channels before the user hovers a specific target.
+  const possibleStartChannels = useMemo<Set<number>>(() => {
+    if (!activeDraggedItem) return new Set();
+    const wayCount = Math.max(1, Math.round(activeDraggedItem.wayCount));
+    const result = new Set<number>();
+    for (let ch = 1; ch <= rowCount; ch++) {
+      // 1-way configs fit anywhere; multi-way need enough consecutive channels
+      if (wayCount === 1 || ch + wayCount - 1 <= rowCount) {
+        result.add(ch);
+      }
+    }
+    return result;
+  }, [activeDraggedItem, rowCount]);
+
   /** Expand a channel click to include all linked (joined/bridged) group members. */
   const expandToGroup = (channel: number): number[] => {
     const group = findGroupForChannel(channelGroups, channel);
@@ -372,6 +387,8 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
   const renderOutputButton = (row: number) => {
     const selected = selectedOutputChannels.includes(row);
     const inPreview = previewChannels.includes(row);
+    const isDragging = activeDraggedItem !== null;
+    const isPossibleTarget = isDragging && possibleStartChannels.has(row);
 
     return (
       <button
@@ -389,9 +406,13 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
             ? "border-amber-400/80 bg-amber-500/20 text-amber-200"
             : inPreview && !previewValid
               ? "border-destructive/80 bg-destructive/10 text-destructive"
-              : selected
-                ? "border-primary/70 bg-primary/15 text-primary"
-                : "border-border/50 bg-background/30 text-muted-foreground hover:border-primary/50 hover:text-foreground"
+              : isDragging && isPossibleTarget
+                ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-400"
+                : isDragging && !isPossibleTarget
+                  ? "border-border/25 bg-background/10 text-muted-foreground/30"
+                  : selected
+                    ? "border-primary/70 bg-primary/15 text-primary"
+                    : "border-border/50 bg-background/30 text-muted-foreground hover:border-primary/50 hover:text-foreground"
         )}
         aria-pressed={selected}
         title={
@@ -405,9 +426,13 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
             "relative grid size-6 place-items-center rounded-full border transition-colors duration-200",
             inPreview && !previewValid
               ? "border-destructive/80 bg-destructive/15 text-destructive"
-              : selected
-                ? "border-primary/70 bg-primary/20 text-primary"
-                : "border-border/60 text-muted-foreground"
+              : isDragging && isPossibleTarget
+                ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-400"
+                : isDragging && !isPossibleTarget
+                  ? "border-border/20 text-muted-foreground/30"
+                  : selected
+                    ? "border-primary/70 bg-primary/20 text-primary"
+                    : "border-border/60 text-muted-foreground"
           )}
         >
           <span className="pointer-events-none absolute inset-0 grid place-items-center translate-y-[0.5px] text-[11px] font-semibold leading-none tabular-nums">

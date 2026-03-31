@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, FolderOpen, Link2, RotateCcw, SplitSquareVertical, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmActionDialog } from "@/components/dialogs/confirm-action-dialog";
+import { LoadSpeakerConfigDialog, type LoadWaySelection } from "@/components/dialogs/load-speaker-config-dialog";
 import { Button } from "@/components/ui/button";
 import { type ApplyWayMapping, type LibraryFileEntry, useLibraryStore } from "@/stores/LibraryStore";
 import { type SpeakerOutputAssignment, useSpeakerConfigStore } from "@/stores/SpeakerConfigStore";
@@ -17,6 +18,7 @@ type QueuedApplyItem = {
 
 interface SpeakerControlBarProps {
   scope?: string | null;
+  channelCount?: number;
 }
 
 function formatChannelList(channels: number[]): string {
@@ -105,13 +107,14 @@ function buildQueuedApplyItems(
     .sort((left, right) => left.channels[0] - right.channels[0]);
 }
 
-export function SpeakerControlBar({ scope }: SpeakerControlBarProps) {
+export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBarProps) {
   const scopeKey = scope?.trim().toUpperCase() || "__global__";
   const selectedOutputChannelsByScope = useSpeakerConfigStore((state) => state.selectedOutputChannelsByScope);
   const outputAssignmentsByScope = useSpeakerConfigStore((state) => state.outputAssignmentsByScope);
   const joinSelected = useSpeakerConfigStore((state) => state.joinSelected);
   const bridgeSelected = useSpeakerConfigStore((state) => state.bridgeSelected);
   const splitReset = useSpeakerConfigStore((state) => state.splitReset);
+  const assignItemToOutputs = useSpeakerConfigStore((state) => state.assignItemToOutputs);
   const files = useLibraryStore((state) => state.files);
   const selectedFileId = useLibraryStore((state) => state.selectedFileId);
   const applyToDevice = useLibraryStore((state) => state.applyToDevice);
@@ -119,6 +122,7 @@ export function SpeakerControlBar({ scope }: SpeakerControlBarProps) {
   const applying = useLibraryStore((state) => state.applying);
   const deleting = useLibraryStore((state) => state.deleting);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [loadDialogOpen, setLoadDialogOpen] = useState(false);
 
   const selection = [...(selectedOutputChannelsByScope[scopeKey] ?? [])].sort((a, b) => a - b);
   const scopedAssignments = outputAssignmentsByScope[scopeKey] ?? {};
@@ -307,7 +311,13 @@ export function SpeakerControlBar({ scope }: SpeakerControlBarProps) {
             Library actions
           </p>
 
-          <Button type="button" variant="outline" className="mb-2 h-8 w-full justify-start gap-2 text-xs" disabled>
+          <Button
+            type="button"
+            variant="outline"
+            className="mb-2 h-8 w-full justify-start gap-2 text-xs"
+            disabled={!selectedLibraryFile}
+            onClick={() => setLoadDialogOpen(true)}
+          >
             <ArrowLeft className="h-3.5 w-3.5" />
             Load
           </Button>
@@ -339,6 +349,41 @@ export function SpeakerControlBar({ scope }: SpeakerControlBarProps) {
           </Button>
         </div>
       </div>
+
+      {selectedLibraryFile && (
+        <LoadSpeakerConfigDialog
+          open={loadDialogOpen}
+          onOpenChange={setLoadDialogOpen}
+          scope={scope ?? null}
+          channelCount={channelCount}
+          profile={selectedLibraryFile}
+          onLoad={(selections: LoadWaySelection[]) => {
+            if (!selectedLibraryFile) return;
+
+            for (const sel of selections) {
+              assignItemToOutputs({
+                startChannel: sel.channel,
+                maxChannels: channelCount,
+                item: {
+                  id: selectedLibraryFile.id || selectedLibraryFile.name,
+                  model:
+                    [selectedLibraryFile.brand, selectedLibraryFile.model].filter(Boolean).join(" ").trim() ||
+                    selectedLibraryFile.name,
+                  ways: sel.wayLabel,
+                  wayCount: 1
+                },
+                scope
+              });
+            }
+
+            setLoadDialogOpen(false);
+
+            toast.success("Speaker model updated", {
+              description: `Loaded ${selections.length} way(s) from ${selectedLibraryFile.brand || selectedLibraryFile.model || selectedLibraryFile.name}`
+            });
+          }}
+        />
+      )}
 
       <ConfirmActionDialog
         open={deleteDialogOpen}

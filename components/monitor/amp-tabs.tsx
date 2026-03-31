@@ -947,7 +947,7 @@ export function AmpTabs() {
               <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(0,1.1fr)_200px_minmax(0,0.9fr)]">
                 <SpeakerModelDraft channelCount={effectiveChannelCount || 4} scope={selectedMac} />
 
-                <SpeakerControlBar scope={selectedMac} />
+                <SpeakerControlBar scope={selectedMac} channelCount={effectiveChannelCount || 4} />
 
                 <SpeakerLibraryBrowser isActive={activeSection === "speaker-config"} />
               </div>

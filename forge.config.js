@@ -13,13 +13,13 @@ const packagerConfig = {
     unpack: "**/*.node"
   },
   ignore: [
-    // Exclude node_modules (Next.js standalone has its own)
-    /^\/node_modules$/,
+    // Exclude all node_modules except electron-squirrel-startup
+    /^\/node_modules\/(?!electron-squirrel-startup).*$/,
     // Exclude source directories (not needed in packaged app)
     /^\/app\//,
     /^\/components\//,
     /^\/hooks\//,
-    /^\/lib\//,
+    // /^\/lib\//, // Allow lib/ to be packaged
     /^\/stores\//,
     /^\/storage\//,
     /^\/Releases\//,

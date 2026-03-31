@@ -1,18 +1,7 @@
 const { app, BrowserWindow, ipcMain, nativeTheme } = require("electron");
+// Handle Squirrel.Windows events and shortcut creation
+if (require("electron-squirrel-startup")) app.quit();
 const path = require("path");
-
-// Handle Squirrel.Windows install/update/uninstall events.
-if (process.platform === "win32") {
-  const cmd = process.argv[1];
-  if (
-    cmd === "--squirrel-install" ||
-    cmd === "--squirrel-updated" ||
-    cmd === "--squirrel-uninstall" ||
-    cmd === "--squirrel-obsolete"
-  ) {
-    app.quit();
-  }
-}
 const http = require("http");
 const { name: packageName, version: packageVersion } = require("../package.json");
 

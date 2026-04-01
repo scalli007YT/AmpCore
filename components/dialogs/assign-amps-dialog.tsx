@@ -2,8 +2,6 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { useProjectStore } from "@/stores/ProjectStore";
-import { useAmpStore } from "@/stores/AmpStore";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,189 +18,61 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
 import { Trash2, Plus, Wifi } from "lucide-react";
-import { toast } from "sonner";
 import { useI18n } from "@/components/layout/i18n-provider";
-
-interface ScannedDevice {
-  ip: string;
-  mac: string;
-  name: string;
-  deviceVersion: string;
-  identifier: string;
-  runtime: string;
-}
+import { useAssignAmps } from "@/hooks/useAssignAmps";
 
 interface AssignAmpsDialogProps {
   trigger?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
+export function AssignAmpsDialog({ trigger, open: openProp, onOpenChange }: AssignAmpsDialogProps) {
   const dict = useI18n();
-  const { selectedProject, projects, addAmpToProject, deleteAmpFromProject, updateAmpLastKnownIp } = useProjectStore();
-  const { amps, getDisplayName } = useAmpStore();
-  const [ipInput, setIpInput] = useState("");
-  const [open, setOpen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isProbing, setIsProbing] = useState(false);
-  const [mode, setMode] = useState<"manual" | "scan">("scan");
-  const [scannedDevices, setScannedDevices] = useState<ScannedDevice[]>([]);
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanError, setScanError] = useState("");
-  const [probeInputByMac, setProbeInputByMac] = useState<Record<string, string>>({});
-  const [isProbingByMac, setIsProbingByMac] = useState<Record<string, boolean>>({});
+  const {
+    amps,
+    getDisplayName,
+    selectedProject,
+    currentProject,
+    ipInput,
+    setIpInput,
+    isSaving,
+    isProbing,
+    mode,
+    setMode,
+    scannedDevices,
+    isScanning,
+    scanError,
+    setScanError,
+    probeInputByMac,
+    setProbeInputByMac,
+    isProbingByMac,
+    handleAddAmp,
+    handleAddFromScan,
+    handleDeleteAmp,
+    handleScan,
+    handleProbeOfflineAmp
+  } = useAssignAmps();
+
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
+  const setDialogOpen = (nextOpen: boolean) => {
+    if (openProp === undefined) setInternalOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
 
   if (!selectedProject) return null;
-
-  const currentProject = projects.find((p) => p.id === selectedProject.id);
   if (!currentProject) return null;
 
   if (currentProject.projectMode === "demo") {
     return <AssignDemoAmpsDialog trigger={trigger} />;
   }
 
-  const handleAddAmp = async () => {
-    const ip = ipInput.trim();
-    if (!ip) {
-      toast.error(dict.dialogs.assignAmps.enterIp);
-      return;
-    }
-    if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
-      toast.error(dict.dialogs.assignAmps.invalidIp);
-      return;
-    }
-
-    setIsProbing(true);
-    try {
-      const response = await fetch("/api/amp-advanced/probe-ip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ip })
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        toast.error(data.error ?? dict.dialogs.assignAmps.noAmpAtIp);
-        return;
-      }
-
-      await addAmpToProject(selectedProject.id, data.mac);
-      await updateAmpLastKnownIp(data.mac, ip);
-      setIpInput("");
-      toast.success(`Added ${data.name} (${data.mac})`);
-    } catch (error) {
-      toast.error(
-        `${dict.dialogs.assignAmps.errorAddingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
-      );
-    } finally {
-      setIsProbing(false);
-    }
-  };
-
-  const handleAddFromScan = async (mac: string) => {
-    setIsSaving(true);
-    try {
-      await addAmpToProject(selectedProject.id, mac);
-      setScannedDevices(scannedDevices.filter((d) => d.mac !== mac));
-    } catch (error) {
-      toast.error(
-        `${dict.dialogs.assignAmps.errorAddingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDeleteAmp = async (mac: string) => {
-    setIsSaving(true);
-    try {
-      await deleteAmpFromProject(selectedProject.id, mac);
-    } catch (error) {
-      toast.error(
-        `${dict.dialogs.assignAmps.errorDeletingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleScan = async () => {
-    setIsScanning(true);
-    setScanError("");
-    try {
-      const response = await fetch(`/api/scan?projectMode=${encodeURIComponent(currentProject.projectMode ?? "real")}`);
-      if (!response.ok) {
-        setScanError(dict.dialogs.assignAmps.scanFailedNoDevices);
-        setScannedDevices([]);
-        return;
-      }
-
-      const data = await response.json();
-      if (data.devices && Array.isArray(data.devices)) {
-        const assignedMacs = currentProject.assigned_amps.map((a) => a.mac.toUpperCase());
-        const unassignedDevices = data.devices.filter(
-          (d: ScannedDevice) => !assignedMacs.includes(d.mac.toUpperCase())
-        );
-        setScannedDevices(unassignedDevices);
-        if (unassignedDevices.length === 0) {
-          setScanError(dict.dialogs.assignAmps.allDiscoveredAssigned);
-        }
-      } else {
-        setScanError(dict.dialogs.assignAmps.invalidResponseFormat);
-      }
-    } catch (error) {
-      setScanError(
-        `${dict.dialogs.assignAmps.scanError}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
-      );
-    } finally {
-      setIsScanning(false);
-    }
-  };
-
   const handleOpenChange = (nextOpen: boolean) => {
-    setOpen(nextOpen);
+    setDialogOpen(nextOpen);
     if (nextOpen) {
       setMode("scan");
       void handleScan();
-    }
-  };
-
-  const handleProbeOfflineAmp = async (mac: string) => {
-    const ip = (probeInputByMac[mac] ?? "").trim();
-    if (!ip) return;
-    if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
-      toast.error(dict.dialogs.assignAmps.invalidIp);
-      return;
-    }
-
-    setIsProbingByMac((prev) => ({ ...prev, [mac]: true }));
-    try {
-      const response = await fetch("/api/amp-advanced/probe-ip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ip })
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        toast.error(data.error ?? dict.dialogs.assignAmps.noAmpAtIp);
-        return;
-      }
-
-      // Check if the responding amp matches the expected MAC
-      if (data.mac.toUpperCase() === mac.toUpperCase()) {
-        await updateAmpLastKnownIp(mac, ip);
-        setProbeInputByMac((prev) => ({ ...prev, [mac]: "" }));
-        toast.success(`Found ${data.name} at ${ip}`);
-      } else {
-        // Different amp found at this IP
-        toast.error(`Found ${data.name} (${data.mac}) at ${ip} - expected ${mac}`);
-      }
-    } catch (error) {
-      toast.error(
-        `${dict.dialogs.assignAmps.scanError}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
-      );
-    } finally {
-      setIsProbingByMac((prev) => ({ ...prev, [mac]: false }));
     }
   };
 
@@ -451,7 +321,7 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
               {dict.dialogs.common.cancel}
             </Button>
           </DialogClose>
-          <Button onClick={() => setOpen(false)} disabled={isSaving || isScanning}>
+          <Button onClick={() => setDialogOpen(false)} disabled={isSaving || isScanning}>
             {isSaving ? dict.dialogs.common.saving : dict.dialogs.common.done}
           </Button>
         </DialogFooter>

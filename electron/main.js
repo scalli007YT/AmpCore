@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, nativeTheme } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeTheme, shell } = require("electron");
 // Handle Squirrel.Windows events and shortcut creation
 if (require("electron-squirrel-startup")) app.quit();
+const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const { name: packageName, version: packageVersion } = require("../package.json");
@@ -15,7 +16,8 @@ let splashWindow;
 let server;
 
 function getSpeakerLibraryDir() {
-  return path.join(app.getPath("userData"), "storage", "speaker-library");
+  const base = process.env.APP_USER_DATA ?? process.cwd();
+  return path.join(base, "storage", "speaker-library");
 }
 
 // Prevent multiple app instances.

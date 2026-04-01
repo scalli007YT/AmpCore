@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toSlug } from "@/lib/constants";
+import { useI18n } from "@/components/layout/i18n-provider";
 
 type SpeakerWayDraft = {
   id?: string;
@@ -57,6 +58,7 @@ export function SpeakerConfigEditorDialog({
   onSave,
   saving = false
 }: SpeakerConfigEditorDialogProps) {
+  const dict = useI18n().dialogs.speakerConfig.editor;
   const [fixedId, setFixedId] = useState("");
   const [brand, setBrand] = useState("");
   const [family, setFamily] = useState("");
@@ -120,17 +122,15 @@ export function SpeakerConfigEditorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="text-lg">Preset Details</DialogTitle>
-          <DialogDescription>
-            Create a new speaker config or edit the currently linked config for this output group.
-          </DialogDescription>
+          <DialogTitle className="text-lg">{dict.title}</DialogTitle>
+          <DialogDescription>{dict.description}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-1 md:grid-cols-[1.25fr_1fr]">
           <section className="rounded-md border border-border/50 bg-muted/10 p-4">
             <div className="grid gap-3">
               <div className="grid grid-cols-[132px_1fr] items-center gap-3">
-                <Label htmlFor="speaker-brand">Brand</Label>
+                <Label htmlFor="speaker-brand">{dict.brandLabel}</Label>
                 <Input
                   id="speaker-brand"
                   value={brand}
@@ -142,7 +142,7 @@ export function SpeakerConfigEditorDialog({
               </div>
 
               <div className="grid grid-cols-[132px_1fr] items-center gap-3">
-                <Label htmlFor="speaker-family">Family</Label>
+                <Label htmlFor="speaker-family">{dict.familyLabel}</Label>
                 <Input
                   id="speaker-family"
                   value={family}
@@ -154,7 +154,7 @@ export function SpeakerConfigEditorDialog({
               </div>
 
               <div className="grid grid-cols-[132px_1fr] items-center gap-3">
-                <Label htmlFor="speaker-model">Model</Label>
+                <Label htmlFor="speaker-model">{dict.modelLabel}</Label>
                 <Input
                   id="speaker-model"
                   value={model}
@@ -166,7 +166,7 @@ export function SpeakerConfigEditorDialog({
               </div>
 
               <div className="grid grid-cols-[132px_1fr] items-center gap-3">
-                <Label htmlFor="speaker-application">Application</Label>
+                <Label htmlFor="speaker-application">{dict.applicationLabel}</Label>
                 <Input
                   id="speaker-application"
                   value={application}
@@ -179,7 +179,7 @@ export function SpeakerConfigEditorDialog({
 
               <div className="grid grid-cols-[132px_1fr] items-start gap-3">
                 <Label htmlFor="speaker-notes" className="pt-2">
-                  Preset Notes
+                  {dict.notesLabel}
                 </Label>
                 <textarea
                   id="speaker-notes"
@@ -197,16 +197,18 @@ export function SpeakerConfigEditorDialog({
           <section className="rounded-md border border-border/50 bg-muted/10 p-4">
             <div className="grid gap-3">
               <div className="grid gap-1.5">
-                <Label htmlFor="speaker-profile-id">Profile ID</Label>
+                <Label htmlFor="speaker-profile-id">{dict.profileIdLabel}</Label>
                 <Input id="speaker-profile-id" value={effectiveId} readOnly className="text-muted-foreground" />
               </div>
 
               <div className="grid gap-2 pt-1">
-                <Label>Way Name</Label>
+                <Label>{dict.wayNameLabel}</Label>
                 <div className="grid gap-2">
                   {ways.map((label, index) => (
                     <div key={`way-label-${index}`} className="grid grid-cols-[64px_1fr] items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Way {index + 1}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {dict.wayIndex.replace("{index}", String(index + 1))}
+                      </span>
                       <Input
                         value={label}
                         onChange={(event) => {
@@ -215,7 +217,7 @@ export function SpeakerConfigEditorDialog({
                           setWays(next);
                           notify({ ways: next });
                         }}
-                        placeholder={`Way ${index + 1}`}
+                        placeholder={dict.wayIndex.replace("{index}", String(index + 1))}
                       />
                     </div>
                   ))}
@@ -246,11 +248,11 @@ export function SpeakerConfigEditorDialog({
               }}
             >
               <Save className="h-3.5 w-3.5" />
-              {saving ? "Saving…" : "Save to Library"}
+              {saving ? dict.saving : dict.saveToLibrary}
             </Button>
           )}
           <DialogClose asChild>
-            <Button variant="outline">Close</Button>
+            <Button variant="outline">{dict.close}</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>

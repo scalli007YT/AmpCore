@@ -21,6 +21,7 @@ import {
   type SpeakerApplyPolicy
 } from "@/lib/speaker-apply-policy";
 import { useAmpActions } from "@/hooks/useAmpActions";
+import { useI18n } from "@/components/layout/i18n-provider";
 
 type QueuedApplyItem = {
   model: string;
@@ -128,6 +129,9 @@ function buildQueuedApplyItems(
 }
 
 export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBarProps) {
+  const i18n = useI18n();
+  const cb = i18n.dialogs.speakerConfig.controlBar;
+  const t = i18n.dialogs.speakerConfig.toasts;
   const scopeKey = toScopeKey(scope);
   const selectedOutputChannelsByScope = useSpeakerConfigStore((state) => state.selectedOutputChannelsByScope);
   const outputAssignmentsByScope = useSpeakerConfigStore((state) => state.outputAssignmentsByScope);
@@ -197,14 +201,13 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
 
   const handleApplyAll = async () => {
     if (!scope) {
-      toast.error("Apply all requires an active device");
+      toast.error(t.applyAllNoDevice);
       return;
     }
 
     if (readyQueuedApplyItems.length === 0) {
-      toast.error("No queued speaker configs are ready to apply", {
-        description:
-          skippedQueuedApplyItems[0]?.missingReason ?? "Assign linked speaker profiles before using Apply all"
+      toast.error(t.applyAllNotReady, {
+        description: skippedQueuedApplyItems[0]?.missingReason ?? t.applyAllNotReadyFallback
       });
       return;
     }
@@ -219,19 +222,25 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
     let postApplyFailed = 0;
     const postApplyActionTypes = new Set<string>();
 
-    toast.loading("Applying queued speaker configs", {
+    toast.loading(t.applyAllLoadingTitle, {
       id: toastId,
       description:
         skippedQueuedApplyItems.length > 0
-          ? `Applying ${readyQueuedApplyItems.length} item(s), skipping ${skippedQueuedApplyItems.length} incomplete item(s)`
-          : `Applying ${readyQueuedApplyItems.length} queued item(s)`
+          ? t.applyAllLoadingSkip
+              .replace("{ready}", String(readyQueuedApplyItems.length))
+              .replace("{skip}", String(skippedQueuedApplyItems.length))
+          : t.applyAllLoading.replace("{count}", String(readyQueuedApplyItems.length))
     });
 
     for (let index = 0; index < readyQueuedApplyItems.length; index += 1) {
       const item = readyQueuedApplyItems[index];
-      toast.loading("Applying queued speaker configs", {
+      toast.loading(t.applyAllLoadingTitle, {
         id: toastId,
-        description: `${index + 1}/${readyQueuedApplyItems.length}: ${item.model} -> ${formatChannelList(item.channels)}`
+        description: t.applyAllProgress
+          .replace("{index}", String(index + 1))
+          .replace("{total}", String(readyQueuedApplyItems.length))
+          .replace("{model}", item.model)
+          .replace("{channels}", formatChannelList(item.channels))
       });
 
       const outcome = await applyToDevice({
@@ -303,26 +312,37 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
     const hasPostApplyIssues = postApplyFailed > 0;
 
     if (failedCount > 0) {
-      toast.error("Queued apply completed with errors", {
+      toast.error(t.applyAllErrorTitle, {
         id: toastId,
-        description: `Applied ${appliedCount}, failed ${failedCount}, skipped ${skippedQueuedApplyItems.length}${firstError ? `. ${firstError}` : ""}`
+        description:
+          t.applyAllErrorDesc
+            .replace("{applied}", String(appliedCount))
+            .replace("{failed}", String(failedCount))
+            .replace("{skipped}", String(skippedQueuedApplyItems.length)) + (firstError ? `. ${firstError}` : "")
       });
       return;
     }
 
     if (hasPostApplyIssues) {
-      toast.warning("Queued speaker configs applied, but post-apply had issues", {
+      toast.warning(t.applyAllWarningTitle, {
         id: toastId,
-        description: `Applied ${appliedCount} item(s). Post-apply: ${postApplySucceeded} ok, ${postApplyFailed} failed`
+        description: t.applyAllWarningDesc
+          .replace("{count}", String(appliedCount))
+          .replace("{succeeded}", String(postApplySucceeded))
+          .replace("{failed}", String(postApplyFailed))
       });
       return;
     }
 
-    toast.success("Queued speaker configs applied", {
+    toast.success(t.applyAllSuccessTitle, {
       id: toastId,
       description: postApplySummary
-        ? `Applied ${appliedCount} item(s). ${postApplySummary}`
-        : `Applied ${appliedCount} queued item(s)${skippedQueuedApplyItems.length > 0 ? `, skipped ${skippedQueuedApplyItems.length}` : ""}`
+        ? t.applyAllSuccessDesc.replace("{count}", String(appliedCount)).replace("{summary}", postApplySummary)
+        : skippedQueuedApplyItems.length > 0
+          ? t.applyAllSuccessSkipped
+              .replace("{count}", String(appliedCount))
+              .replace("{skipped}", String(skippedQueuedApplyItems.length))
+          : t.applyAllSuccessNoSummary.replace("{count}", String(appliedCount))
     });
   };
 
@@ -331,28 +351,31 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
 
     const outcome = await deleteLibraryFile(fileKey(selectedLibraryFile));
     if (!outcome.ok) {
-      toast.error("Failed to delete library config", {
-        description: outcome.error ?? "The selected library config could not be deleted"
+      toast.error(t.deleteFailedTitle, {
+        description: outcome.error ?? t.deleteFailedFallback
       });
       return;
     }
 
     setDeleteDialogOpen(false);
-    toast.success("Library config deleted", {
-      description: `${selectedLibraryFile.brand || selectedLibraryFile.model || selectedLibraryFile.name} was removed from the library`
+    toast.success(t.deleteSuccessTitle, {
+      description: t.deleteSuccessDesc.replace(
+        "{name}",
+        selectedLibraryFile.brand || selectedLibraryFile.model || selectedLibraryFile.name
+      )
     });
   };
 
   const handleOpenConfigFolder = async () => {
     if (typeof window === "undefined" || !window.electronWindow?.isDesktop) {
-      toast.error("Open config folder is only available in the desktop app");
+      toast.error(t.folderDesktopOnly);
       return;
     }
 
     const outcome = await window.electronWindow.openSpeakerLibraryFolder();
     if (!outcome.ok) {
-      toast.error("Failed to open config folder", {
-        description: outcome.error ?? "The speaker library folder could not be opened"
+      toast.error(t.folderFailedTitle, {
+        description: outcome.error ?? t.folderFailedFallback
       });
     }
   };
@@ -360,7 +383,7 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
   return (
     <section className="flex h-full min-h-0 flex-col rounded-md border border-border/50 bg-background/30 p-3">
       <div className="mb-2.5 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Controls</h3>
+        <h3 className="text-sm font-semibold">{cb.controls}</h3>
       </div>
 
       <div className="flex flex-1 flex-col">
@@ -372,7 +395,7 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
           onClick={() => joinSelected(scope)}
         >
           <Link2 className="h-3.5 w-3.5" />
-          Join
+          {cb.join}
         </Button>
 
         <Button
@@ -383,7 +406,7 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
           onClick={() => bridgeSelected(scope)}
         >
           <SplitSquareVertical className="h-3.5 w-3.5" />
-          Bridge
+          {cb.bridge}
         </Button>
 
         <Button
@@ -394,7 +417,7 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
           onClick={() => splitReset(scope)}
         >
           <RotateCcw className="h-3.5 w-3.5" />
-          Split/Reset
+          {cb.splitReset}
         </Button>
 
         <Button
@@ -405,12 +428,12 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
           onClick={() => void handleApplyAll()}
         >
           <Upload className="h-3.5 w-3.5" />
-          Apply all
+          {cb.applyAll}
         </Button>
 
         <div className="my-3 border-t border-border/50 pt-3">
           <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Library actions
+            {cb.libraryActions}
           </p>
 
           <Button
@@ -421,12 +444,12 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
             onClick={() => setLoadDialogOpen(true)}
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Load
+            {cb.load}
           </Button>
 
           <Button type="button" variant="outline" className="mb-2 h-8 w-full justify-start gap-2 text-xs" disabled>
             <ArrowRight className="h-3.5 w-3.5" />
-            Save
+            {cb.save}
           </Button>
 
           <Button
@@ -437,7 +460,7 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
             onClick={() => setDeleteDialogOpen(true)}
           >
             <Trash2 className="h-3.5 w-3.5" />
-            Delete from library
+            {cb.deleteFromLibrary}
           </Button>
 
           <Button
@@ -447,7 +470,7 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
             onClick={() => void handleOpenConfigFolder()}
           >
             <FolderOpen className="h-3.5 w-3.5" />
-            Open config folder
+            {cb.openConfigFolder}
           </Button>
         </div>
       </div>
@@ -480,8 +503,10 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
 
             setLoadDialogOpen(false);
 
-            toast.success("Speaker model updated", {
-              description: `Loaded ${selections.length} way(s) from ${selectedLibraryFile.brand || selectedLibraryFile.model || selectedLibraryFile.name}`
+            toast.success(t.loadSuccessTitle, {
+              description: t.loadSuccessDesc
+                .replace("{count}", String(selections.length))
+                .replace("{name}", selectedLibraryFile.brand || selectedLibraryFile.model || selectedLibraryFile.name)
             });
           }}
         />
@@ -490,13 +515,16 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
       <ConfirmActionDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
-        title="Delete selected library config?"
+        title={cb.deleteDialogTitle}
         description={
           selectedLibraryFile
-            ? `Remove ${selectedLibraryFile.brand || selectedLibraryFile.model || selectedLibraryFile.name} from the speaker library.`
-            : "Remove the selected speaker config from the library."
+            ? cb.deleteDialogDescription.replace(
+                "{name}",
+                selectedLibraryFile.brand || selectedLibraryFile.model || selectedLibraryFile.name
+              )
+            : cb.deleteDialogFallback
         }
-        confirmLabel="Delete"
+        confirmLabel={cb.deleteLabel}
         confirmDisabled={!selectedLibraryFile || deleting}
         onConfirm={() => void handleDeleteSelected()}
       />

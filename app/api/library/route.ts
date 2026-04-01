@@ -2,6 +2,48 @@ import { promises as fs } from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
 
+// ---------------------------------------------------------------------------
+// Write-lock: serialises all mutating library operations so that a concurrent
+// DELETE cannot interleave with a POST on the same file (issue #1).
+// ---------------------------------------------------------------------------
+let libraryWriteQueue: Promise<void> = Promise.resolve();
+
+function withLibraryWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+  const result = libraryWriteQueue.then(fn);
+  // Advance the chain regardless of outcome so later ops are never blocked.
+  libraryWriteQueue = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
+}
+
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Atomic rename: write to a temp file, then rename into place (issue #8).
+// On Windows, rename fails when the destination already exists (EEXIST/EPERM),
+// so we delete the target first in that case.
+async function atomicRename(from: string, to: string): Promise<void> {
+  try {
+    await fs.rename(from, to);
+  } catch (err) {
+    const code = err && typeof err === "object" && "code" in err ? String((err as { code: unknown }).code) : "";
+    if (code === "EEXIST" || code === "EPERM") {
+      await fs.unlink(to).catch(() => undefined);
+      await fs.rename(from, to);
+    } else {
+      throw err;
+    }
+  }
+}
+
 type LibrarySpeakerWayRecord = {
   id: string;
   label: string;
@@ -267,60 +309,85 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  let rawBody: { profile?: unknown };
   try {
-    const body = (await request.json()) as { profile?: unknown };
-    const profile = toStoredSpeakerProfile(body?.profile);
+    rawBody = (await request.json()) as { profile?: unknown };
+  } catch {
+    return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+  }
 
-    const libraryDir = getLibraryDir();
-    await fs.mkdir(libraryDir, { recursive: true });
-
-    const fileName = `${profile.id}.json`;
-    const filePath = path.join(libraryDir, fileName);
-    await fs.writeFile(filePath, JSON.stringify(profile, null, 2), "utf-8");
-
-    const normalized = parseSpeakerLibraryFile(fileName, JSON.stringify(profile));
-    return NextResponse.json({ success: true, file: normalized });
+  let profile: StoredSpeakerProfile;
+  try {
+    profile = toStoredSpeakerProfile(rawBody?.profile);
   } catch (err) {
     return NextResponse.json(
-      {
-        success: false,
-        error: err instanceof Error ? err.message : "Failed to write speaker profile"
-      },
+      { success: false, error: err instanceof Error ? err.message : "Invalid profile payload" },
       { status: 400 }
     );
   }
+
+  return withLibraryWriteLock(async () => {
+    const libraryDir = getLibraryDir();
+    await fs.mkdir(libraryDir, { recursive: true });
+
+    // Find a unique file name — never silently overwrite an existing profile (issue #5).
+    let finalId = profile.id;
+    let filePath = path.join(libraryDir, `${finalId}.json`);
+    let suffix = 1;
+    while (await fileExists(filePath)) {
+      finalId = `${profile.id}-${suffix}`;
+      filePath = path.join(libraryDir, `${finalId}.json`);
+      suffix++;
+    }
+
+    const storedProfile: StoredSpeakerProfile = { ...profile, id: finalId };
+
+    // Atomic write: temp file → rename so a crash never leaves a partial file (issue #8).
+    const tmpPath = `${filePath}.tmp`;
+    try {
+      await fs.writeFile(tmpPath, JSON.stringify(storedProfile, null, 2), "utf-8");
+      await atomicRename(tmpPath, filePath);
+    } catch (err) {
+      await fs.unlink(tmpPath).catch(() => undefined);
+      throw err;
+    }
+
+    const fileName = `${finalId}.json`;
+    const normalized = parseSpeakerLibraryFile(fileName, JSON.stringify(storedProfile));
+    return NextResponse.json({ success: true, file: normalized });
+  }).catch((err) =>
+    NextResponse.json(
+      { success: false, error: err instanceof Error ? err.message : "Failed to write speaker profile" },
+      { status: 400 }
+    )
+  );
 }
 
 export async function DELETE(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const requestedId = searchParams.get("id");
+  const { searchParams } = new URL(request.url);
+  const requestedId = searchParams.get("id");
 
-    if (!requestedId || !requestedId.trim()) {
-      return NextResponse.json({ success: false, error: "Missing library profile id" }, { status: 400 });
-    }
+  if (!requestedId || !requestedId.trim()) {
+    return NextResponse.json({ success: false, error: "Missing library profile id" }, { status: 400 });
+  }
 
-    const profileId = normalizeRequestedId(requestedId);
-    const libraryDir = getLibraryDir();
+  const profileId = normalizeRequestedId(requestedId);
+  const libraryDir = getLibraryDir();
 
+  // Serialise with write lock so a DELETE cannot race with an in-flight POST (issue #1).
+  return withLibraryWriteLock(async () => {
     try {
       await fs.unlink(path.join(libraryDir, `${profileId}.json`));
+      return NextResponse.json({ success: true, id: profileId });
     } catch (err) {
       const code = err && typeof err === "object" && "code" in err ? String(err.code) : "";
       if (code === "ENOENT") {
         return NextResponse.json({ success: false, error: "Library profile not found" }, { status: 404 });
       }
-      throw err;
+      return NextResponse.json(
+        { success: false, error: err instanceof Error ? err.message : "Failed to delete speaker profile" },
+        { status: 400 }
+      );
     }
-
-    return NextResponse.json({ success: true, id: profileId });
-  } catch (err) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: err instanceof Error ? err.message : "Failed to delete speaker profile"
-      },
-      { status: 400 }
-    );
-  }
+  });
 }

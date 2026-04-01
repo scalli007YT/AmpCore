@@ -193,7 +193,7 @@ export async function POST(request: Request): Promise<Response> {
         // Give the amp ~500ms to process (original takes ~420ms based on Wireshark)
         await new Promise<void>((resolve) => setTimeout(resolve, 500));
 
-        let verified = false;
+        let verified: boolean | null = null; // null = not checked (QoS disabled)
 
         if (enableQos) {
           try {
@@ -201,6 +201,7 @@ export async function POST(request: Request): Promise<Response> {
             verified = readBack.length === body.length;
           } catch {
             // QoS verification is best-effort and should not fail the write.
+            verified = false;
           }
         }
 
@@ -216,7 +217,8 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const allSent = results.every((r) => r.sent);
-    const allVerified = enableQos ? results.every((r) => r.verified) : false;
+    // null = QoS disabled (not checked); true/false = checked pass/fail
+    const allVerified: boolean | null = enableQos ? results.every((r) => r.verified === true) : null;
 
     return Response.json({
       success: allSent,

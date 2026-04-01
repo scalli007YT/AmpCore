@@ -120,7 +120,8 @@ export interface ApplyWayResult {
   wayIndex: number;
   channels: number[];
   sent: boolean;
-  verified: boolean;
+  /** true = verified, false = verification failed, null = QoS was not requested */
+  verified: boolean | null;
   frameAttemptsMax: number;
   fragmentRetries: number;
   retriedChannels: number;
@@ -358,16 +359,29 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           channels: mapping.channels
         });
 
-        if (!mapping.hex || mapping.channels.length === 0) {
+        // Client-side validation before sending to the API (issue #7)
+        const hexInvalid =
+          !mapping.hex ||
+          mapping.hex.length === 0 ||
+          mapping.hex.length % 2 !== 0 ||
+          !/^[0-9a-fA-F]+$/.test(mapping.hex);
+        const badChannel = mapping.channels.find((ch) => !Number.isInteger(ch) || ch < 0 || ch > 7);
+
+        if (hexInvalid || mapping.channels.length === 0 || badChannel !== undefined) {
+          const errorMsg = hexInvalid
+            ? "Invalid or missing hex data for this way"
+            : badChannel !== undefined
+              ? `Channel ${String(badChannel)} is out of range (0–7)`
+              : "No target channels specified";
           const result = {
             wayIndex: i,
             channels: mapping.channels,
             sent: false,
-            verified: false,
+            verified: null,
             frameAttemptsMax: 0,
             fragmentRetries: 0,
             retriedChannels: 0,
-            error: "Missing hex data or no target channels"
+            error: errorMsg
           };
           results.push(result);
           onProgress?.({
@@ -389,11 +403,11 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
           const data = (await res.json()) as {
             success?: boolean;
-            allVerified?: boolean;
+            allVerified?: boolean | null;
             results?: {
               channel: number;
               sent: boolean;
-              verified: boolean;
+              verified: boolean | null;
               error?: string;
               transport?: { frameAttempts: number; fragmentRetries: number };
             }[];
@@ -405,7 +419,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
               wayIndex: i,
               channels: mapping.channels,
               sent: false,
-              verified: false,
+              verified: null,
               frameAttemptsMax: 0,
               fragmentRetries: 0,
               retriedChannels: 0,
@@ -422,7 +436,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           } else {
             const channelResults = data.results ?? [];
             const allSent = channelResults.every((r) => r.sent);
-            const allVerified = channelResults.every((r) => r.verified);
+            // null = QoS not requested; true/false = pass/fail
+            const allVerified: boolean | null = qos ? channelResults.every((r) => r.verified === true) : null;
             const frameAttemptsMax = channelResults.reduce(
               (max, r) => Math.max(max, r.transport?.frameAttempts ?? 1),
               1
@@ -455,7 +470,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
             wayIndex: i,
             channels: mapping.channels,
             sent: false,
-            verified: false,
+            verified: null,
             frameAttemptsMax: 0,
             fragmentRetries: 0,
             retriedChannels: 0,

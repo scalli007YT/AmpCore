@@ -31,6 +31,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useI18n } from "@/components/layout/i18n-provider";
 
 const EMPTY_SELECTION: number[] = [];
 const EMPTY_ASSIGNMENTS: Record<number, SpeakerOutputAssignment> = {};
@@ -41,64 +42,94 @@ interface SpeakerDeviceDraftProps {
   scope?: string | null;
 }
 
-function buildSaveProgressMessage(progress: SaveProgress): { title: string; description?: string } {
+type SpeakerToastsDict = {
+  saveProgressReading: string;
+  saveProgressReadingDesc: string;
+  savingTitle: string;
+  saveProgressWriting: string;
+  saveProgressRefreshing: string;
+  applyProgressTitle: string;
+  applyProgressSending: string;
+  applyProgressFinished: string;
+  applyProgressFailed: string;
+  applyProgressRetry: string;
+  applyProgressClean: string;
+};
+
+function buildSaveProgressMessage(
+  progress: SaveProgress,
+  t: SpeakerToastsDict
+): { title: string; description?: string } {
   if (progress.stage === "reading-way") {
     return {
-      title: `Saving speaker profile ${progress.current}/${progress.total}`,
-      description: `Reading ${progress.label || `Way ${progress.current}`} from CH ${(progress.channel ?? 0) + 1}`
+      title: t.saveProgressReading
+        .replace("{current}", String(progress.current))
+        .replace("{total}", String(progress.total)),
+      description: t.saveProgressReadingDesc
+        .replace("{label}", progress.label || `Way ${progress.current}`)
+        .replace("{channel}", String((progress.channel ?? 0) + 1))
     };
   }
 
   if (progress.stage === "writing-library") {
     return {
-      title: "Saving speaker profile",
-      description: "Writing captured FC=57 data into the library"
+      title: t.savingTitle,
+      description: t.saveProgressWriting
     };
   }
 
   return {
-    title: "Saving speaker profile",
-    description: "Refreshing library entries"
+    title: t.savingTitle,
+    description: t.saveProgressRefreshing
   };
 }
 
-function buildApplyProgressMessage(progress: ApplyProgress): { title: string; description?: string } {
+function buildApplyProgressMessage(
+  progress: ApplyProgress,
+  t: SpeakerToastsDict
+): { title: string; description?: string } {
   // progress.channels are 0-based (API convention); convert to 1-based for display
   const channelText = formatChannelList(progress.channels.map((ch) => ch + 1));
+  const progressTitle = t.applyProgressTitle
+    .replace("{current}", String(progress.current))
+    .replace("{total}", String(progress.total));
 
   if (progress.stage === "sending-way") {
     return {
-      title: `Applying speaker config ${progress.current}/${progress.total}`,
-      description: `Sending to ${channelText}`
+      title: progressTitle,
+      description: t.applyProgressSending.replace("{channels}", channelText)
     };
   }
 
   const result = progress.result;
   if (!result) {
     return {
-      title: `Applying speaker config ${progress.current}/${progress.total}`,
-      description: `Finished ${channelText}`
+      title: progressTitle,
+      description: t.applyProgressFinished.replace("{channels}", channelText)
     };
   }
 
   if (!result.sent) {
     return {
-      title: `Applying speaker config ${progress.current}/${progress.total}`,
-      description: `Failed on ${channelText}`
+      title: progressTitle,
+      description: t.applyProgressFailed.replace("{channels}", channelText)
     };
   }
 
   const recoveryUsed = result.frameAttemptsMax > 1 || result.fragmentRetries > 0;
   return {
-    title: `Applying speaker config ${progress.current}/${progress.total}`,
+    title: progressTitle,
     description: recoveryUsed
-      ? `Applied to ${channelText} after automatic retry recovery`
-      : `Applied to ${channelText} cleanly`
+      ? t.applyProgressRetry.replace("{channels}", channelText)
+      : t.applyProgressClean.replace("{channels}", channelText)
   };
 }
 
 /** Build a list of visual row segments from channel groups. */
 export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraftProps) {
+  const i18n = useI18n();
+  const dict = i18n.dialogs.speakerConfig;
+  const t = dict.toasts;
   const rowCount = Math.max(1, Math.min(channelCount, 8));
   const scopeKey = toScopeKey(scope);
   const lastClickedChannelRef = useRef<number | null>(null);
@@ -465,8 +496,23 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
       }
 
       if (wayMappings.length === 0) {
-        toast.error("No speaker payload found for this profile");
+        toast.error(t.noPayload);
         return;
+      }
+
+      // Warn when the profile has fewer ways than the segment has channels (issue #2)
+      const skippedWays = wayCount - wayMappings.length;
+      if (skippedWays > 0) {
+        toast.warning(
+          t.waysSkippedTitle.replace("{count}", String(skippedWays)).replace("{s}", skippedWays === 1 ? "" : "s"),
+          {
+            description: t.waysSkippedDesc
+              .replace("{ways}", skippedWays === 1 ? "that way" : "those ways")
+              .replace("{applied}", String(wayMappings.length))
+              .replace("{total}", String(wayCount))
+              .replace("{s}", wayMappings.length === 1 ? "" : "s")
+          }
+        );
       }
 
       // Collect all 0-based channels that will be targeted
@@ -476,25 +522,27 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
 
       void (async () => {
         const toastId = `speaker-apply-${scope}-${segment.channels.join("-")}`;
-        toast.loading("Applying speaker config", {
+        toast.loading(t.applyingTitle, {
           id: toastId,
-          description: `Preparing ${wayMappings.length} way${wayMappings.length === 1 ? "" : "s"}`
+          description: t.applyingPreparing
+            .replace("{count}", String(wayMappings.length))
+            .replace("{s}", wayMappings.length === 1 ? "" : "s")
         });
 
         const outcome = await applyToDevice({
           mac: scope,
           wayMappings,
           onProgress: (progress) => {
-            const next = buildApplyProgressMessage(progress);
+            const next = buildApplyProgressMessage(progress, t);
             toast.loading(next.title, { id: toastId, description: next.description });
           }
         });
 
         if (!outcome.ok) {
           const firstError = outcome.results.find((r) => !r.sent)?.error;
-          toast.error("Speaker config apply failed", {
+          toast.error(t.applyFailedTitle, {
             id: toastId,
-            description: firstError ?? outcome.error ?? "The amp did not accept the speaker payload"
+            description: firstError ?? outcome.error ?? t.applyFailedFallback
           });
           return;
         }
@@ -506,9 +554,9 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
             (applyPolicy.topologyActions.enabled && applyPolicy.topologyActions.actions.length > 0));
 
         if (hasPostApplyActions) {
-          toast.loading("Running post-apply actions", {
+          toast.loading(t.runningPostApply, {
             id: toastId,
-            description: "Configuring channel settings..."
+            description: t.runningPostApplyDesc
           });
         }
 
@@ -543,12 +591,12 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
         const baseDescription = `Applied to ${totalTargets} output${totalTargets === 1 ? "" : "s"}`;
 
         if (postApplyOk) {
-          toast.success("Speaker config applied", {
+          toast.success(t.applySuccessTitle, {
             id: toastId,
             description: postApplySummary ? `${baseDescription}. ${postApplySummary}` : baseDescription
           });
         } else {
-          toast.warning("Speaker config applied, but post-apply had issues", {
+          toast.warning(t.applyWarningTitle, {
             id: toastId,
             description: postApplySummary ?? "Some post-apply actions failed"
           });
@@ -574,7 +622,7 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
       }}
     >
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Speaker Model</h3>
+        <h3 className="text-sm font-semibold">{dict.device.sectionTitle}</h3>
 
         <Popover>
           <PopoverTrigger asChild>
@@ -594,8 +642,8 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
           <PopoverContent align="end" className="w-64">
             <div className="space-y-4">
               <div className="space-y-1">
-                <h4 className="text-sm font-medium">Post-Apply Actions</h4>
-                <p className="text-xs text-muted-foreground">Actions to run after applying speaker config</p>
+                <h4 className="text-sm font-medium">{dict.device.postApplyTitle}</h4>
+                <p className="text-xs text-muted-foreground">{dict.device.postApplyDescription}</p>
               </div>
 
               <div className="space-y-3">
@@ -606,12 +654,14 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                     onCheckedChange={(checked) => setPostApplyEnabled(checked === true)}
                   />
                   <Label htmlFor="post-apply-enabled" className="text-sm font-medium">
-                    Enable post-apply actions
+                    {dict.device.postApplyEnable}
                   </Label>
                 </div>
 
                 <div className={cn("space-y-2 pl-1", !postApplyEnabled && "opacity-50 pointer-events-none")}>
-                  <p className="text-xs font-medium text-muted-foreground">Channel Actions</p>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {dict.device.postApplyChannelActionsLabel}
+                  </p>
                   <div className="space-y-2 pl-2">
                     <div className="flex items-center gap-2">
                       <Checkbox
@@ -620,7 +670,7 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                         onCheckedChange={() => togglePostApplyChannelAction("unmuteOut")}
                       />
                       <Label htmlFor="post-apply-unmute" className="text-sm">
-                        Unmute outputs
+                        {dict.device.postApplyUnmute}
                       </Label>
                     </div>
                     <div className="flex items-center gap-2">
@@ -630,7 +680,7 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                         onCheckedChange={() => togglePostApplyChannelAction("disableNoiseGateOut")}
                       />
                       <Label htmlFor="post-apply-gate" className="text-sm">
-                        Disable noise gate
+                        {dict.device.postApplyNoiseGate}
                       </Label>
                     </div>
                     <div className="flex items-center gap-2">
@@ -640,12 +690,12 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                         onCheckedChange={() => togglePostApplyChannelAction("resetTrimOut")}
                       />
                       <Label htmlFor="post-apply-trim" className="text-sm">
-                        Reset trim to 0 dB
+                        {dict.device.postApplyTrim}
                       </Label>
                     </div>
                   </div>
 
-                  <p className="text-xs font-medium text-muted-foreground pt-2">Topology Actions</p>
+                  <p className="text-xs font-medium text-muted-foreground pt-2">{dict.device.postApplyTopologyLabel}</p>
                   <div className="space-y-2 pl-2">
                     <div className="flex items-center gap-2">
                       <Checkbox
@@ -654,7 +704,7 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                         onCheckedChange={() => togglePostApplyTopologyAction("adjustBridgeMode")}
                       />
                       <Label htmlFor="post-apply-bridge" className="text-sm">
-                        Adjust bridge mode to match config
+                        {dict.device.postApplyBridge}
                       </Label>
                     </div>
                   </div>
@@ -670,13 +720,19 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
           <div className="grid grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)_minmax(0,0.9fr)] gap-0">
             {/* Column headers */}
             <div className="pr-3">
-              <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground">Speaker Model</p>
+              <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
+                {dict.device.colSpeakerModel}
+              </p>
             </div>
             <div className="border-l border-border/35 px-3">
-              <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground">Ways Description</p>
+              <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
+                {dict.device.colWaysDescription}
+              </p>
             </div>
             <div className="border-l border-border/35 pl-3">
-              <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground">Physical Outputs</p>
+              <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
+                {dict.device.colPhysicalOutputs}
+              </p>
             </div>
 
             {/* Rows rendered per segment */}
@@ -842,6 +898,18 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
         onSave={(draft) => {
           if (!scope) return;
 
+          // Guard: ensure all ways fall within the valid 0-based channel range (issue #2)
+          const lastPhysCh = editorTargetChannel - 1 + (draft.ways.length - 1);
+          if (lastPhysCh > 7) {
+            toast.error(t.channelOutOfRangeTitle, {
+              description: t.channelOutOfRangeDesc
+                .replace("{count}", String(draft.ways.length))
+                .replace("{s}", draft.ways.length === 1 ? "" : "s")
+                .replace("{ch}", String(editorTargetChannel))
+            });
+            return;
+          }
+
           // Map each way to its physical output channel (0-based for the API)
           const wayMappings: SaveWayMapping[] = draft.ways.map((way, idx) => ({
             label: way.label || `Way ${idx + 1}`,
@@ -851,9 +919,11 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
 
           void (async () => {
             const toastId = `speaker-save-${scope}-${editorTargetChannel}`;
-            toast.loading("Saving speaker profile", {
+            toast.loading(t.savingTitle, {
               id: toastId,
-              description: `Preparing ${wayMappings.length} way${wayMappings.length === 1 ? "" : "s"} for capture`
+              description: t.savingPreparing
+                .replace("{count}", String(wayMappings.length))
+                .replace("{s}", wayMappings.length === 1 ? "" : "s")
             });
 
             const outcome = await saveToLibrary({
@@ -866,22 +936,24 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
               notes: draft.notes,
               wayMappings,
               onProgress: (progress) => {
-                const next = buildSaveProgressMessage(progress);
+                const next = buildSaveProgressMessage(progress, t);
                 toast.loading(next.title, { id: toastId, description: next.description });
               }
             });
 
             if (!outcome.ok) {
-              toast.error("Speaker profile save failed", {
+              toast.error(t.saveFailedTitle, {
                 id: toastId,
-                description: outcome.error ?? "Failed to save speaker profile to library"
+                description: outcome.error ?? t.saveFailedFallback
               });
               return;
             }
 
-            toast.success("Speaker profile saved to library", {
+            toast.success(t.saveSuccessTitle, {
               id: toastId,
-              description: `Captured ${wayMappings.length} way${wayMappings.length === 1 ? "" : "s"} and refreshed the library`
+              description: t.saveSuccessDesc
+                .replace("{count}", String(wayMappings.length))
+                .replace("{s}", wayMappings.length === 1 ? "" : "s")
             });
           })();
         }}

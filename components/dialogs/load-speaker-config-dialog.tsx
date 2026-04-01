@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { type ChannelGroup, type SpeakerOutputAssignment, useSpeakerConfigStore } from "@/stores/SpeakerConfigStore";
 import { buildRowSegments, toScopeKey, type RowSegment } from "@/lib/speaker-config";
 import { type LibraryFileEntry } from "@/stores/LibraryStore";
+import { useI18n } from "@/components/layout/i18n-provider";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -55,6 +56,8 @@ export function LoadSpeakerConfigDialog({
   profile,
   onLoad
 }: LoadSpeakerConfigDialogProps) {
+  const i18n = useI18n();
+  const dict = i18n.dialogs.speakerConfig.loadDialog;
   const scopeKey = toScopeKey(scope);
   const channelGroupsByScope = useSpeakerConfigStore((s) => s.channelGroupsByScope);
   const outputAssignmentsByScope = useSpeakerConfigStore((s) => s.outputAssignmentsByScope);
@@ -144,7 +147,7 @@ export function LoadSpeakerConfigDialog({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={NO_CHANGES}>No Changes</SelectItem>
+          <SelectItem value={NO_CHANGES}>{dict.noChanges}</SelectItem>
           {wayOptions.map((way) => (
             <SelectItem key={way.id} value={way.id}>
               {way.label}
@@ -163,7 +166,7 @@ export function LoadSpeakerConfigDialog({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={NO_CHANGES}>No Changes</SelectItem>
+          <SelectItem value={NO_CHANGES}>{dict.noChanges}</SelectItem>
           {wayOptions.map((way) => (
             <SelectItem key={way.id} value={way.id}>
               {way.label}
@@ -183,10 +186,11 @@ export function LoadSpeakerConfigDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Load Speaker Config</DialogTitle>
+          <DialogTitle>{dict.title}</DialogTitle>
           <DialogDescription>
-            Assign ways from <span className="font-medium text-foreground">{profileDisplayName}</span> to each output
-            channel.
+            {dict.description.split("{profileName}")[0]}
+            <span className="font-medium text-foreground">{profileDisplayName}</span>
+            {dict.description.split("{profileName}")[1]}
           </DialogDescription>
         </DialogHeader>
 
@@ -195,10 +199,10 @@ export function LoadSpeakerConfigDialog({
           <div className="min-w-0">
             {/* Column headers */}
             <div className="mb-2 grid grid-cols-[56px_48px_minmax(0,1fr)_minmax(0,1.2fr)] gap-2 border-b border-border/50 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              <span>Speaker</span>
-              <span>Way</span>
-              <span>Current</span>
-              <span>Preset to load</span>
+              <span>{dict.colSpeaker}</span>
+              <span>{dict.colWay}</span>
+              <span>{dict.colCurrent}</span>
+              <span>{dict.colPresetToLoad}</span>
             </div>
 
             {/* Rows */}
@@ -305,7 +309,7 @@ export function LoadSpeakerConfigDialog({
           {/* Right side: Selected preset details (always visible, static) */}
           <div className="min-w-0 rounded-md border border-border/30 bg-muted/5 p-3">
             <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Preset details
+              {dict.presetDetails}
             </p>
 
             <div className="space-y-1.5">
@@ -345,10 +349,10 @@ export function LoadSpeakerConfigDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {i18n.dialogs.common.cancel}
           </Button>
           <Button disabled={!hasAnySelection} onClick={handleLoad}>
-            Load
+            {dict.load}
           </Button>
         </DialogFooter>
       </DialogContent>

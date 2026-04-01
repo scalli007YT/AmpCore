@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { type LibraryFileEntry, useLibraryStore } from "@/stores/LibraryStore";
 import { fileKey as getFileKey } from "@/lib/speaker-config";
 import { useSpeakerConfigStore } from "@/stores/SpeakerConfigStore";
+import { useI18n } from "@/components/layout/i18n-provider";
 
 interface SpeakerLibraryBrowserProps {
   isActive: boolean;
@@ -54,6 +55,7 @@ function DraggableLibraryRow({
   const hasNote = note.length > 0;
   const waysText = file.wayLabelsText?.trim() || file.ways.map((way) => way.label).join(" & ");
   const fk = getFileKey(file);
+  const { showNote, dragTitle } = useI18n().dialogs.speakerConfig.library;
 
   return (
     <Draggable
@@ -84,7 +86,7 @@ function DraggableLibraryRow({
         ].join(" ")}
         role="button"
         tabIndex={0}
-        title="Drag to a Physical Output channel"
+        title={dragTitle}
         onClick={() => setSelectedFileId(fk)}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -107,7 +109,7 @@ function DraggableLibraryRow({
                   <button
                     type="button"
                     className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    aria-label="Show note"
+                    aria-label={showNote}
                     onClick={(event) => event.stopPropagation()}
                   >
                     <Info className="h-3.5 w-3.5" />
@@ -140,6 +142,7 @@ function DraggableLibraryRow({
 }
 
 export function SpeakerLibraryBrowser({ isActive }: SpeakerLibraryBrowserProps) {
+  const lib = useI18n().dialogs.speakerConfig.library;
   const files = useLibraryStore((state) => state.files);
   const loading = useLibraryStore((state) => state.loading);
   const error = useLibraryStore((state) => state.error);
@@ -274,11 +277,11 @@ export function SpeakerLibraryBrowser({ isActive }: SpeakerLibraryBrowserProps) 
     <section className="flex h-full min-h-0 flex-col rounded-md border border-border/50 bg-background/30 p-3">
       <div className="mb-2.5 flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-2">
-          <h3 className="text-sm font-semibold">Library</h3>
+          <h3 className="text-sm font-semibold">{lib.title}</h3>
           {!loading && !error && <span className="text-xs text-muted-foreground">{filteredFiles.length}</span>}
         </div>
         <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => void loadLibrary()}>
-          Refresh
+          {lib.refresh}
         </Button>
       </div>
 
@@ -286,39 +289,39 @@ export function SpeakerLibraryBrowser({ isActive }: SpeakerLibraryBrowserProps) 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="space-y-1.5">
             <Label htmlFor="speaker-filter-brand" className="text-xs text-muted-foreground">
-              Brand
+              {lib.filterBrandLabel}
             </Label>
             <Input
               id="speaker-filter-brand"
               value={brandFilter}
               onChange={(e) => setBrandFilter(e.target.value)}
-              placeholder="Filter brand"
+              placeholder={lib.filterBrandPlaceholder}
               className="h-8"
             />
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="speaker-filter-family" className="text-xs text-muted-foreground">
-              Family
+              {lib.filterFamilyLabel}
             </Label>
             <Input
               id="speaker-filter-family"
               value={familyFilter}
               onChange={(e) => setFamilyFilter(e.target.value)}
-              placeholder="Filter family"
+              placeholder={lib.filterFamilyPlaceholder}
               className="h-8"
             />
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="speaker-filter-model" className="text-xs text-muted-foreground">
-              Model
+              {lib.filterModelLabel}
             </Label>
             <Input
               id="speaker-filter-model"
               value={modelFilter}
               onChange={(e) => setModelFilter(e.target.value)}
-              placeholder="Filter model"
+              placeholder={lib.filterModelPlaceholder}
               className="h-8"
             />
           </div>
@@ -326,13 +329,13 @@ export function SpeakerLibraryBrowser({ isActive }: SpeakerLibraryBrowserProps) 
 
         <div className="mt-3 flex items-end gap-3">
           <div className="w-40 shrink-0 space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Ways N°</Label>
+            <Label className="text-xs text-muted-foreground">{lib.filterWaysLabel}</Label>
             <Select value={waysNoFilter} onValueChange={setWaysNoFilter}>
               <SelectTrigger className="h-8 w-full">
-                <SelectValue placeholder="Any" />
+                <SelectValue placeholder={lib.filterWaysAny} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Any</SelectItem>
+                <SelectItem value="all">{lib.filterWaysAny}</SelectItem>
                 {waysNoOptions.map((num) => (
                   <SelectItem key={num} value={String(num)}>
                     {num}
@@ -344,29 +347,29 @@ export function SpeakerLibraryBrowser({ isActive }: SpeakerLibraryBrowserProps) 
 
           <div className="ml-auto">
             <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={clearFilters}>
-              Clear filters
+              {lib.clearFilters}
             </Button>
           </div>
         </div>
       </div>
 
-      {loading && <p className="text-sm text-muted-foreground">Loading library...</p>}
+      {loading && <p className="text-sm text-muted-foreground">{lib.loading}</p>}
       {!loading && error && <p className="text-sm text-destructive">{error}</p>}
       {!loading && !error && filteredFiles.length === 0 && (
-        <p className="text-sm text-muted-foreground">No library files match the current filters.</p>
+        <p className="text-sm text-muted-foreground">{lib.noResults}</p>
       )}
 
       {!loading && !error && filteredFiles.length > 0 && (
         <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border/50">
           <div className="grid grid-cols-[40px_56px_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)_56px_110px] gap-2 border-b border-border/50 bg-muted/20 px-3 py-2 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground">
-            <span className="text-center">Drag</span>
-            <span className="text-center">Note</span>
-            <span>Brand</span>
-            <span>Family</span>
-            <span>Model</span>
-            <span>Application</span>
-            <span className="text-center">Ways</span>
-            <span>Ways Label</span>
+            <span className="text-center">{lib.colDrag}</span>
+            <span className="text-center">{lib.colNote}</span>
+            <span>{lib.colBrand}</span>
+            <span>{lib.colFamily}</span>
+            <span>{lib.colModel}</span>
+            <span>{lib.colApplication}</span>
+            <span className="text-center">{lib.colWays}</span>
+            <span>{lib.colWaysLabel}</span>
           </div>
           <TooltipProvider>
             <div className="h-full min-h-0 overflow-y-auto">

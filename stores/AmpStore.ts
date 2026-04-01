@@ -310,7 +310,8 @@ function clearTransientStatus(amp: Amp): Amp {
     ip: undefined,
     heartbeat: undefined,
     bridgePairs: undefined,
-    channelFlags: undefined
+    channelFlags: undefined,
+    presets: undefined
   };
 }
 

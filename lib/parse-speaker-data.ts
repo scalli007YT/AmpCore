@@ -432,3 +432,38 @@ export function parseSpeakerData(body: Buffer): ParsedSpeakerData | null {
 export function detectSpeakerVariant(byteLength: number): SpeakerVariant {
   return VARIANT_NAME_BY_LENGTH[byteLength] ?? "unknown";
 }
+
+// ---------------------------------------------------------------------------
+// Speaker name write-back
+// ---------------------------------------------------------------------------
+
+/**
+ * Byte offsets of the 16-byte SpeakerName field, keyed by blob byte length.
+ * Only variants that carry this field are listed.
+ *
+ *   YCST    (157 B):  speakerName at +141
+ *   117     (2310 B): speakerName at +2294
+ *   Tecnare (2415 B): speakerName at +2294 (first 2310 B are identical to 117)
+ */
+const SPEAKER_NAME_OFFSETS: Record<number, number> = {
+  157: 141,
+  2310: 2294,
+  2415: 2294
+};
+
+/**
+ * Patch a 16-byte null-padded ASCII speaker name into an FC=57 hex blob.
+ * Only has effect for variants that carry the SpeakerName field (YCST, 117, Tecnare).
+ * Returns the original hex string unchanged for unsupported variants or an empty name.
+ */
+export function writeSpeakerNameIntoBlob(hex: string, name: string): string {
+  if (!name) return hex;
+  const byteLength = hex.length / 2;
+  const offset = SPEAKER_NAME_OFFSETS[byteLength];
+  if (offset === undefined) return hex;
+  const buf = Buffer.from(hex, "hex");
+  const nameBytes = Buffer.alloc(16, 0);
+  Buffer.from(name.slice(0, 16), "ascii").copy(nameBytes);
+  nameBytes.copy(buf, offset);
+  return buf.toString("hex");
+}

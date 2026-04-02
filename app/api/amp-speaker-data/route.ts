@@ -33,7 +33,7 @@
 import { ampController } from "@/lib/amp-controller";
 import { FuncCode } from "@/lib/amp-device";
 import { isSimulatedMac } from "@/lib/simulated-amps";
-import { parseSpeakerData, detectSpeakerVariant } from "@/lib/parse-speaker-data";
+import { parseSpeakerData, detectSpeakerVariant, writeSpeakerNameIntoBlob } from "@/lib/parse-speaker-data";
 
 export const dynamic = "force-dynamic";
 
@@ -137,7 +137,12 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const enableQos = qos === true; // default false — read-back uses the persistent socket and blocks polling
-  const body = Buffer.from(hex, "hex");
+  const speakerName =
+    typeof (rawBody as Record<string, unknown>).speakerName === "string"
+      ? ((rawBody as Record<string, unknown>).speakerName as string).trim()
+      : "";
+  const hexStr = speakerName ? writeSpeakerNameIntoBlob(hex as string, speakerName) : (hex as string);
+  const body = Buffer.from(hexStr, "hex");
   const variant = detectSpeakerVariant(body.length);
 
   if (isSimulatedMac(mac)) {
@@ -169,7 +174,7 @@ export async function POST(request: Request): Promise<Response> {
     const results: {
       channel: number;
       sent: boolean;
-      verified: boolean;
+      verified: boolean | null;
       error?: string;
       transport?: { frameAttempts: number; fragmentRetries: number };
     }[] = [];

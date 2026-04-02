@@ -211,9 +211,9 @@ export const useSpeakerConfigStore = create<SpeakerConfigStore>((set, get) => ({
   activeDraggedItem: null,
   dragHoverChannel: null,
 
-  // Post-apply policy defaults — all enabled
+  // Post-apply policy defaults — channel actions off by default
   postApplyEnabled: true,
-  postApplyChannelActions: ["unmuteOut", "disableNoiseGateOut", "resetTrimOut"],
+  postApplyChannelActions: [],
   postApplyTopologyActions: ["adjustBridgeMode"],
 
   toggleOutputChannel: (channel, scope) => {

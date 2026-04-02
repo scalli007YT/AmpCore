@@ -421,7 +421,7 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
         type="button"
         onClick={(e) => handleChannelClick(row, e)}
         className={cn(
-          "flex h-10 w-full items-center justify-center rounded-md border border-dashed px-2 transition-colors duration-200",
+          "flex h-9 w-full items-center justify-center rounded-md border border-dashed px-2 transition-colors duration-200",
           inPreview && previewValid
             ? "border-amber-400/80 bg-amber-500/20 text-amber-200"
             : inPreview && !previewValid
@@ -532,6 +532,7 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
         const outcome = await applyToDevice({
           mac: scope,
           wayMappings,
+          speakerName: linkedProfile.model,
           onProgress: (progress) => {
             const next = buildApplyProgressMessage(progress, t);
             toast.loading(next.title, { id: toastId, description: next.description });
@@ -716,21 +717,21 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="rounded-md border border-border/50 bg-muted/10 p-3">
-          <div className="grid grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)_minmax(0,0.9fr)] gap-0">
+        <div className="rounded-md border border-border/50 bg-muted/10 p-2.5">
+          <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.85fr)] gap-0">
             {/* Column headers */}
             <div className="pr-3">
-              <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
+              <p className="mb-1.5 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
                 {dict.device.colSpeakerModel}
               </p>
             </div>
             <div className="border-l border-border/35 px-3">
-              <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
+              <p className="mb-1.5 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
                 {dict.device.colWaysDescription}
               </p>
             </div>
             <div className="border-l border-border/35 pl-3">
-              <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
+              <p className="mb-1.5 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
                 {dict.device.colPhysicalOutputs}
               </p>
             </div>
@@ -761,15 +762,15 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                   <div className="pr-3">
                     <div
                       className="flex w-full items-center gap-1"
-                      style={{ height: `${channelCount * 2.5 + (channelCount - 1) * 0.5}rem` }}
+                      style={{ height: `${channelCount * 2.25 + (channelCount - 1) * 0.375}rem` }}
                     >
                       <button
                         type="button"
                         data-speaker-editor-trigger="true"
                         onClick={() => openEditorForSegment(segment)}
-                        className="flex h-full min-w-0 flex-1 items-center rounded-md border border-border/40 bg-muted/10 px-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/20"
+                        className="flex h-full min-w-0 flex-1 items-center rounded-md border border-border/40 bg-muted/10 px-2.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/20"
                       >
-                        <span className="truncate text-sm text-foreground/90">{assignment?.model || "-"}</span>
+                        <span className="truncate text-[13px] text-foreground/90">{assignment?.model || "-"}</span>
                       </button>
                       {hasDeviceData && (
                         <button
@@ -789,7 +790,7 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                       )}
                     </div>
                     {/* spacer matching the gap between segments */}
-                    <div className="h-2" />
+                    <div className="h-1.5" />
                   </div>
 
                   {/* Ways Description column */}
@@ -801,19 +802,19 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                           type="button"
                           data-speaker-editor-trigger="true"
                           onClick={() => openEditorForSegment(segment)}
-                          className="flex w-full items-center rounded-md border border-border/40 bg-muted/10 px-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/20"
-                          style={{ height: `${channelCount * 2.5 + (channelCount - 1) * 0.5}rem` }}
+                          className="flex w-full items-center rounded-md border border-border/40 bg-muted/10 px-2.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/20"
+                          style={{ height: `${channelCount * 2.25 + (channelCount - 1) * 0.375}rem` }}
                         >
-                          <span className="text-sm text-muted-foreground">
+                          <span className="text-[13px] text-muted-foreground">
                             {assignment?.wayLabel || `${wayCount}-way`}
                           </span>
                         </button>
-                        <div className="h-2" />
+                        <div className="h-1.5" />
                       </>
                     ) : segment.type === "join" ? (
                       <>
                         {/* Join: one row per way */}
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                           {segment.channels.map((ch, idx) => {
                             const chAssignment = outputAssignments[ch];
                             return (
@@ -822,16 +823,16 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                                 type="button"
                                 data-speaker-editor-trigger="true"
                                 onClick={() => openEditorForSegment(segment)}
-                                className="flex h-10 w-full items-center rounded-md border border-border/40 bg-muted/10 px-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/20"
+                                className="flex h-9 w-full items-center rounded-md border border-border/40 bg-muted/10 px-2.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/20"
                               >
-                                <span className="text-sm text-muted-foreground">
+                                <span className="text-[13px] text-muted-foreground">
                                   {chAssignment?.wayLabel || `Way ${idx + 1}`}
                                 </span>
                               </button>
                             );
                           })}
                         </div>
-                        <div className="h-2" />
+                        <div className="h-1.5" />
                       </>
                     ) : (
                       <>
@@ -840,11 +841,11 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                           type="button"
                           data-speaker-editor-trigger="true"
                           onClick={() => openEditorForSegment(segment)}
-                          className="flex h-10 w-full items-center rounded-md border border-border/40 bg-muted/10 px-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/20"
+                          className="flex h-9 w-full items-center rounded-md border border-border/40 bg-muted/10 px-2.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/20"
                         >
-                          <span className="text-sm text-muted-foreground">{assignment?.wayLabel || "-"}</span>
+                          <span className="text-[13px] text-muted-foreground">{assignment?.wayLabel || "-"}</span>
                         </button>
-                        <div className="h-2" />
+                        <div className="h-1.5" />
                       </>
                     )}
                   </div>
@@ -860,7 +861,7 @@ export function SpeakerModelDraft({ channelCount = 4, scope }: SpeakerDeviceDraf
                             <div className="flex justify-center py-0.5">{linkIcon}</div>
                           )}
                           {/* Spacer after last channel in group */}
-                          {idx === segment.channels.length - 1 && <div className="h-2" />}
+                          {idx === segment.channels.length - 1 && <div className="h-1.5" />}
                         </div>
                       ))}
                     </div>

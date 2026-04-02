@@ -97,6 +97,11 @@ export interface ApplyToDeviceParams {
   wayMappings: ApplyWayMapping[];
   /** Enable read-back verification per channel (default true). */
   qos?: boolean;
+  /**
+   * Speaker model name to embed in the FC=57 blob before sending.
+   * Only has effect on variants that carry a SpeakerName field (YCST, 117, Tecnare).
+   */
+  speakerName?: string;
   onProgress?: (progress: ApplyProgress) => void;
 }
 
@@ -340,7 +345,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     set({ applying: true, error: null });
 
     try {
-      const { mac, wayMappings, qos = false, onProgress } = params;
+      const { mac, wayMappings, qos = false, speakerName, onProgress } = params;
 
       if (wayMappings.length === 0) {
         throw new Error("At least one way mapping is required");
@@ -398,7 +403,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           const res = await fetch("/api/amp-speaker-data", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mac, channels: mapping.channels, hex: mapping.hex, qos })
+            body: JSON.stringify({ mac, channels: mapping.channels, hex: mapping.hex, qos, speakerName })
           });
 
           const data = (await res.json()) as {

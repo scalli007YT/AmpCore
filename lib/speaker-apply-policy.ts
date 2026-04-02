@@ -91,12 +91,12 @@ export interface PostApplyActionDeps {
 // Defaults
 // ---------------------------------------------------------------------------
 
-/** Default post-apply policy — all actions enabled, continue on failure. */
+/** Default post-apply policy — channel actions off by default, continue on failure. */
 export const DEFAULT_SPEAKER_APPLY_POLICY: SpeakerApplyPolicy = {
   enabled: true,
   channelActions: {
-    enabled: true,
-    actions: ["unmuteOut", "disableNoiseGateOut", "resetTrimOut"]
+    enabled: false,
+    actions: []
   },
   topologyActions: {
     enabled: true,

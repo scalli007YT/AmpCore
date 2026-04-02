@@ -245,7 +245,8 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
 
       const outcome = await applyToDevice({
         mac: scope,
-        wayMappings: item.wayMappings
+        wayMappings: item.wayMappings,
+        speakerName: item.model
       });
 
       if (!outcome.ok) {

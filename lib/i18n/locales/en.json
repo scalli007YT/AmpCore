@@ -319,6 +319,7 @@
         "save": "Save",
         "deleteFromLibrary": "Delete from library",
         "openConfigFolder": "Open config folder",
+        "importSl": "Import .sl",
         "deleteDialogTitle": "Delete selected library config?",
         "deleteDialogDescription": "Remove {name} from the speaker library.",
         "deleteDialogFallback": "Remove the selected speaker config from the library.",
@@ -402,7 +403,11 @@
         "folderFailedTitle": "Failed to open config folder",
         "folderFailedFallback": "The speaker library folder could not be opened",
         "loadSuccessTitle": "Speaker model updated",
-        "loadSuccessDesc": "Loaded {count} way(s) from {name}"
+        "loadSuccessDesc": "Loaded {count} way(s) from {name}",
+        "importSlFailedTitle": "Failed to import .sl file",
+        "importSlFailedFallback": "The file could not be parsed",
+        "importSlSuccessTitle": "Speaker profile imported",
+        "importSlSuccessDesc": "Imported {name} and saved it to the library"
       }
     }
   }

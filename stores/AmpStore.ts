@@ -362,16 +362,21 @@ function getOutputStateLabel(state: number): string {
 function deriveChannelFlags(
   heartbeat?: HeartbeatData,
   channelParams?: ChannelParams,
-  bridgePairs?: BridgeReadback[]
+  bridgePairs?: BridgeReadback[],
+  outputChx?: number
 ): ChannelFlags[] | undefined {
   if (!heartbeat) return undefined;
 
-  // Use actual channel count from heartbeat arrays instead of hardcoded 4
-  const channelCount = Math.max(
+  // Clamp to the authoritative channel count from FC=0 discovery (output_chx).
+  // The heartbeat/FC=27 wire format always returns a fixed-size block (e.g. 4
+  // slots) regardless of the physical channel count, so phantom slots must be
+  // excluded to avoid false warnings on 2-channel or 8-channel devices.
+  const rawCount = Math.max(
     heartbeat.outputStates.length,
     heartbeat.outputVoltages.length,
     channelParams?.channels.length ?? 0
   );
+  const channelCount = outputChx && outputChx > 0 ? Math.min(outputChx, rawCount) : rawCount;
 
   return Array.from({ length: channelCount }, (_, channel) => {
     const rawState = heartbeat.outputStates[channel] ?? -1;
@@ -458,7 +463,7 @@ export const useAmpStore = create<AmpStore>()(
                   ...amp,
                   heartbeat,
                   bridgePairs: bridgePairs ?? amp.bridgePairs,
-                  channelFlags: deriveChannelFlags(heartbeat, amp.channelParams, bridgePairs ?? amp.bridgePairs)
+                  channelFlags: deriveChannelFlags(heartbeat, amp.channelParams, bridgePairs ?? amp.bridgePairs, amp.output_chx)
                 }
               : amp
           )
@@ -508,7 +513,7 @@ export const useAmpStore = create<AmpStore>()(
             return {
               ...amp,
               channelParams: nextChannelParams,
-              channelFlags: deriveChannelFlags(amp.heartbeat, nextChannelParams, amp.bridgePairs)
+              channelFlags: deriveChannelFlags(amp.heartbeat, nextChannelParams, amp.bridgePairs, amp.output_chx)
             };
           })
         })),

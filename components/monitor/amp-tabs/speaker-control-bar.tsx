@@ -1,10 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, FolderOpen, Link2, RotateCcw, SplitSquareVertical, Trash2, Upload } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Download,
+  FolderOpen,
+  Link2,
+  RotateCcw,
+  SplitSquareVertical,
+  Trash2,
+  Upload
+} from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmActionDialog } from "@/components/dialogs/confirm-action-dialog";
 import { LoadSpeakerConfigDialog, type LoadWaySelection } from "@/components/dialogs/load-speaker-config-dialog";
+import { SpeakerConfigEditorDialog, type SpeakerProfileDraft } from "@/components/dialogs/speaker-config-editor-dialog";
 import { Button } from "@/components/ui/button";
 import { type ApplyWayMapping, type LibraryFileEntry, useLibraryStore } from "@/stores/LibraryStore";
 import { fileKey, formatChannelList, toScopeKey } from "@/lib/speaker-config";
@@ -22,6 +33,32 @@ import {
 } from "@/lib/speaker-apply-policy";
 import { useAmpActions } from "@/hooks/useAmpActions";
 import { useI18n } from "@/components/layout/i18n-provider";
+
+type SlImportWayPreview = {
+  id: string;
+  label: string;
+  role: string;
+  deviceData: {
+    physicalChannel: number;
+    variant: string;
+    hex: string;
+    byteLength: number;
+    parsed: Record<string, unknown>;
+  };
+};
+
+type SlImportParseResult = {
+  success: boolean;
+  error?: string;
+  id: string;
+  brand: string;
+  family: string;
+  model: string;
+  notes: string;
+  wayLabelsText: string;
+  wayCount: number;
+  ways: SlImportWayPreview[];
+};
 
 type QueuedApplyItem = {
   model: string;
@@ -148,12 +185,25 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
 
   const files = useLibraryStore((state) => state.files);
   const selectedFileId = useLibraryStore((state) => state.selectedFileId);
+  const loadLibrary = useLibraryStore((state) => state.loadLibrary);
   const applyToDevice = useLibraryStore((state) => state.applyToDevice);
   const deleteLibraryFile = useLibraryStore((state) => state.deleteLibraryFile);
   const applying = useLibraryStore((state) => state.applying);
   const deleting = useLibraryStore((state) => state.deleting);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [slImportPreview, setSlImportPreview] = useState<SlImportParseResult | null>(null);
+  const [slEditorOpen, setSlEditorOpen] = useState(false);
+  const [slEditorDraft, setSlEditorDraft] = useState<SpeakerProfileDraft>({
+    brand: "",
+    family: "",
+    model: "",
+    application: "",
+    notes: "",
+    ways: []
+  });
+  const [slImporting, setSlImporting] = useState(false);
 
   // Amp actions for post-apply operations
   const { muteOut, noiseGateOut, setTrimOut, setBridgePair } = useAmpActions();
@@ -381,154 +431,277 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
     }
   };
 
+  const handleImportSlClick = () => fileInputRef.current?.click();
+
+  const handleSlFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file next time
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    let res: Response;
+    try {
+      res = await fetch("/api/library/import-sl", { method: "POST", body: formData });
+    } catch {
+      toast.error(t.importSlFailedTitle, { description: t.importSlFailedFallback });
+      return;
+    }
+
+    const data = (await res.json()) as SlImportParseResult;
+    if (!data.success) {
+      toast.error(t.importSlFailedTitle, { description: data.error ?? t.importSlFailedFallback });
+      return;
+    }
+
+    setSlImportPreview(data);
+    setSlEditorDraft({
+      id: data.id,
+      brand: data.brand,
+      family: data.family,
+      model: data.model,
+      application: "",
+      notes: data.notes,
+      ways: data.ways.map((w) => ({ id: w.id, label: w.label, role: w.role }))
+    });
+    setSlEditorOpen(true);
+  };
+
+  const handleSlImportSave = async (draft: SpeakerProfileDraft) => {
+    if (!slImportPreview || slImporting) return;
+    setSlImporting(true);
+
+    const profile = {
+      id: draft.id ?? slImportPreview.id,
+      kind: "speaker",
+      speaker: {
+        brand: draft.brand,
+        family: draft.family,
+        model: draft.model,
+        application: draft.application ?? "",
+        notes: draft.notes,
+        wayLabelsText: draft.ways.map((w) => w.label).join(" & "),
+        ways: draft.ways.map((way, i) => ({
+          id: way.id ?? "",
+          label: way.label,
+          role: way.role ?? "custom",
+          deviceData: slImportPreview.ways[i]?.deviceData ?? null
+        }))
+      }
+    };
+
+    let res: Response;
+    try {
+      res = await fetch("/api/library", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile })
+      });
+    } catch {
+      setSlImporting(false);
+      toast.error(t.importSlFailedTitle, { description: t.importSlFailedFallback });
+      return;
+    }
+
+    const data = (await res.json()) as { success: boolean; error?: string };
+    setSlImporting(false);
+
+    if (!data.success) {
+      toast.error(t.importSlFailedTitle, { description: data.error ?? t.importSlFailedFallback });
+      return;
+    }
+
+    setSlEditorOpen(false);
+    setSlImportPreview(null);
+    await loadLibrary();
+    const displayName = `${draft.brand} ${draft.model}`.trim() || (draft.id ?? "");
+    toast.success(t.importSlSuccessTitle, {
+      description: t.importSlSuccessDesc.replace("{name}", displayName)
+    });
+  };
+
   return (
-    <section className="flex h-full min-h-0 flex-col rounded-md border border-border/50 bg-background/30 p-3">
-      <div className="mb-2.5 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">{cb.controls}</h3>
-      </div>
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".sl"
+        className="hidden"
+        onChange={(e) => void handleSlFileChange(e)}
+      />
+      <section className="flex h-full min-h-0 flex-col rounded-md border border-border/50 bg-background/30 p-3">
+        <div className="mb-2.5 flex items-center justify-between">
+          <h3 className="text-sm font-semibold">{cb.controls}</h3>
+        </div>
 
-      <div className="flex flex-1 flex-col">
-        <Button
-          type="button"
-          variant="outline"
-          className="mb-2 h-8 w-full justify-start gap-2 text-xs"
-          disabled={!canJoin}
-          onClick={() => joinSelected(scope)}
-        >
-          <Link2 className="h-3.5 w-3.5" />
-          {cb.join}
-        </Button>
-
-        <Button
-          type="button"
-          variant="outline"
-          className="mb-2 h-8 w-full justify-start gap-2 text-xs"
-          disabled={!canBridge}
-          onClick={() => bridgeSelected(scope)}
-        >
-          <SplitSquareVertical className="h-3.5 w-3.5" />
-          {cb.bridge}
-        </Button>
-
-        <Button
-          type="button"
-          variant="outline"
-          className="mb-2 h-8 w-full justify-start gap-2 text-xs"
-          disabled={!canReset}
-          onClick={() => splitReset(scope)}
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-          {cb.splitReset}
-        </Button>
-
-        <Button
-          type="button"
-          variant="outline"
-          className="h-8 w-full justify-start gap-2 text-xs"
-          disabled={!canApplyAll}
-          onClick={() => void handleApplyAll()}
-        >
-          <Upload className="h-3.5 w-3.5" />
-          {cb.applyAll}
-        </Button>
-
-        <div className="my-3 border-t border-border/50 pt-3">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {cb.libraryActions}
-          </p>
-
+        <div className="flex flex-1 flex-col">
           <Button
             type="button"
             variant="outline"
             className="mb-2 h-8 w-full justify-start gap-2 text-xs"
-            disabled={!selectedLibraryFile}
-            onClick={() => setLoadDialogOpen(true)}
+            disabled={!canJoin}
+            onClick={() => joinSelected(scope)}
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            {cb.load}
-          </Button>
-
-          <Button type="button" variant="outline" className="mb-2 h-8 w-full justify-start gap-2 text-xs" disabled>
-            <ArrowRight className="h-3.5 w-3.5" />
-            {cb.save}
+            <Link2 className="h-3.5 w-3.5" />
+            {cb.join}
           </Button>
 
           <Button
             type="button"
             variant="outline"
             className="mb-2 h-8 w-full justify-start gap-2 text-xs"
-            disabled={!selectedLibraryFile || deleting}
-            onClick={() => setDeleteDialogOpen(true)}
+            disabled={!canBridge}
+            onClick={() => bridgeSelected(scope)}
           >
-            <Trash2 className="h-3.5 w-3.5" />
-            {cb.deleteFromLibrary}
+            <SplitSquareVertical className="h-3.5 w-3.5" />
+            {cb.bridge}
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="mb-2 h-8 w-full justify-start gap-2 text-xs"
+            disabled={!canReset}
+            onClick={() => splitReset(scope)}
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            {cb.splitReset}
           </Button>
 
           <Button
             type="button"
             variant="outline"
             className="h-8 w-full justify-start gap-2 text-xs"
-            onClick={() => void handleOpenConfigFolder()}
+            disabled={!canApplyAll}
+            onClick={() => void handleApplyAll()}
           >
-            <FolderOpen className="h-3.5 w-3.5" />
-            {cb.openConfigFolder}
+            <Upload className="h-3.5 w-3.5" />
+            {cb.applyAll}
           </Button>
+
+          <div className="my-3 border-t border-border/50 pt-3">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {cb.libraryActions}
+            </p>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="mb-2 h-8 w-full justify-start gap-2 text-xs"
+              disabled={!selectedLibraryFile}
+              onClick={() => setLoadDialogOpen(true)}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              {cb.load}
+            </Button>
+
+            <Button type="button" variant="outline" className="mb-2 h-8 w-full justify-start gap-2 text-xs" disabled>
+              <ArrowRight className="h-3.5 w-3.5" />
+              {cb.save}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="mb-2 h-8 w-full justify-start gap-2 text-xs"
+              disabled={!selectedLibraryFile || deleting}
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {cb.deleteFromLibrary}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 w-full justify-start gap-2 text-xs"
+              onClick={() => void handleOpenConfigFolder()}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              {cb.openConfigFolder}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-2 h-8 w-full justify-start gap-2 text-xs"
+              onClick={handleImportSlClick}
+            >
+              <Download className="h-3.5 w-3.5" />
+              {cb.importSl}
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {selectedLibraryFile && (
-        <LoadSpeakerConfigDialog
-          open={loadDialogOpen}
-          onOpenChange={setLoadDialogOpen}
-          scope={scope ?? null}
-          channelCount={channelCount}
-          profile={selectedLibraryFile}
-          onLoad={(selections: LoadWaySelection[]) => {
-            if (!selectedLibraryFile) return;
+        {selectedLibraryFile && (
+          <LoadSpeakerConfigDialog
+            open={loadDialogOpen}
+            onOpenChange={setLoadDialogOpen}
+            scope={scope ?? null}
+            channelCount={channelCount}
+            profile={selectedLibraryFile}
+            onLoad={(selections: LoadWaySelection[]) => {
+              if (!selectedLibraryFile) return;
 
-            for (const sel of selections) {
-              assignItemToOutputs({
-                startChannel: sel.channel,
-                maxChannels: channelCount,
-                item: {
-                  id: fileKey(selectedLibraryFile),
-                  model:
-                    [selectedLibraryFile.brand, selectedLibraryFile.model].filter(Boolean).join(" ").trim() ||
-                    selectedLibraryFile.name,
-                  ways: sel.wayLabel,
-                  wayCount: 1
-                },
-                scope
+              for (const sel of selections) {
+                assignItemToOutputs({
+                  startChannel: sel.channel,
+                  maxChannels: channelCount,
+                  item: {
+                    id: fileKey(selectedLibraryFile),
+                    model:
+                      [selectedLibraryFile.brand, selectedLibraryFile.model].filter(Boolean).join(" ").trim() ||
+                      selectedLibraryFile.name,
+                    ways: sel.wayLabel,
+                    wayCount: 1
+                  },
+                  scope
+                });
+              }
+
+              setLoadDialogOpen(false);
+
+              toast.success(t.loadSuccessTitle, {
+                description: t.loadSuccessDesc
+                  .replace("{count}", String(selections.length))
+                  .replace("{name}", selectedLibraryFile.brand || selectedLibraryFile.model || selectedLibraryFile.name)
               });
-            }
+            }}
+          />
+        )}
 
-            setLoadDialogOpen(false);
-
-            toast.success(t.loadSuccessTitle, {
-              description: t.loadSuccessDesc
-                .replace("{count}", String(selections.length))
-                .replace("{name}", selectedLibraryFile.brand || selectedLibraryFile.model || selectedLibraryFile.name)
-            });
-          }}
+        <ConfirmActionDialog
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          title={cb.deleteDialogTitle}
+          description={
+            selectedLibraryFile
+              ? cb.deleteDialogDescription.replace(
+                  "{name}",
+                  selectedLibraryFile.brand || selectedLibraryFile.model || selectedLibraryFile.name
+                )
+              : cb.deleteDialogFallback
+          }
+          confirmLabel={cb.deleteLabel}
+          confirmDisabled={!selectedLibraryFile || deleting}
+          onConfirm={() => void handleDeleteSelected()}
         />
-      )}
 
-      <ConfirmActionDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        title={cb.deleteDialogTitle}
-        description={
-          selectedLibraryFile
-            ? cb.deleteDialogDescription.replace(
-                "{name}",
-                selectedLibraryFile.brand || selectedLibraryFile.model || selectedLibraryFile.name
-              )
-            : cb.deleteDialogFallback
-        }
-        confirmLabel={cb.deleteLabel}
-        confirmDisabled={!selectedLibraryFile || deleting}
-        onConfirm={() => void handleDeleteSelected()}
-      />
-    </section>
+        {slImportPreview && (
+          <SpeakerConfigEditorDialog
+            open={slEditorOpen}
+            onOpenChange={(open) => {
+              setSlEditorOpen(open);
+              if (!open) setSlImportPreview(null);
+            }}
+            initialDraft={slEditorDraft}
+            onChange={setSlEditorDraft}
+            onSave={(draft) => void handleSlImportSave(draft)}
+            saving={slImporting}
+          />
+        )}
+      </section>
+    </>
   );
 }

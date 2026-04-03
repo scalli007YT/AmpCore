@@ -1,4 +1,5 @@
 import dgram from "dgram";
+import os from "os";
 import {
   buildStructHeader,
   buildNetworkDataHeader,
@@ -8,6 +9,29 @@ import {
 } from "@/lib/network/protocol";
 
 const AMP_SEND_PORT = 45455;
+
+/**
+ * Returns the local interface IP that shares a subnet with targetIp.
+ * Binding an ephemeral socket to this address ensures the OS uses the
+ * correct physical NIC — critical when multiple interfaces are present
+ * (e.g. WiFi + Ethernet) and Windows routing metrics could pick the wrong one.
+ * Falls back to "0.0.0.0" for cross-subnet/routed destinations.
+ */
+function getLocalAddressFor(targetIp: string): string {
+  const targetParts = targetIp.split(".").map(Number);
+  const ifaces = os.networkInterfaces();
+  for (const iface of Object.values(ifaces)) {
+    if (!iface) continue;
+    for (const addr of iface) {
+      if (addr.family !== "IPv4" || addr.internal) continue;
+      const localParts = addr.address.split(".").map(Number);
+      const maskParts = addr.netmask.split(".").map(Number);
+      const sameSubnet = localParts.every((b, i) => (b & maskParts[i]) === (targetParts[i] & maskParts[i]));
+      if (sameSubnet) return addr.address;
+    }
+  }
+  return "0.0.0.0";
+}
 const CROSSOVER_COMMIT_PACKET = Buffer.from("03d99401015c0001015a", "hex");
 const MAX_PACKETS_COUNT = 255; // network header packets_count is uint8
 
@@ -133,8 +157,9 @@ export class CvrAmpDevice {
    */
   async commitCrossover(): Promise<void> {
     const sock = dgram.createSocket("udp4");
+    const localAddress = getLocalAddressFor(this.ampIp);
     await new Promise<void>((resolve, reject) => {
-      sock.bind({ port: 0, address: "0.0.0.0" }, (err?: Error) => {
+      sock.bind({ port: 0, address: localAddress }, (err?: Error) => {
         if (err) reject(err);
         else resolve();
       });
@@ -198,8 +223,9 @@ export class CvrAmpDevice {
     };
 
     const sock = dgram.createSocket("udp4");
+    const localAddress = getLocalAddressFor(this.ampIp);
     await new Promise<void>((resolve, reject) => {
-      sock.bind({ port: 0, address: "0.0.0.0" }, (err?: Error) => {
+      sock.bind({ port: 0, address: localAddress }, (err?: Error) => {
         if (err) reject(err);
         else resolve();
       });

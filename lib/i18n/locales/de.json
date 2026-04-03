@@ -319,6 +319,7 @@
         "save": "Speichern",
         "deleteFromLibrary": "Aus Bibliothek löschen",
         "openConfigFolder": "Ordner öffnen",
+        "importSl": ".sl importieren",
         "deleteDialogTitle": "Ausgewählte Bibliotheks-Konfiguration löschen?",
         "deleteDialogDescription": "{name} aus der Lautsprecher-Bibliothek entfernen.",
         "deleteDialogFallback": "Die ausgewählte Lautsprecher-Konfiguration aus der Bibliothek entfernen.",
@@ -402,7 +403,11 @@
         "folderFailedTitle": "Konfigurationsordner konnte nicht geöffnet werden",
         "folderFailedFallback": "Der Lautsprecher-Bibliotheksordner konnte nicht geöffnet werden",
         "loadSuccessTitle": "Lautsprecher-Modell aktualisiert",
-        "loadSuccessDesc": "{count} Way(s) von {name} geladen"
+        "loadSuccessDesc": "{count} Way(s) von {name} geladen",
+        "importSlFailedTitle": ".sl-Datei konnte nicht importiert werden",
+        "importSlFailedFallback": "Die Datei konnte nicht gelesen werden",
+        "importSlSuccessTitle": "Lautsprecher-Profil importiert",
+        "importSlSuccessDesc": "{name} wurde importiert und in der Bibliothek gespeichert"
       }
     }
   }

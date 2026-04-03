@@ -282,6 +282,20 @@
         "saving": "Speichern\u2026",
         "close": "Schließen"
       },
+      "importSlFolderDialog": {
+        "title": ".sl-Dateien importieren",
+        "desc": "{count} .sl-Datei(en) gefunden — eine zum Importieren auswählen",
+        "parsing": "Dateien werden verarbeitet, bitte warten…",
+        "noFiles": "Keine .sl-Dateien im ausgewählten Ordner gefunden.",
+        "partialFail": "{failed} von {total} Dateien konnten nicht gelesen werden.",
+        "colFile": "Datei",
+        "colBrand": "Hersteller",
+        "colModel": "Modell / Familie",
+        "colNotes": "Notizen",
+        "colWays": "Ways",
+        "import": "Importieren",
+        "cancel": "Abbrechen"
+      },
       "loadDialog": {
         "title": "Lautsprecher-Konfiguration laden",
         "description": "Weise Ways von {profileName} jedem Ausgangskanal zu.",
@@ -319,7 +333,7 @@
         "save": "Speichern",
         "deleteFromLibrary": "Aus Bibliothek löschen",
         "openConfigFolder": "Ordner öffnen",
-        "importSl": ".sl importieren",
+        "importSl": ".sl-Ordner importieren",
         "deleteDialogTitle": "Ausgewählte Bibliotheks-Konfiguration löschen?",
         "deleteDialogDescription": "{name} aus der Lautsprecher-Bibliothek entfernen.",
         "deleteDialogFallback": "Die ausgewählte Lautsprecher-Konfiguration aus der Bibliothek entfernen.",
@@ -407,7 +421,8 @@
         "importSlFailedTitle": ".sl-Datei konnte nicht importiert werden",
         "importSlFailedFallback": "Die Datei konnte nicht gelesen werden",
         "importSlSuccessTitle": "Lautsprecher-Profil importiert",
-        "importSlSuccessDesc": "{name} wurde importiert und in der Bibliothek gespeichert"
+        "importSlSuccessDesc": "{name} wurde importiert und in der Bibliothek gespeichert",
+        "importSlFolderEmpty": "Keine .sl-Dateien im ausgewählten Ordner gefunden"
       }
     }
   }

@@ -14,6 +14,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmActionDialog } from "@/components/dialogs/confirm-action-dialog";
+import {
+  ImportSlFolderDialog,
+  type SlFolderItem,
+  type SlImportParseResult
+} from "@/components/dialogs/import-sl-folder-dialog";
 import { LoadSpeakerConfigDialog, type LoadWaySelection } from "@/components/dialogs/load-speaker-config-dialog";
 import { SpeakerConfigEditorDialog, type SpeakerProfileDraft } from "@/components/dialogs/speaker-config-editor-dialog";
 import { Button } from "@/components/ui/button";
@@ -33,32 +38,6 @@ import {
 } from "@/lib/speaker-apply-policy";
 import { useAmpActions } from "@/hooks/useAmpActions";
 import { useI18n } from "@/components/layout/i18n-provider";
-
-type SlImportWayPreview = {
-  id: string;
-  label: string;
-  role: string;
-  deviceData: {
-    physicalChannel: number;
-    variant: string;
-    hex: string;
-    byteLength: number;
-    parsed: Record<string, unknown>;
-  };
-};
-
-type SlImportParseResult = {
-  success: boolean;
-  error?: string;
-  id: string;
-  brand: string;
-  family: string;
-  model: string;
-  notes: string;
-  wayLabelsText: string;
-  wayCount: number;
-  ways: SlImportWayPreview[];
-};
 
 type QueuedApplyItem = {
   model: string;
@@ -204,6 +183,9 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
     ways: []
   });
   const [slImporting, setSlImporting] = useState(false);
+  const [slFolderDialogOpen, setSlFolderDialogOpen] = useState(false);
+  const [slFolderItems, setSlFolderItems] = useState<SlFolderItem[]>([]);
+  const [slFolderParsing, setSlFolderParsing] = useState(false);
 
   // Amp actions for post-apply operations
   const { muteOut, noiseGateOut, setTrimOut, setBridgePair } = useAmpActions();
@@ -431,30 +413,83 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
     }
   };
 
-  const handleImportSlClick = () => fileInputRef.current?.click();
+  const handleImportSlClick = async () => {
+    // In Electron: use native dialog (works on Windows + macOS, no webkitdirectory quirks)
+    if (typeof window !== "undefined" && window.electronWindow?.pickSlFolder) {
+      const outcome = await window.electronWindow.pickSlFolder();
+      if (!outcome.ok) {
+        if (!outcome.canceled) {
+          toast.error(t.importSlFailedTitle, { description: outcome.error ?? t.importSlFailedFallback });
+        }
+        return;
+      }
+      const nativeFiles = outcome.files ?? [];
+      if (nativeFiles.length === 0) {
+        toast.error(t.importSlFolderEmpty);
+        return;
+      }
+      await processSlFiles(nativeFiles.map(({ name, data }) => ({ name, data })));
+      return;
+    }
+    // Fallback for web browser context
+    fileInputRef.current?.click();
+  };
 
-  const handleSlFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-selecting the same file next time
-    if (!file) return;
+  const handleSlFolderChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    e.target.value = "";
+    if (!fileList || fileList.length === 0) return;
 
-    const formData = new FormData();
-    formData.append("file", file);
-
-    let res: Response;
-    try {
-      res = await fetch("/api/library/import-sl", { method: "POST", body: formData });
-    } catch {
-      toast.error(t.importSlFailedTitle, { description: t.importSlFailedFallback });
+    // Collect only .sl files from the picked folder (webkitdirectory gives all files)
+    const webFiles = Array.from(fileList).filter((f) => f.name.toLowerCase().endsWith(".sl"));
+    if (webFiles.length === 0) {
+      toast.error(t.importSlFolderEmpty);
       return;
     }
 
-    const data = (await res.json()) as SlImportParseResult;
-    if (!data.success) {
-      toast.error(t.importSlFailedTitle, { description: data.error ?? t.importSlFailedFallback });
-      return;
+    // Convert browser File objects to the same shape as Electron IPC results
+    const items = await Promise.all(
+      webFiles.map(async (file) => {
+        const buf = await file.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        for (const b of bytes) binary += String.fromCharCode(b);
+        return { name: file.name, data: btoa(binary) };
+      })
+    );
+    await processSlFiles(items);
+  };
+
+  const processSlFiles = async (files: Array<{ name: string; data: string }>) => {
+    setSlFolderItems([]);
+    setSlFolderParsing(true);
+    setSlFolderDialogOpen(true);
+
+    const results: SlFolderItem[] = [];
+    for (const file of files) {
+      // Decode base64 → Blob so the existing multipart API can accept it unchanged
+      const binary = atob(file.data);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes]);
+
+      const formData = new FormData();
+      formData.append("file", blob, file.name);
+      try {
+        const res = await fetch("/api/library/import-sl", { method: "POST", body: formData });
+        const data = (await res.json()) as SlImportParseResult;
+        results.push({ fileName: file.name, result: data.success ? data : null, error: data.error });
+      } catch {
+        results.push({ fileName: file.name, result: null, error: "Network error" });
+      }
     }
 
+    setSlFolderItems(results);
+    setSlFolderParsing(false);
+  };
+
+  const handleSlFolderSelect = (data: SlImportParseResult) => {
+    setSlFolderDialogOpen(false);
     setSlImportPreview(data);
     setSlEditorDraft({
       id: data.id,
@@ -526,9 +561,10 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
       <input
         ref={fileInputRef}
         type="file"
-        accept=".sl"
         className="hidden"
-        onChange={(e) => void handleSlFileChange(e)}
+        multiple
+        {...{ webkitdirectory: "" }}
+        onChange={(e) => void handleSlFolderChange(e)}
       />
       <section className="flex h-full min-h-0 flex-col rounded-md border border-border/50 bg-background/30 p-3">
         <div className="mb-2.5 flex items-center justify-between">
@@ -626,7 +662,7 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
               type="button"
               variant="outline"
               className="mt-2 h-8 w-full justify-start gap-2 text-xs"
-              onClick={handleImportSlClick}
+              onClick={() => void handleImportSlClick()}
             >
               <Download className="h-3.5 w-3.5" />
               {cb.importSl}
@@ -686,6 +722,14 @@ export function SpeakerControlBar({ scope, channelCount = 4 }: SpeakerControlBar
           confirmLabel={cb.deleteLabel}
           confirmDisabled={!selectedLibraryFile || deleting}
           onConfirm={() => void handleDeleteSelected()}
+        />
+
+        <ImportSlFolderDialog
+          open={slFolderDialogOpen}
+          onOpenChange={setSlFolderDialogOpen}
+          items={slFolderItems}
+          parsing={slFolderParsing}
+          onSelect={handleSlFolderSelect}
         />
 
         {slImportPreview && (

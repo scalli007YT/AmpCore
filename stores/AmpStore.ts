@@ -463,7 +463,12 @@ export const useAmpStore = create<AmpStore>()(
                   ...amp,
                   heartbeat,
                   bridgePairs: bridgePairs ?? amp.bridgePairs,
-                  channelFlags: deriveChannelFlags(heartbeat, amp.channelParams, bridgePairs ?? amp.bridgePairs, amp.output_chx)
+                  channelFlags: deriveChannelFlags(
+                    heartbeat,
+                    amp.channelParams,
+                    bridgePairs ?? amp.bridgePairs,
+                    amp.output_chx
+                  )
                 }
               : amp
           )

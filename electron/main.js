@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, nativeTheme, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } = require("electron");
 // Handle Squirrel.Windows events and shortcut creation
 if (require("electron-squirrel-startup")) app.quit();
 const fs = require("fs");
@@ -269,6 +269,40 @@ ipcMain.handle("library:open-config-folder", async () => {
       ok: false,
       error: error instanceof Error ? error.message : String(error)
     };
+  }
+});
+
+ipcMain.handle("library:pick-sl-folder", async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, error: "No window" };
+
+  let result;
+  try {
+    result = await dialog.showOpenDialog(mainWindow, {
+      title: "Select .sl folder",
+      properties: ["openDirectory"]
+    });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { ok: false, canceled: true };
+  }
+
+  const folderPath = result.filePaths[0];
+
+  try {
+    const entries = fs.readdirSync(folderPath);
+    const slFiles = entries.filter((name) => name.toLowerCase().endsWith(".sl"));
+
+    const files = slFiles.map((name) => {
+      const data = fs.readFileSync(path.join(folderPath, name));
+      return { name, data: data.toString("base64") };
+    });
+
+    return { ok: true, files };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 });
 

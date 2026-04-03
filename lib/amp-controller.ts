@@ -44,7 +44,6 @@ const BROADCAST_ADDR = "255.255.255.255";
 const HEARTBEAT_MS = 140; // queryT_V_A Thread.Sleep(140)
 const DISCOVERY_MS = 4000; // TimerRefresh.Interval = 4000
 const DISCOVERY_WINDOW_MS = 1000; // MainWindow.Sleep(1000) after broadcast
-const DISCOVERY_PROBE_WINDOW_MS = 220; // initUDP2-style quick per-NIC probe
 const MAX_PACKETS_COUNT = 255; // network header packets_count is uint8
 // Watchdog: if an amp hasn't sent a heartbeat in this many ms → offline
 const HEARTBEAT_TIMEOUT_MS = 3_500; // 25 × 140 ms
@@ -102,20 +101,6 @@ async function getDirectedBroadcasts(): Promise<string[]> {
   const unique = new Set(broadcasts);
   unique.add(BROADCAST_ADDR);
   return Array.from(unique);
-}
-
-async function getLocalBindCandidates(): Promise<string[]> {
-  const out: string[] = [];
-  for (const iface of Object.values(await ampController.network.getNetworkInterfaces())) {
-    if (!iface) continue;
-    for (const addr of iface) {
-      if (addr.family !== "IPv4" || addr.internal) continue;
-      out.push(addr.address);
-    }
-  }
-  const unique = Array.from(new Set(out));
-  unique.push("0.0.0.0");
-  return Array.from(new Set(unique));
 }
 
 // ---------------------------------------------------------------------------
@@ -711,36 +696,29 @@ class AmpController extends EventEmitter {
   }
 
   // -------------------------------------------------------------------------
-  // Socket bootstrap — initUDP2-style NIC fallback probing
+  // Socket bootstrap — bind to 0.0.0.0 so all NICs are covered
   // -------------------------------------------------------------------------
   private async _bindAndStart(): Promise<void> {
     if (this.bindingInProgress || !this.running) return;
     this.bindingInProgress = true;
     this._clearTimers();
 
-    const candidates = await getLocalBindCandidates();
-    let chosenAddress: string | null = null;
-
     try {
-      for (let i = 0; i < candidates.length && this.running; i++) {
-        const bindAddress = candidates[i];
-        try {
-          await this.network.start(bindAddress);
-        } catch (err) {
-          continue;
-        }
-
-        const found = await this._probeDiscoveryWindow();
-        const isLast = i === candidates.length - 1;
-
-        if (found || isLast) {
-          chosenAddress = bindAddress;
-          break;
-        }
+      // Always bind to 0.0.0.0:
+      //   - Receives UDP from every interface (WiFi, Ethernet, etc.)
+      //   - Unicast sends are routed by the kernel per destination (correct NIC chosen automatically)
+      //   - Directed broadcasts sent to each subnet's broadcast address reach the right NIC
+      // Binding to a specific NIC IP (the old per-candidate loop) locked the socket to
+      // one adapter, breaking amps on any other subnet — especially strict on macOS.
+      try {
+        await this.network.start("0.0.0.0");
+      } catch (err) {
+        console.error("[AmpController] Failed to bind socket:", err);
+        return;
       }
 
-      if (!this.running || !chosenAddress) return;
-      this.boundAddress = chosenAddress;
+      if (!this.running) return;
+      this.boundAddress = "0.0.0.0";
 
       // Resolve the ready promise so triggerDiscovery() can proceed
       this._socketReadyResolve?.();
@@ -751,23 +729,6 @@ class AmpController extends EventEmitter {
     } finally {
       this.bindingInProgress = false;
     }
-  }
-
-  private _probeDiscoveryWindow(): Promise<boolean> {
-    return new Promise((resolve) => {
-      let seen = false;
-      const listener = () => {
-        seen = true;
-      };
-
-      this.on("discovery", listener);
-      this._sendDiscovery();
-
-      setTimeout(() => {
-        this.off("discovery", listener);
-        resolve(seen);
-      }, DISCOVERY_PROBE_WINDOW_MS);
-    });
   }
 
   private _onPacket(raw: Buffer, ip: string): void {

@@ -282,6 +282,20 @@
         "saving": "Saving\u2026",
         "close": "Close"
       },
+      "importSlFolderDialog": {
+        "title": "Import .sl files",
+        "desc": "{count} .sl file(s) found — select one to import",
+        "parsing": "Parsing files, please wait…",
+        "noFiles": "No .sl files found in the selected folder.",
+        "partialFail": "{failed} of {total} files could not be parsed.",
+        "colFile": "File",
+        "colBrand": "Brand",
+        "colModel": "Model / Family",
+        "colNotes": "Notes",
+        "colWays": "Ways",
+        "import": "Import",
+        "cancel": "Cancel"
+      },
       "loadDialog": {
         "title": "Load Speaker Config",
         "description": "Assign ways from {profileName} to each output channel.",
@@ -319,7 +333,7 @@
         "save": "Save",
         "deleteFromLibrary": "Delete from library",
         "openConfigFolder": "Open config folder",
-        "importSl": "Import .sl",
+        "importSl": "Import .sl folder",
         "deleteDialogTitle": "Delete selected library config?",
         "deleteDialogDescription": "Remove {name} from the speaker library.",
         "deleteDialogFallback": "Remove the selected speaker config from the library.",
@@ -407,7 +421,8 @@
         "importSlFailedTitle": "Failed to import .sl file",
         "importSlFailedFallback": "The file could not be parsed",
         "importSlSuccessTitle": "Speaker profile imported",
-        "importSlSuccessDesc": "Imported {name} and saved it to the library"
+        "importSlSuccessDesc": "Imported {name} and saved it to the library",
+        "importSlFolderEmpty": "No .sl files found in the selected folder"
       }
     }
   }

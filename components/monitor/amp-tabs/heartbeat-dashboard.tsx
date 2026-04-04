@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import type { HeartbeatData, ChannelParams, BridgeReadback, ChannelFlags } from "@/stores/AmpStore";
+import type { SourceCapabilities } from "@/lib/source-capabilities";
 import { useAmpActions } from "@/hooks/useAmpActions";
 import { useVuMeters } from "@/hooks/useVuMeters";
 import { getStoredAmpLinkConfig, useAmpActionLinkStore } from "@/stores/AmpActionLinkStore";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConfirmActionDialog } from "@/components/dialogs/confirm-action-dialog";
+import { SourceConfigDialog } from "@/components/dialogs/source-config-dialog";
 import { EqBandDialog } from "@/components/monitor/amp-tabs/eq-controls";
 import { FirFilterDialog } from "@/components/monitor/amp-tabs/fir-filter-panel";
 import { HorizontalDbMeter } from "@/components/monitor/amp-tabs/horizontal-db-meter";
@@ -41,6 +43,7 @@ export function HeartbeatDashboard({
   bridgePairs,
   outputChx,
   channelFlags,
+  sourceCapabilities,
   limiterLineVoltageOffset = 0
 }: {
   hb: HeartbeatData;
@@ -50,6 +53,7 @@ export function HeartbeatDashboard({
   bridgePairs?: BridgeReadback[];
   outputChx?: number;
   channelFlags?: ChannelFlags[];
+  sourceCapabilities?: SourceCapabilities;
   limiterLineVoltageOffset?: number;
 }) {
   const dict = useI18n();
@@ -170,7 +174,7 @@ export function HeartbeatDashboard({
                 const isLimit = dbfsVal !== null && dbfsVal > -1;
                 return (
                   <div key={i} className="relative">
-                    <div className="absolute left-2 top-1 z-10">
+                    <div className="absolute left-[102px] top-1 z-10">
                       <EditableChannelName
                         name={channelParams?.channels[i]?.inputName}
                         fallback={`In${i + 1}`}
@@ -180,6 +184,26 @@ export function HeartbeatDashboard({
                       />
                     </div>
                     <div className="flex items-center gap-2 rounded-md border border-border/30 bg-muted/5 px-2.5 pb-2 pt-4">
+                      <div className="w-[84px] shrink-0">
+                        <SourceConfigDialog
+                          channels={channelParams?.channels ?? []}
+                          mac={mac}
+                          capabilities={sourceCapabilities}
+                          initialChannel={i}
+                          trigger={
+                            <button
+                              type="button"
+                              className="flex h-12 w-[84px] flex-col items-start justify-center gap-0.5 rounded border border-border/50 bg-muted/25 px-2 text-left transition-colors hover:border-primary/45 hover:bg-primary/10"
+                            >
+                              <span className="w-full truncate font-semibold text-[11px] text-foreground/90">
+                                {channelParams?.channels[i]?.sourceType?.trim() || "Select"}
+                              </span>
+                              <span className="text-[9px] uppercase tracking-wide text-muted-foreground">Source</span>
+                            </button>
+                          }
+                        />
+                      </div>
+
                       <div className="flex flex-col shrink-0" style={{ width: 220 }}>
                         <HorizontalDbMeter
                           value={dbfsVal}

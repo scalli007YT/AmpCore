@@ -27,6 +27,7 @@ export function MainPanel({ amp, ampOptions }: MainPanelProps) {
         bridgePairs={amp.bridgePairs}
         outputChx={amp.output_chx}
         channelFlags={amp.channelFlags}
+        sourceCapabilities={amp.sourceCapabilities}
         limiterLineVoltageOffset={ampOptions.limiterLineVoltageOffset}
       />
     </div>

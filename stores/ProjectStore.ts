@@ -26,6 +26,7 @@ export interface AssignedAmpConstants {
 const defaultAmpLinking: AmpLinkConfig = createDefaultAmpLinkConfig();
 const DEFAULT_CHANNEL_OHMS = 8;
 const DEFAULT_PROJECT_CHANNEL_COUNT = 4;
+const assignedAmpNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 function createDefaultChannels(count: number, ohms = DEFAULT_CHANNEL_OHMS): AmpChannelConstants[] {
   const safeCount = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : DEFAULT_PROJECT_CHANNEL_COUNT;
@@ -81,6 +82,26 @@ function mapAssignedAmpToConfig(amp: Project["assigned_amps"][number]) {
     lastKnownName: amp.lastKnownName,
     constants: amp.constants
   };
+}
+
+function sortAssignedAmpsAlphabetically(assignedAmps: Project["assigned_amps"]): Project["assigned_amps"] {
+  const runtimeAmps = useAmpStore.getState().amps;
+  const sortLabelByMac = new Map(
+    runtimeAmps.map((amp) => [amp.mac.toUpperCase(), (amp.name ?? amp.lastKnownName ?? amp.mac).trim()])
+  );
+
+  return [...assignedAmps].sort((leftAmp, rightAmp) => {
+    const leftLabel = sortLabelByMac.get(leftAmp.mac.toUpperCase()) ?? (leftAmp.lastKnownName ?? leftAmp.mac).trim();
+    const rightLabel =
+      sortLabelByMac.get(rightAmp.mac.toUpperCase()) ?? (rightAmp.lastKnownName ?? rightAmp.mac).trim();
+    const labelComparison = assignedAmpNameCollator.compare(leftLabel, rightLabel);
+
+    if (labelComparison !== 0) {
+      return labelComparison;
+    }
+
+    return assignedAmpNameCollator.compare(leftAmp.mac, rightAmp.mac);
+  });
 }
 
 function serializeProjectForPersistence(project: Project): Project {
@@ -247,7 +268,7 @@ export const useProjectStore = create<ProjectStore>()(
         // Update local state
         const updatedProject: Project = {
           ...project,
-          assigned_amps: [
+          assigned_amps: sortAssignedAmpsAlphabetically([
             ...project.assigned_amps,
             {
               id: uuidv4(),
@@ -259,7 +280,7 @@ export const useProjectStore = create<ProjectStore>()(
                 linking: normalizeAmpLinkConfig(DEFAULT_AMP_LINK_CONFIG)
               }
             }
-          ]
+          ])
         };
 
         const updatedProjects = projects.map((p) => (p.id === projectId ? updatedProject : p));
@@ -294,7 +315,7 @@ export const useProjectStore = create<ProjectStore>()(
         // Update local state
         const updatedProject: Project = {
           ...project,
-          assigned_amps: project.assigned_amps.filter((a) => a.mac !== mac)
+          assigned_amps: sortAssignedAmpsAlphabetically(project.assigned_amps.filter((a) => a.mac !== mac))
         };
 
         const updatedProjects = projects.map((p) => (p.id === projectId ? updatedProject : p));

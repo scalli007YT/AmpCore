@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, nativeTheme } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } = require("electron");
 // Handle Squirrel.Windows events and shortcut creation
 if (require("electron-squirrel-startup")) app.quit();
+const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const { name: packageName, version: packageVersion } = require("../package.json");
@@ -13,6 +14,11 @@ const isDev = !!process.env.ELECTRON_DEV;
 let mainWindow;
 let splashWindow;
 let server;
+
+function getSpeakerLibraryDir() {
+  const base = process.env.APP_USER_DATA ?? process.cwd();
+  return path.join(base, "storage", "speaker-library");
+}
 
 // Prevent multiple app instances.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -51,7 +57,6 @@ async function startServer() {
   const standaloneDir = path.join(appRoot, ".next", "standalone");
   process.env.APP_USER_DATA = app.getPath("userData");
   process.env.PORT = String(PORT);
-  process.env.HOSTNAME = "127.0.0.1";
 
   // The standalone server.js calls process.chdir(__dirname) which fails
   // inside an asar archive. Override chdir to silently ignore asar paths.
@@ -61,14 +66,14 @@ async function startServer() {
     return originalChdir(dir);
   };
 
-  // The standalone server.js sets up its own http server on PORT/HOSTNAME.
+  // The standalone server.js sets up its own http server on PORT.
   require(path.join(standaloneDir, "server.js"));
 
   // Wait until the server is actually listening.
   await new Promise((resolve) => {
     const poll = () => {
       http
-        .get(`http://127.0.0.1:${PORT}/`, (res) => {
+        .get(`http://localhost:${PORT}/`, (res) => {
           if (res.statusCode < 500) resolve();
           else setTimeout(poll, 200);
         })
@@ -247,6 +252,59 @@ ipcMain.handle("app:get-version", () => packageVersion);
 
 ipcMain.handle("app:get-platform", () => process.platform);
 
+ipcMain.handle("library:open-config-folder", async () => {
+  try {
+    const directory = getSpeakerLibraryDir();
+    fs.mkdirSync(directory, { recursive: true });
+
+    const error = await shell.openPath(directory);
+    if (error) {
+      return { ok: false, error };
+    }
+
+    return { ok: true, path: directory };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+});
+
+ipcMain.handle("library:pick-sl-folder", async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, error: "No window" };
+
+  let result;
+  try {
+    result = await dialog.showOpenDialog(mainWindow, {
+      title: "Select .sl folder",
+      properties: ["openDirectory"]
+    });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { ok: false, canceled: true };
+  }
+
+  const folderPath = result.filePaths[0];
+
+  try {
+    const entries = fs.readdirSync(folderPath);
+    const slFiles = entries.filter((name) => name.toLowerCase().endsWith(".sl"));
+
+    const files = slFiles.map((name) => {
+      const data = fs.readFileSync(path.join(folderPath, name));
+      return { name, data: data.toString("base64") };
+    });
+
+    return { ok: true, files };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 // --- Lifecycle ------------------------------------------------------------
 
 app.whenReady().then(() => {
@@ -258,7 +316,7 @@ app.whenReady().then(() => {
 
   serverReady
     .then(async () => {
-      const url = isDev ? `http://localhost:${PORT}` : `http://127.0.0.1:${PORT}`;
+      const url = `http://localhost:${PORT}`;
       setSplashStatus("Loading interface...");
 
       if (!mainWindow || mainWindow.isDestroyed()) return;

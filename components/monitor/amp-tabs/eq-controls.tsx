@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { EqCurveChart } from "@/components/monitor/eq-curve-chart";
+import { EqCurveChart } from "@/components/monitor/amp-tabs/eq-curve-chart";
 import { Copy, Clipboard } from "lucide-react";
 import { ChannelButtonGroup } from "@/components/custom/channel-button-group";
 import { getChannelLabels } from "@/lib/channel-labels";

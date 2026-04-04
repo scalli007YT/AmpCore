@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { MonitorPage } from "@/components/pages/monitor-page";
+import { HealthPage } from "@/components/pages/health-page";
 import { getDictionary } from "@/lib/i18n/dictionaries";
 import { hasLocale } from "@/lib/i18n/config";
 
-export async function generateMetadata({ params }: PageProps<"/[lang]/monitor">): Promise<Metadata> {
+export async function generateMetadata({ params }: PageProps<"/[lang]/health">): Promise<Metadata> {
   const { lang } = await params;
   if (!hasLocale(lang)) {
     return {};
@@ -12,11 +12,11 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/monitor">)
 
   const dictionary = await getDictionary(lang);
   return {
-    title: `${dictionary.monitor.title} | ${dictionary.header.appTitle}`
+    title: `${dictionary.header.health} | ${dictionary.header.appTitle}`
   };
 }
 
-export default async function Page({ params }: PageProps<"/[lang]/monitor">) {
+export default async function Page({ params }: PageProps<"/[lang]/health">) {
   const { lang } = await params;
 
   if (!hasLocale(lang)) {
@@ -24,5 +24,5 @@ export default async function Page({ params }: PageProps<"/[lang]/monitor">) {
   }
 
   const dictionary = await getDictionary(lang);
-  return <MonitorPage dictionary={dictionary.monitor} />;
+  return <HealthPage dictionary={dictionary.monitor} />;
 }

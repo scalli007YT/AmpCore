@@ -1,4 +1,5 @@
 import dgram from "dgram";
+import os from "os";
 import {
   buildStructHeader,
   buildNetworkDataHeader,
@@ -8,7 +9,31 @@ import {
 } from "@/lib/network/protocol";
 
 const AMP_SEND_PORT = 45455;
+
+/**
+ * Returns the local interface IP that shares a subnet with targetIp.
+ * Binding an ephemeral socket to this address ensures the OS uses the
+ * correct physical NIC — critical when multiple interfaces are present
+ * (e.g. WiFi + Ethernet) and Windows routing metrics could pick the wrong one.
+ * Falls back to "0.0.0.0" for cross-subnet/routed destinations.
+ */
+function getLocalAddressFor(targetIp: string): string {
+  const targetParts = targetIp.split(".").map(Number);
+  const ifaces = os.networkInterfaces();
+  for (const iface of Object.values(ifaces)) {
+    if (!iface) continue;
+    for (const addr of iface) {
+      if (addr.family !== "IPv4" || addr.internal) continue;
+      const localParts = addr.address.split(".").map(Number);
+      const maskParts = addr.netmask.split(".").map(Number);
+      const sameSubnet = localParts.every((b, i) => (b & maskParts[i]) === (targetParts[i] & maskParts[i]));
+      if (sameSubnet) return addr.address;
+    }
+  }
+  return "0.0.0.0";
+}
 const CROSSOVER_COMMIT_PACKET = Buffer.from("03d99401015c0001015a", "hex");
+const MAX_PACKETS_COUNT = 255; // network header packets_count is uint8
 
 export class FuncCode {
   static BASIC_INFO = 0;
@@ -132,8 +157,9 @@ export class CvrAmpDevice {
    */
   async commitCrossover(): Promise<void> {
     const sock = dgram.createSocket("udp4");
+    const localAddress = getLocalAddressFor(this.ampIp);
     await new Promise<void>((resolve, reject) => {
-      sock.bind({ port: 0, address: "0.0.0.0" }, (err?: Error) => {
+      sock.bind({ port: 0, address: localAddress }, (err?: Error) => {
         if (err) reject(err);
         else resolve();
       });
@@ -197,8 +223,9 @@ export class CvrAmpDevice {
     };
 
     const sock = dgram.createSocket("udp4");
+    const localAddress = getLocalAddressFor(this.ampIp);
     await new Promise<void>((resolve, reject) => {
-      sock.bind({ port: 0, address: "0.0.0.0" }, (err?: Error) => {
+      sock.bind({ port: 0, address: localAddress }, (err?: Error) => {
         if (err) reject(err);
         else resolve();
       });
@@ -214,6 +241,12 @@ export class CvrAmpDevice {
     // The device reassembles fragments using packets_count / packets_stepcount / packets_lastlenth.
     const packetsCount = frame.length <= FRAGMENT_SIZE ? 1 : Math.ceil(frame.length / FRAGMENT_SIZE);
     const packetsLastlen = frame.length % FRAGMENT_SIZE === 0 ? FRAGMENT_SIZE : frame.length % FRAGMENT_SIZE;
+
+    if (packetsCount > MAX_PACKETS_COUNT) {
+      throw new Error(
+        `Payload too large for one protocol transfer: frame=${frame.length} bytes requires ${packetsCount} packets, max is ${MAX_PACKETS_COUNT}`
+      );
+    }
 
     for (let step = 1; step <= packetsCount; step++) {
       const chunkStart = (step - 1) * FRAGMENT_SIZE;
@@ -239,14 +272,16 @@ export class CvrAmpDevice {
 
       // Wait between fragments for the device to process and ACK.
       // The C# original waits for an ACK with a 1-second timeout per fragment.
-      // We use a shorter fixed delay since we don't have ACK handling yet.
+      // Small payloads (≤ 450 B) need only a tiny gap, but large payloads like
+      // FC=57 speaker data (~2310 B, 6 fragments) need longer pauses so the
+      // embedded processor can reassemble and flush each chunk.
       if (step < packetsCount) {
-        await new Promise<void>((resolve) => setTimeout(resolve, 20));
+        await new Promise<void>((resolve) => setTimeout(resolve, packetsCount > 2 ? 150 : 20));
       }
     }
 
-    // Give the OS ~10 ms to flush — matches Python's time.sleep(0.01) throttle
-    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    // Give the OS time to flush — longer for multi-fragment sends
+    await new Promise<void>((resolve) => setTimeout(resolve, packetsCount > 2 ? 100 : 10));
     try {
       sock.close();
     } catch {

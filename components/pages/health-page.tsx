@@ -1,26 +1,24 @@
 "use client";
 
 import { useEffect } from "react";
-import { useProjectStore } from "@/stores/ProjectStore";
-import { useAmpStore } from "@/stores/AmpStore";
-import { useTabStore } from "@/stores/TabStore";
 import { AssignAmpsDialog } from "@/components/dialogs/assign-amps-dialog";
 import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
-import { AmpTabs } from "@/components/monitor/amp-tabs";
+import { AmpRackSidebar } from "@/components/monitor/amp-rack-sidebar";
 import { NoProjectCard } from "@/components/monitor/no-project-card";
+import { useProjectStore } from "@/stores/ProjectStore";
+import { useTabStore } from "@/stores/TabStore";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 
-interface MonitorPageProps {
+interface HealthPageProps {
   dictionary: Dictionary["monitor"];
 }
 
-export function MonitorPage({ dictionary }: MonitorPageProps) {
+export function HealthPage({ dictionary }: HealthPageProps) {
   const { selectedProject } = useProjectStore();
-  const amps = useAmpStore((state) => state.amps);
   const setCurrentView = useTabStore((state) => state.setCurrentView);
 
   useEffect(() => {
-    setCurrentView("control");
+    setCurrentView("health");
   }, [setCurrentView]);
 
   return (
@@ -37,7 +35,19 @@ export function MonitorPage({ dictionary }: MonitorPageProps) {
         </section>
       )}
 
-      <div className="flex min-h-0 flex-1">{selectedProject ? <AmpTabs /> : <NoProjectCard />}</div>
+      <div className="flex min-h-0 flex-1">
+        {!selectedProject ? (
+          <NoProjectCard />
+        ) : (
+          <div className="grid min-h-0 w-full flex-1 gap-3 xl:grid-cols-[220px_minmax(0,1fr)]">
+            <AmpRackSidebar dictionary={dictionary} />
+
+            <section className="flex min-h-0 items-center justify-center rounded-lg border border-dashed border-border/50 bg-card/10 p-8">
+              <p className="text-sm text-muted-foreground">Health content coming soon.</p>
+            </section>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

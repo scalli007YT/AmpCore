@@ -11,7 +11,6 @@ import {
 } from "@/lib/amp-action-linking";
 import { isSimulatedMac } from "@/lib/simulated-amp-identity";
 import { useAmpActionLinkStore } from "./AmpActionLinkStore";
-import { useAmpOptionStore, type AmpOptions } from "./AmpOptionStore";
 
 export type ProjectMode = "real" | "demo";
 
@@ -27,6 +26,7 @@ export interface AssignedAmpConstants {
 const defaultAmpLinking: AmpLinkConfig = createDefaultAmpLinkConfig();
 const DEFAULT_CHANNEL_OHMS = 8;
 const DEFAULT_PROJECT_CHANNEL_COUNT = 4;
+const assignedAmpNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 function createDefaultChannels(count: number, ohms = DEFAULT_CHANNEL_OHMS): AmpChannelConstants[] {
   const safeCount = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : DEFAULT_PROJECT_CHANNEL_COUNT;
@@ -50,7 +50,6 @@ export interface Project {
     lastKnownName?: string;
     lastKnownIp?: string;
     constants: AssignedAmpConstants;
-    options?: Partial<AmpOptions>;
   }>;
 }
 
@@ -68,12 +67,12 @@ interface ProjectStore {
   deleteProject: (id: string) => Promise<void>;
   addAmpToProject: (projectId: string, mac: string) => Promise<void>;
   deleteAmpFromProject: (projectId: string, mac: string) => Promise<void>;
+  reorderAssignedAmps: (projectId: string, orderedMacs: string[]) => Promise<void>;
   updateAmpChannelOhms: (mac: string, channelIndex: number, ohms: number) => Promise<void>;
   updateAmpLinking: (mac: string, linking: AmpLinkConfig) => Promise<void>;
   updateAmpLastKnownName: (mac: string, lastKnownName: string) => Promise<void>;
   updateAmpLastKnownIp: (mac: string, lastKnownIp: string) => Promise<void>;
   updateAmpChannelCount: (mac: string, channelCount: number) => void;
-  updateAmpOptions: (mac: string, options: AmpOptions) => Promise<void>;
 }
 
 function mapAssignedAmpToConfig(amp: Project["assigned_amps"][number]) {
@@ -83,6 +82,26 @@ function mapAssignedAmpToConfig(amp: Project["assigned_amps"][number]) {
     lastKnownName: amp.lastKnownName,
     constants: amp.constants
   };
+}
+
+function sortAssignedAmpsAlphabetically(assignedAmps: Project["assigned_amps"]): Project["assigned_amps"] {
+  const runtimeAmps = useAmpStore.getState().amps;
+  const sortLabelByMac = new Map(
+    runtimeAmps.map((amp) => [amp.mac.toUpperCase(), (amp.name ?? amp.lastKnownName ?? amp.mac).trim()])
+  );
+
+  return [...assignedAmps].sort((leftAmp, rightAmp) => {
+    const leftLabel = sortLabelByMac.get(leftAmp.mac.toUpperCase()) ?? (leftAmp.lastKnownName ?? leftAmp.mac).trim();
+    const rightLabel =
+      sortLabelByMac.get(rightAmp.mac.toUpperCase()) ?? (rightAmp.lastKnownName ?? rightAmp.mac).trim();
+    const labelComparison = assignedAmpNameCollator.compare(leftLabel, rightLabel);
+
+    if (labelComparison !== 0) {
+      return labelComparison;
+    }
+
+    return assignedAmpNameCollator.compare(leftAmp.mac, rightAmp.mac);
+  });
 }
 
 function serializeProjectForPersistence(project: Project): Project {
@@ -108,20 +127,6 @@ function syncAmpLinkingFromProject(project: Project | null) {
     project.assigned_amps.map((amp) => ({
       mac: amp.mac,
       profile: amp.constants.linking
-    }))
-  );
-}
-
-function syncAmpOptionsFromProject(project: Project | null) {
-  if (!project) {
-    useAmpOptionStore.getState().clear();
-    return;
-  }
-
-  useAmpOptionStore.getState().hydrate(
-    project.assigned_amps.map((amp) => ({
-      mac: amp.mac,
-      options: amp.options
     }))
   );
 }
@@ -154,7 +159,6 @@ export const useProjectStore = create<ProjectStore>()(
         }
 
         syncAmpLinkingFromProject(nextSelectedProject);
-        syncAmpOptionsFromProject(nextSelectedProject);
       },
 
       setSelectedProject: (project) => {
@@ -167,7 +171,6 @@ export const useProjectStore = create<ProjectStore>()(
         }
 
         syncAmpLinkingFromProject(project);
-        syncAmpOptionsFromProject(project);
       },
 
       setLoading: (loading) => set({ loading }),
@@ -265,7 +268,7 @@ export const useProjectStore = create<ProjectStore>()(
         // Update local state
         const updatedProject: Project = {
           ...project,
-          assigned_amps: [
+          assigned_amps: sortAssignedAmpsAlphabetically([
             ...project.assigned_amps,
             {
               id: uuidv4(),
@@ -277,7 +280,7 @@ export const useProjectStore = create<ProjectStore>()(
                 linking: normalizeAmpLinkConfig(DEFAULT_AMP_LINK_CONFIG)
               }
             }
-          ]
+          ])
         };
 
         const updatedProjects = projects.map((p) => (p.id === projectId ? updatedProject : p));
@@ -312,7 +315,7 @@ export const useProjectStore = create<ProjectStore>()(
         // Update local state
         const updatedProject: Project = {
           ...project,
-          assigned_amps: project.assigned_amps.filter((a) => a.mac !== mac)
+          assigned_amps: sortAssignedAmpsAlphabetically(project.assigned_amps.filter((a) => a.mac !== mac))
         };
 
         const updatedProjects = projects.map((p) => (p.id === projectId ? updatedProject : p));
@@ -329,6 +332,57 @@ export const useProjectStore = create<ProjectStore>()(
         }
 
         // Persist to API
+        await fetch("/api/projects", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(serializeProjectForPersistence(updatedProject))
+        });
+      },
+
+      reorderAssignedAmps: async (projectId, orderedMacs) => {
+        const { projects, selectedProject } = get();
+        const project = projects.find((p) => p.id === projectId);
+
+        if (!project) {
+          throw new Error("Project not found");
+        }
+
+        const currentOrder = project.assigned_amps.map((amp) => amp.mac.toUpperCase());
+        const normalizedOrder = orderedMacs.map((mac) => mac.toUpperCase());
+
+        if (currentOrder.length !== normalizedOrder.length) {
+          throw new Error("Invalid amp order");
+        }
+
+        if (currentOrder.every((mac, index) => mac === normalizedOrder[index])) {
+          return;
+        }
+
+        const ampByMac = new Map(project.assigned_amps.map((amp) => [amp.mac.toUpperCase(), amp]));
+        const reorderedAmps = normalizedOrder.map((mac) => {
+          const amp = ampByMac.get(mac);
+          if (!amp) {
+            throw new Error("Invalid amp order");
+          }
+          return amp;
+        });
+
+        const updatedProject: Project = {
+          ...project,
+          assigned_amps: reorderedAmps
+        };
+
+        const updatedProjects = projects.map((p) => (p.id === projectId ? updatedProject : p));
+
+        set({ projects: updatedProjects });
+
+        if (selectedProject?.id === projectId) {
+          set({ selectedProject: updatedProject });
+          const configs = updatedProject.assigned_amps.map(mapAssignedAmpToConfig);
+          useAmpStore.getState().seedAmps(configs);
+          syncAmpLinkingFromProject(updatedProject);
+        }
+
         await fetch("/api/projects", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -525,31 +579,6 @@ export const useProjectStore = create<ProjectStore>()(
 
         // Note: We don't persist this immediately — it's a runtime optimization.
         // The persisted project file uses defaults anyway and gets updated on next save.
-      },
-
-      updateAmpOptions: async (mac, options) => {
-        const { projects, selectedProject } = get();
-        if (!selectedProject) return;
-
-        const normalizedMac = mac.toUpperCase();
-        const updatedProject: Project = {
-          ...selectedProject,
-          assigned_amps: selectedProject.assigned_amps.map((amp) => {
-            if (amp.mac.toUpperCase() !== normalizedMac) return amp;
-            return { ...amp, options };
-          })
-        };
-
-        set({
-          projects: projects.map((p) => (p.id === selectedProject.id ? updatedProject : p)),
-          selectedProject: updatedProject
-        });
-
-        await fetch("/api/projects", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(serializeProjectForPersistence(updatedProject))
-        });
       }
     }),
     {

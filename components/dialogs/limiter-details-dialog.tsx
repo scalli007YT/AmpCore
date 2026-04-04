@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { VerticalDbMeter } from "@/components/monitor/vertical-db-meter";
 import { Separator } from "@/components/ui/separator";
 import { Copy, Clipboard, SlidersVertical } from "lucide-react";
 import { toast } from "sonner";
+import { ChannelButtonGroup } from "@/components/custom/channel-button-group";
 import { COLORS } from "@/lib/colors";
 import { useI18n } from "@/components/layout/i18n-provider";
 import { useClipboardStore } from "@/stores/ClipboardStore";
@@ -213,10 +214,15 @@ function MeterWithScale({
 }
 
 export function LimiterDetailsDialog({
-  trigger,
+  open,
+  onOpenChange,
   mac,
   channel,
   channelName,
+  channelCount,
+  activeChannel,
+  onActiveChannelChange,
+  enableChannelSwitching = false,
   bridgeMode = false,
   disabled = false,
   ratedRmsV,
@@ -236,10 +242,15 @@ export function LimiterDetailsDialog({
   onSetPeakThreshold,
   onSetOhms
 }: {
-  trigger: ReactNode;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   mac: string;
   channel: number;
   channelName: string;
+  channelCount?: number;
+  activeChannel?: number;
+  onActiveChannelChange?: (channel: number) => void;
+  enableChannelSwitching?: boolean;
   bridgeMode?: boolean;
   disabled?: boolean;
   ratedRmsV?: number;
@@ -580,22 +591,32 @@ export function LimiterDetailsDialog({
     toast.success("Pasted Peak Limiter settings");
   };
 
-  if (disabled) {
-    return <>{trigger}</>;
-  }
-
   return (
-    <Dialog>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-[680px]">
-        <DialogHeader className="flex flex-row items-center gap-2">
-          <DialogTitle className="text-center flex flex-1 items-center justify-center gap-2">
-            <SlidersVertical className="h-4 w-4" />
-            {channelName}
-          </DialogTitle>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[88vh] overflow-y-auto p-4 sm:max-w-[680px] sm:p-5">
+        <DialogHeader className="pb-2">
+          <div className="relative min-h-8 pr-10">
+            <div className="flex h-8 items-center gap-3">
+              <SlidersVertical className="h-4 w-4" />
+              <DialogTitle className="text-sm font-semibold">{channelName}</DialogTitle>
+            </div>
+            {enableChannelSwitching &&
+              channelCount !== undefined &&
+              activeChannel !== undefined &&
+              onActiveChannelChange && (
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                  <ChannelButtonGroup
+                    channelCount={channelCount}
+                    value={activeChannel}
+                    onValueChange={onActiveChannelChange}
+                    size="sm"
+                  />
+                </div>
+              )}
+          </div>
         </DialogHeader>
 
-        <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-4">
+        <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-[1fr_auto_1fr] md:gap-4">
           <div className="flex h-full flex-col items-center">
             <p className="text-center text-xs">{dict.dialogs.limiterDetails.rms}</p>
             <div className="flex flex-1 items-center justify-center py-3">
@@ -758,9 +779,9 @@ export function LimiterDetailsDialog({
           </div>
         </div>
 
-        <Separator />
+        <Separator className="my-1" />
 
-        <div className="grid grid-cols-[1fr_auto_1fr] gap-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto_1fr] md:gap-4">
           <div className="space-y-2">
             <EditableLimiterFieldRow
               label={dict.dialogs.limiterDetails.threshold}
@@ -790,7 +811,7 @@ export function LimiterDetailsDialog({
             />
           </div>
 
-          <Separator orientation="vertical" className="self-stretch h-auto" />
+          <Separator orientation="vertical" className="hidden h-auto self-stretch md:block" />
 
           <div className="space-y-2">
             <EditableLimiterFieldRow

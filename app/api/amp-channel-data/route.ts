@@ -60,6 +60,24 @@ export async function GET(request: Request): Promise<Response> {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const cached = ampController.getLastFC27(mac);
+    if (cached) {
+      const hex = cached.body.toString("hex");
+      const locked = parseFC27RotaryLock(hex);
+      const ageMs = Math.max(0, Date.now() - cached.at);
+
+      return Response.json({
+        success: true,
+        mac,
+        length: cached.body.length,
+        hex,
+        locked,
+        stale: true,
+        staleAgeMs: ageMs,
+        warning: `Live FC=27 failed: ${message}`
+      });
+    }
+
     return Response.json({ success: false, error: message }, { status: 500 });
   }
 }

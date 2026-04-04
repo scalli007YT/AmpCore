@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useAmpStore } from "@/stores/AmpStore";
 import { useTabStore } from "@/stores/TabStore";
+import { useLibraryStore } from "@/stores/LibraryStore";
 import { parseFC27Channels, parseFC27RotaryLock } from "@/lib/parse-channel-data";
 
 // Tiered polling: fast for active amp, slow for background amps.
@@ -48,6 +49,11 @@ export function useAmpChannelData(): void {
 
     if (!channelDataTimer) {
       channelDataTimer = setInterval(() => {
+        const { applying } = useLibraryStore.getState();
+        if (applying) {
+          return;
+        }
+
         const amps = useAmpStore.getState().amps;
         const reachableAmps = amps.filter((amp) => amp.reachable);
         const selectedMac = useTabStore.getState().selectedAmpMac;

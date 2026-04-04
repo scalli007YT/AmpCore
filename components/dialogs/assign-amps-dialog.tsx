@@ -1,9 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { DragEvent, ReactNode } from "react";
 import { useState } from "react";
-import { useProjectStore } from "@/stores/ProjectStore";
-import { useAmpStore } from "@/stores/AmpStore";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,194 +13,68 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
-import { Trash2, Plus, Wifi } from "lucide-react";
-import { toast } from "sonner";
+import { GripVertical, Trash2, Plus, Wifi } from "lucide-react";
 import { useI18n } from "@/components/layout/i18n-provider";
-
-interface ScannedDevice {
-  ip: string;
-  mac: string;
-  name: string;
-  deviceVersion: string;
-  identifier: string;
-  runtime: string;
-}
+import { useAssignAmps } from "@/hooks/useAssignAmps";
 
 interface AssignAmpsDialogProps {
   trigger?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
+export function AssignAmpsDialog({ trigger, open: openProp, onOpenChange }: AssignAmpsDialogProps) {
   const dict = useI18n();
-  const { selectedProject, projects, addAmpToProject, deleteAmpFromProject, updateAmpLastKnownIp } = useProjectStore();
-  const { amps, getDisplayName } = useAmpStore();
-  const [ipInput, setIpInput] = useState("");
-  const [open, setOpen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isProbing, setIsProbing] = useState(false);
-  const [mode, setMode] = useState<"manual" | "scan">("scan");
-  const [scannedDevices, setScannedDevices] = useState<ScannedDevice[]>([]);
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanError, setScanError] = useState("");
-  const [probeInputByMac, setProbeInputByMac] = useState<Record<string, string>>({});
-  const [isProbingByMac, setIsProbingByMac] = useState<Record<string, boolean>>({});
+  const {
+    amps,
+    getDisplayName,
+    selectedProject,
+    currentProject,
+    ipInput,
+    setIpInput,
+    isSaving,
+    isProbing,
+    mode,
+    setMode,
+    scannedDevices,
+    isScanning,
+    scanError,
+    setScanError,
+    probeInputByMac,
+    setProbeInputByMac,
+    isProbingByMac,
+    handleAddAmp,
+    handleAddFromScan,
+    handleDeleteAmp,
+    handleReorderAmp,
+    handleScan,
+    handleProbeOfflineAmp
+  } = useAssignAmps();
+
+  const [internalOpen, setInternalOpen] = useState(false);
+  const [draggedMac, setDraggedMac] = useState<string | null>(null);
+  const [dragOverMac, setDragOverMac] = useState<string | null>(null);
+  const open = openProp ?? internalOpen;
+  const setDialogOpen = (nextOpen: boolean) => {
+    if (openProp === undefined) setInternalOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
 
   if (!selectedProject) return null;
-
-  const currentProject = projects.find((p) => p.id === selectedProject.id);
   if (!currentProject) return null;
 
   if (currentProject.projectMode === "demo") {
     return <AssignDemoAmpsDialog trigger={trigger} />;
   }
 
-  const handleAddAmp = async () => {
-    const ip = ipInput.trim();
-    if (!ip) {
-      toast.error(dict.dialogs.assignAmps.enterIp);
-      return;
-    }
-    if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
-      toast.error(dict.dialogs.assignAmps.invalidIp);
-      return;
-    }
-
-    setIsProbing(true);
-    try {
-      const response = await fetch("/api/amp-advanced/probe-ip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ip })
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        toast.error(data.error ?? dict.dialogs.assignAmps.noAmpAtIp);
-        return;
-      }
-
-      await addAmpToProject(selectedProject.id, data.mac);
-      await updateAmpLastKnownIp(data.mac, ip);
-      setIpInput("");
-      toast.success(`Added ${data.name} (${data.mac})`);
-    } catch (error) {
-      toast.error(
-        `${dict.dialogs.assignAmps.errorAddingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
-      );
-    } finally {
-      setIsProbing(false);
-    }
-  };
-
-  const handleAddFromScan = async (mac: string) => {
-    setIsSaving(true);
-    try {
-      await addAmpToProject(selectedProject.id, mac);
-      setScannedDevices(scannedDevices.filter((d) => d.mac !== mac));
-    } catch (error) {
-      toast.error(
-        `${dict.dialogs.assignAmps.errorAddingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDeleteAmp = async (mac: string) => {
-    setIsSaving(true);
-    try {
-      await deleteAmpFromProject(selectedProject.id, mac);
-    } catch (error) {
-      toast.error(
-        `${dict.dialogs.assignAmps.errorDeletingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleScan = async () => {
-    setIsScanning(true);
-    setScanError("");
-    try {
-      const response = await fetch(`/api/scan?projectMode=${encodeURIComponent(currentProject.projectMode ?? "real")}`);
-      if (!response.ok) {
-        setScanError(dict.dialogs.assignAmps.scanFailedNoDevices);
-        setScannedDevices([]);
-        return;
-      }
-
-      const data = await response.json();
-      if (data.devices && Array.isArray(data.devices)) {
-        const assignedMacs = currentProject.assigned_amps.map((a) => a.mac.toUpperCase());
-        const unassignedDevices = data.devices.filter(
-          (d: ScannedDevice) => !assignedMacs.includes(d.mac.toUpperCase())
-        );
-        setScannedDevices(unassignedDevices);
-        if (unassignedDevices.length === 0) {
-          setScanError(dict.dialogs.assignAmps.allDiscoveredAssigned);
-        }
-      } else {
-        setScanError(dict.dialogs.assignAmps.invalidResponseFormat);
-      }
-    } catch (error) {
-      setScanError(
-        `${dict.dialogs.assignAmps.scanError}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
-      );
-    } finally {
-      setIsScanning(false);
-    }
-  };
-
   const handleOpenChange = (nextOpen: boolean) => {
-    setOpen(nextOpen);
+    setDialogOpen(nextOpen);
     if (nextOpen) {
       setMode("scan");
       void handleScan();
-    }
-  };
-
-  const handleProbeOfflineAmp = async (mac: string) => {
-    const ip = (probeInputByMac[mac] ?? "").trim();
-    if (!ip) return;
-    if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
-      toast.error(dict.dialogs.assignAmps.invalidIp);
-      return;
-    }
-
-    setIsProbingByMac((prev) => ({ ...prev, [mac]: true }));
-    try {
-      const response = await fetch("/api/amp-advanced/probe-ip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ip })
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        toast.error(data.error ?? dict.dialogs.assignAmps.noAmpAtIp);
-        return;
-      }
-
-      // Check if the responding amp matches the expected MAC
-      if (data.mac.toUpperCase() === mac.toUpperCase()) {
-        await updateAmpLastKnownIp(mac, ip);
-        setProbeInputByMac((prev) => ({ ...prev, [mac]: "" }));
-        toast.success(`Found ${data.name} at ${ip}`);
-      } else {
-        // Different amp found at this IP
-        toast.error(`Found ${data.name} (${data.mac}) at ${ip} - expected ${mac}`);
-      }
-    } catch (error) {
-      toast.error(
-        `${dict.dialogs.assignAmps.scanError}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
-      );
-    } finally {
-      setIsProbingByMac((prev) => ({ ...prev, [mac]: false }));
     }
   };
 
@@ -218,6 +90,35 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
         : reachableAmps === 0
           ? "bg-red-500"
           : "bg-orange-400";
+  const canReorder = totalAmps > 1 && !isSaving;
+
+  const handleDragStart = (event: DragEvent<HTMLButtonElement>, mac: string) => {
+    event.dataTransfer.effectAllowed = "move";
+    setDraggedMac(mac);
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>, mac: string) => {
+    if (!canReorder) return;
+    event.preventDefault();
+    if (draggedMac && draggedMac !== mac) {
+      setDragOverMac(mac);
+    }
+  };
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>, targetMac: string) => {
+    if (!canReorder) return;
+    event.preventDefault();
+    if (draggedMac && draggedMac !== targetMac) {
+      void handleReorderAmp(draggedMac, targetMac);
+    }
+    setDraggedMac(null);
+    setDragOverMac(null);
+  };
+
+  const clearDragState = () => {
+    setDraggedMac(null);
+    setDragOverMac(null);
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -249,58 +150,50 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
                 {currentProject.assigned_amps.map((amp) => {
                   const ampInfo = amps.find((a) => a.mac === amp.mac);
                   return (
-                    <div key={amp.mac} className="p-3 hover:bg-accent space-y-2">
+                    <div
+                      key={amp.mac}
+                      onDragOver={(event) => handleDragOver(event, amp.mac)}
+                      onDrop={(event) => handleDrop(event, amp.mac)}
+                      onDragLeave={() => {
+                        if (dragOverMac === amp.mac) {
+                          setDragOverMac(null);
+                        }
+                      }}
+                      className={`p-3 hover:bg-accent space-y-2 ${dragOverMac === amp.mac ? "bg-accent" : ""} ${
+                        draggedMac === amp.mac ? "opacity-70" : ""
+                      }`}
+                    >
                       <div className="flex items-center justify-between gap-3">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="flex items-center gap-3 flex-1 min-w-0 cursor-default">
-                              <div className="flex-shrink-0">
-                                <div
-                                  className={`h-3 w-3 rounded-full ${ampInfo?.reachable ? "bg-green-500" : "bg-red-500"}`}
-                                />
-                              </div>
+                        {canReorder && (
+                          <button
+                            type="button"
+                            draggable
+                            onDragStart={(event) => handleDragStart(event, amp.mac)}
+                            onDragEnd={clearDragState}
+                            className="flex h-4 w-4 flex-shrink-0 items-center justify-center bg-transparent p-0 text-muted-foreground outline-none cursor-grab active:cursor-grabbing"
+                            aria-label="Reorder amp"
+                          >
+                            <GripVertical className="h-4 w-4" />
+                          </button>
+                        )}
 
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold">
-                                  {ampInfo ? getDisplayName(ampInfo) : dict.dialogs.assignAmps.unknownAmp}
-                                </p>
-                                <p className="text-xs text-muted-foreground font-mono">{amp.mac}</p>
-                                {!ampInfo?.reachable && amp.lastKnownIp && (
-                                  <p className="text-xs text-muted-foreground font-mono">{amp.lastKnownIp}</p>
-                                )}
-                              </div>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent side="left">
-                            <p>
-                              {dict.dialogs.assignAmps.status}:{" "}
-                              {ampInfo?.reachable
-                                ? dict.dialogs.assignAmps.reachable
-                                : dict.dialogs.assignAmps.unreachable}
+                        <div className="flex items-center gap-3 flex-1 min-w-0 cursor-default">
+                          <div className="flex-shrink-0">
+                            <div
+                              className={`h-3 w-3 rounded-full ${ampInfo?.reachable ? "bg-green-500" : "bg-red-500"}`}
+                            />
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold">
+                              {ampInfo ? getDisplayName(ampInfo) : dict.dialogs.assignAmps.unknownAmp}
                             </p>
-                            <p>
-                              {dict.dialogs.assignAmps.mac}: {amp.mac}
-                            </p>
-                            <p>
-                              {dict.dialogs.assignAmps.ipAddress}: {ampInfo?.ip ?? amp.lastKnownIp ?? "-"}
-                            </p>
-                            <p>
-                              {dict.dialogs.assignAmps.name}: {ampInfo ? getDisplayName(ampInfo) : "-"}
-                            </p>
-                            <p>
-                              {dict.dialogs.assignAmps.version}: {ampInfo?.version ?? "-"}
-                            </p>
-                            <p>
-                              {dict.dialogs.assignAmps.id}: {ampInfo?.id ?? "-"}
-                            </p>
-                            <p>
-                              {dict.dialogs.assignAmps.runtime}:
-                              {ampInfo?.run_time !== undefined
-                                ? `${Math.floor(ampInfo.run_time / 60)}h ${ampInfo.run_time % 60}min`
-                                : "-"}
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
+                            <p className="text-xs text-muted-foreground font-mono">{amp.mac}</p>
+                            {!ampInfo?.reachable && amp.lastKnownIp && (
+                              <p className="text-xs text-muted-foreground font-mono">{amp.lastKnownIp}</p>
+                            )}
+                          </div>
+                        </div>
 
                         <Button
                           variant="ghost"
@@ -451,7 +344,7 @@ export function AssignAmpsDialog({ trigger }: AssignAmpsDialogProps) {
               {dict.dialogs.common.cancel}
             </Button>
           </DialogClose>
-          <Button onClick={() => setOpen(false)} disabled={isSaving || isScanning}>
+          <Button onClick={() => setDialogOpen(false)} disabled={isSaving || isScanning}>
             {isSaving ? dict.dialogs.common.saving : dict.dialogs.common.done}
           </Button>
         </DialogFooter>

@@ -66,6 +66,7 @@ interface ProjectStore {
   deleteProject: (id: string) => Promise<void>;
   addAmpToProject: (projectId: string, mac: string) => Promise<void>;
   deleteAmpFromProject: (projectId: string, mac: string) => Promise<void>;
+  reorderAssignedAmps: (projectId: string, orderedMacs: string[]) => Promise<void>;
   updateAmpChannelOhms: (mac: string, channelIndex: number, ohms: number) => Promise<void>;
   updateAmpLinking: (mac: string, linking: AmpLinkConfig) => Promise<void>;
   updateAmpLastKnownName: (mac: string, lastKnownName: string) => Promise<void>;
@@ -310,6 +311,57 @@ export const useProjectStore = create<ProjectStore>()(
         }
 
         // Persist to API
+        await fetch("/api/projects", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(serializeProjectForPersistence(updatedProject))
+        });
+      },
+
+      reorderAssignedAmps: async (projectId, orderedMacs) => {
+        const { projects, selectedProject } = get();
+        const project = projects.find((p) => p.id === projectId);
+
+        if (!project) {
+          throw new Error("Project not found");
+        }
+
+        const currentOrder = project.assigned_amps.map((amp) => amp.mac.toUpperCase());
+        const normalizedOrder = orderedMacs.map((mac) => mac.toUpperCase());
+
+        if (currentOrder.length !== normalizedOrder.length) {
+          throw new Error("Invalid amp order");
+        }
+
+        if (currentOrder.every((mac, index) => mac === normalizedOrder[index])) {
+          return;
+        }
+
+        const ampByMac = new Map(project.assigned_amps.map((amp) => [amp.mac.toUpperCase(), amp]));
+        const reorderedAmps = normalizedOrder.map((mac) => {
+          const amp = ampByMac.get(mac);
+          if (!amp) {
+            throw new Error("Invalid amp order");
+          }
+          return amp;
+        });
+
+        const updatedProject: Project = {
+          ...project,
+          assigned_amps: reorderedAmps
+        };
+
+        const updatedProjects = projects.map((p) => (p.id === projectId ? updatedProject : p));
+
+        set({ projects: updatedProjects });
+
+        if (selectedProject?.id === projectId) {
+          set({ selectedProject: updatedProject });
+          const configs = updatedProject.assigned_amps.map(mapAssignedAmpToConfig);
+          useAmpStore.getState().seedAmps(configs);
+          syncAmpLinkingFromProject(updatedProject);
+        }
+
         await fetch("/api/projects", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },

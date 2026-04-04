@@ -17,7 +17,14 @@ export interface ScannedDevice {
 
 export function useAssignAmps() {
   const dict = useI18n();
-  const { selectedProject, projects, addAmpToProject, deleteAmpFromProject, updateAmpLastKnownIp } = useProjectStore();
+  const {
+    selectedProject,
+    projects,
+    addAmpToProject,
+    deleteAmpFromProject,
+    reorderAssignedAmps,
+    updateAmpLastKnownIp
+  } = useProjectStore();
   const { amps, getDisplayName } = useAmpStore();
 
   const [ipInput, setIpInput] = useState("");
@@ -92,6 +99,32 @@ export function useAssignAmps() {
     } catch (error) {
       toast.error(
         `${dict.dialogs.assignAmps.errorDeletingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleReorderAmp = async (sourceMac: string, targetMac: string) => {
+    if (!selectedProject || !currentProject) return;
+    if (sourceMac.toUpperCase() === targetMac.toUpperCase()) return;
+
+    const order = currentProject.assigned_amps.map((amp) => amp.mac);
+    const fromIndex = order.findIndex((mac) => mac.toUpperCase() === sourceMac.toUpperCase());
+    const toIndex = order.findIndex((mac) => mac.toUpperCase() === targetMac.toUpperCase());
+
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const nextOrder = [...order];
+    const [moved] = nextOrder.splice(fromIndex, 1);
+    nextOrder.splice(toIndex, 0, moved);
+
+    setIsSaving(true);
+    try {
+      await reorderAssignedAmps(selectedProject.id, nextOrder);
+    } catch (error) {
+      toast.error(
+        `${dict.dialogs.assignAmps.errorAddingAmp}: ${error instanceof Error ? error.message : dict.dialogs.common.unknownError}`
       );
     } finally {
       setIsSaving(false);
@@ -184,6 +217,7 @@ export function useAssignAmps() {
     handleAddAmp,
     handleAddFromScan,
     handleDeleteAmp,
+    handleReorderAmp,
     handleScan,
     handleProbeOfflineAmp
   };

@@ -57,8 +57,6 @@ async function startServer() {
   const standaloneDir = path.join(appRoot, ".next", "standalone");
   process.env.APP_USER_DATA = app.getPath("userData");
   process.env.PORT = String(PORT);
-  process.env.HOSTNAME = "127.0.0.1";
-  process.env.HOST = "127.0.0.1";
 
   // The standalone server.js calls process.chdir(__dirname) which fails
   // inside an asar archive. Override chdir to silently ignore asar paths.
@@ -68,33 +66,14 @@ async function startServer() {
     return originalChdir(dir);
   };
 
-  // Guarantee localhost-only binding regardless of what hostname Next.js reads.
-  // Newer Next.js standalone servers may ignore HOSTNAME/HOST env vars, so we
-  // intercept net.Server.listen at the Node.js layer before requiring server.js.
-  const net = require("net");
-  const _listen = net.Server.prototype.listen;
-  net.Server.prototype.listen = function (...args) {
-    const [first] = args;
-    if (typeof first === "object" && first !== null && "host" in first) {
-      if (first.host !== "127.0.0.1" && first.host !== "::1") {
-        args[0] = { ...first, host: "127.0.0.1" };
-      }
-    } else if (typeof first === "number" || (typeof first === "string" && !isNaN(Number(first)))) {
-      if (typeof args[1] === "string" && args[1] !== "127.0.0.1" && args[1] !== "::1") {
-        args[1] = "127.0.0.1";
-      }
-    }
-    return _listen.apply(this, args);
-  };
-
-  // The standalone server.js sets up its own http server on PORT/HOSTNAME.
+  // The standalone server.js sets up its own http server on PORT.
   require(path.join(standaloneDir, "server.js"));
 
   // Wait until the server is actually listening.
   await new Promise((resolve) => {
     const poll = () => {
       http
-        .get(`http://127.0.0.1:${PORT}/`, (res) => {
+        .get(`http://localhost:${PORT}/`, (res) => {
           if (res.statusCode < 500) resolve();
           else setTimeout(poll, 200);
         })
@@ -337,7 +316,7 @@ app.whenReady().then(() => {
 
   serverReady
     .then(async () => {
-      const url = isDev ? `http://localhost:${PORT}` : `http://127.0.0.1:${PORT}`;
+      const url = `http://localhost:${PORT}`;
       setSplashStatus("Loading interface...");
 
       if (!mainWindow || mainWindow.isDestroyed()) return;

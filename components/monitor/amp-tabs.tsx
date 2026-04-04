@@ -24,14 +24,13 @@ import { useI18n } from "@/components/layout/i18n-provider";
 import { AMP_NAME_MAX_LENGTH } from "@/lib/constants";
 import { AmpUnreachableCard } from "@/components/custom/amp-unreachable-card";
 import { InputWithCheck } from "@/components/custom/input-with-check";
+import { AmpRackSidebar } from "@/components/monitor/amp-rack-sidebar";
 import { useTabStore, type AmpSection } from "@/stores/TabStore";
 import { useAmpActions } from "@/hooks/useAmpActions";
 import { triggerImmediateLockPoll, triggerImmediateStandbyPoll } from "@/hooks/useAmpChannelData";
-import { useProjectStore } from "@/stores/ProjectStore";
 import { DEFAULT_AMP_OPTIONS, useAmpOptionStore } from "@/stores/AmpOptionStore";
 import { useLibraryStore } from "@/stores/LibraryStore";
 import { useAmpPresets } from "@/hooks/useAmpPresets";
-import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
 import { MainPanel } from "@/components/monitor/amp-tabs/main-panel";
 import { MatrixPanel } from "@/components/monitor/amp-tabs/matrix-panel";
 import { PreferencesPanel } from "@/components/monitor/amp-tabs/preferences-panel";
@@ -59,7 +58,6 @@ export function AmpTabs() {
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
 
   const { setAmpLock, setAmpStandby } = useAmpActions();
-  const selectedProject = useProjectStore((state) => state.selectedProject);
   const ampOptionsRaw = useAmpOptionStore((s) => s.options[(selectedMac ?? "").toUpperCase()]);
   const speakerApplying = useLibraryStore((state) => state.applying);
   const ampOptions = { ...DEFAULT_AMP_OPTIONS, ...ampOptionsRaw };
@@ -234,58 +232,7 @@ export function AmpTabs() {
 
   return (
     <div className="grid min-h-0 w-full flex-1 gap-3 xl:grid-cols-[220px_minmax(0,1fr)]">
-      {/* Amp sidebar */}
-      <aside className="max-h-48 overflow-y-auto rounded-lg border border-border/50 bg-card/25 p-2 xl:max-h-none">
-        <div className="mb-2 flex items-center justify-between border-b border-border/50 px-2 pb-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] leading-tight whitespace-normal break-words text-muted-foreground">
-              {dict.monitor.ampTabs.ampRack}
-            </p>
-          </div>
-          {selectedProject?.projectMode === "demo" ? (
-            <AssignDemoAmpsDialog
-              trigger={
-                <Button size="sm" variant="outline" className="h-8 px-2 text-xs">
-                  {dict.monitor.ampTabs.assignAction}
-                </Button>
-              }
-            />
-          ) : (
-            <AssignAmpsDialog
-              open={assignDialogOpen}
-              onOpenChange={setAssignDialogOpen}
-              trigger={
-                <Button size="sm" variant="outline" className="h-8 px-2 text-xs">
-                  {dict.monitor.ampTabs.assignAction}
-                </Button>
-              }
-            />
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          {amps.map((amp) => {
-            const selected = selectedMac === amp.mac;
-            return (
-              <Button
-                key={amp.mac}
-                variant={selected ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setSelectedMac(amp.mac)}
-                className="h-11 w-full justify-start gap-2.5 whitespace-nowrap px-2.5 font-medium"
-              >
-                <div
-                  className={`h-2 w-2 flex-shrink-0 rounded-full ${amp.reachable ? "bg-emerald-500" : "bg-rose-500"}`}
-                />
-                <div className="min-w-0 text-left">
-                  <p className="truncate text-xs font-semibold">{getDisplayName(amp)}</p>
-                  <p className="truncate text-[10px] opacity-70">{amp.mac}</p>
-                </div>
-              </Button>
-            );
-          })}
-        </div>
-      </aside>
+      <AmpRackSidebar dictionary={dict.monitor} />
 
       {/* Unreachable state */}
       {selectedAmp && !selectedAmp.reachable && (

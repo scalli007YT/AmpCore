@@ -20,7 +20,7 @@ export function MonitorPage({ dictionary }: MonitorPageProps) {
   const setCurrentView = useTabStore((state) => state.setCurrentView);
 
   useEffect(() => {
-    setCurrentView("monitor");
+    setCurrentView("control");
   }, [setCurrentView]);
 
   return (

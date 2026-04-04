@@ -4,7 +4,7 @@ import { MonitorPage } from "@/components/pages/monitor-page";
 import { getDictionary } from "@/lib/i18n/dictionaries";
 import { hasLocale } from "@/lib/i18n/config";
 
-export async function generateMetadata({ params }: PageProps<"/[lang]/monitor">): Promise<Metadata> {
+export async function generateMetadata({ params }: PageProps<"/[lang]/control">): Promise<Metadata> {
   const { lang } = await params;
   if (!hasLocale(lang)) {
     return {};
@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/monitor">)
   };
 }
 
-export default async function Page({ params }: PageProps<"/[lang]/monitor">) {
+export default async function Page({ params }: PageProps<"/[lang]/control">) {
   const { lang } = await params;
 
   if (!hasLocale(lang)) {

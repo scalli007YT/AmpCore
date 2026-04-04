@@ -8,5 +8,5 @@ export default async function Page({ params }: PageProps<"/[lang]">) {
     notFound();
   }
 
-  redirect(`/${lang}/monitor`);
+  redirect(`/${lang}/control`);
 }

@@ -95,7 +95,7 @@ function DraggableLibraryRow({
           }
         }}
       >
-        <div className="grid grid-cols-[40px_56px_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)_56px_110px] gap-2">
+        <div className="grid min-w-[640px] grid-cols-[40px_56px_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)_56px_110px] gap-2">
           <div
             data-drag-handle="true"
             className={`flex items-center justify-center text-muted-foreground/60 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
@@ -160,6 +160,19 @@ export function SpeakerLibraryBrowser({ isActive }: SpeakerLibraryBrowserProps) 
   const [waysNoFilter, setWaysNoFilter] = useState("all");
   const [dragState, setDragState] = useState<{ id: string; x: number; y: number } | null>(null);
   const [dragPreview, setDragPreview] = useState<{ file: LibraryFileEntry; x: number; y: number } | null>(null);
+  const headerScrollRef = useRef<HTMLDivElement>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const [bodyScrollbarWidth, setBodyScrollbarWidth] = useState(0);
+
+  useEffect(() => {
+    const el = bodyScrollRef.current;
+    if (!el) return;
+    const measure = () => setBodyScrollbarWidth(el.offsetWidth - el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!isActive || hasLoaded || loading) return;
@@ -360,51 +373,70 @@ export function SpeakerLibraryBrowser({ isActive }: SpeakerLibraryBrowserProps) 
       )}
 
       {!loading && !error && filteredFiles.length > 0 && (
-        <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border/50">
-          <div className="grid grid-cols-[40px_56px_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)_56px_110px] gap-2 border-b border-border/50 bg-muted/20 px-3 py-2 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground">
-            <span className="text-center">{lib.colDrag}</span>
-            <span className="text-center">{lib.colNote}</span>
-            <span>{lib.colBrand}</span>
-            <span>{lib.colFamily}</span>
-            <span>{lib.colModel}</span>
-            <span>{lib.colApplication}</span>
-            <span className="text-center">{lib.colWays}</span>
-            <span>{lib.colWaysLabel}</span>
-          </div>
-          <TooltipProvider>
-            <div className="h-full min-h-0 overflow-y-auto">
-              {filteredFiles.map((file) => {
-                const wayCount = Math.max(1, file.wayCount || file.ways.length || 1);
-                const waysText = file.wayLabelsText?.trim() || file.ways.map((way) => way.label).join(" & ");
-                const modelLabel = [file.brand, file.model].filter(Boolean).join(" ").trim() || file.id || file.name;
-                const fk = getFileKey(file);
-                const selected = selectedFileId === fk;
-                const dragPayload = {
-                  id: fk,
-                  model: modelLabel,
-                  ways: waysText,
-                  wayCount
-                };
-                const isDragging = dragState?.id === fk;
-
-                return (
-                  <DraggableLibraryRow
-                    key={fk}
-                    file={file}
-                    selected={selected}
-                    isDragging={isDragging}
-                    dragPayload={dragPayload}
-                    setSelectedFileId={setSelectedFileId}
-                    setActiveDraggedItem={setActiveDraggedItem}
-                    setDragState={setDragState}
-                    beginDragPreview={beginDragPreview}
-                    updateDragPreview={updateDragPreview}
-                    finishDrag={finishDrag}
-                  />
-                );
-              })}
+        <div className="min-h-0 flex-1 flex flex-col overflow-hidden rounded-md border border-border/50">
+          {/* Header — x-scrolls in sync with body */}
+          <div
+            ref={headerScrollRef}
+            className="overflow-x-auto flex-shrink-0 border-b border-border/50 bg-muted/20"
+            style={{ scrollbarWidth: "none", paddingRight: bodyScrollbarWidth }}
+            onScroll={(e) => {
+              if (bodyScrollRef.current) bodyScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+            }}
+          >
+            <div className="grid min-w-[640px] grid-cols-[40px_56px_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)_56px_110px] gap-2 px-3 py-2 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground">
+              <span className="text-center">{lib.colDrag}</span>
+              <span className="text-center">{lib.colNote}</span>
+              <span>{lib.colBrand}</span>
+              <span>{lib.colFamily}</span>
+              <span>{lib.colModel}</span>
+              <span>{lib.colApplication}</span>
+              <span className="text-center">{lib.colWays}</span>
+              <span>{lib.colWaysLabel}</span>
             </div>
-          </TooltipProvider>
+          </div>
+          {/* Body — y-scrolls freely, x-scrolls in sync with header */}
+          <div
+            ref={bodyScrollRef}
+            className="flex-1 overflow-x-auto overflow-y-auto"
+            onScroll={(e) => {
+              if (headerScrollRef.current) headerScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+            }}
+          >
+            <div className="min-w-[640px]">
+              <TooltipProvider>
+                {filteredFiles.map((file) => {
+                  const wayCount = Math.max(1, file.wayCount || file.ways.length || 1);
+                  const waysText = file.wayLabelsText?.trim() || file.ways.map((way) => way.label).join(" & ");
+                  const modelLabel = [file.brand, file.model].filter(Boolean).join(" ").trim() || file.id || file.name;
+                  const fk = getFileKey(file);
+                  const selected = selectedFileId === fk;
+                  const dragPayload = {
+                    id: fk,
+                    model: modelLabel,
+                    ways: waysText,
+                    wayCount
+                  };
+                  const isDragging = dragState?.id === fk;
+
+                  return (
+                    <DraggableLibraryRow
+                      key={fk}
+                      file={file}
+                      selected={selected}
+                      isDragging={isDragging}
+                      dragPayload={dragPayload}
+                      setSelectedFileId={setSelectedFileId}
+                      setActiveDraggedItem={setActiveDraggedItem}
+                      setDragState={setDragState}
+                      beginDragPreview={beginDragPreview}
+                      updateDragPreview={updateDragPreview}
+                      finishDrag={finishDrag}
+                    />
+                  );
+                })}
+              </TooltipProvider>
+            </div>
+          </div>
         </div>
       )}
       {dragPreview &&

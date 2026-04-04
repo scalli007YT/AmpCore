@@ -1,6 +1,6 @@
 {
   "header": {
-    "monitor": "Monitor",
+    "monitor": "Control",
     "appTitle": "AmpCore",
     "loading": "Lädt...",
     "selectProject": "Projekt wählen",
@@ -13,7 +13,7 @@
     "system": "System"
   },
   "monitor": {
-    "title": "Monitor",
+    "title": "Control",
     "noProjectSelected": "Kein Projekt ausgewählt",
     "amps": "Verstärker",
     "online": "online",

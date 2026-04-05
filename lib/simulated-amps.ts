@@ -426,6 +426,19 @@ export function recallSimulatedPreset(mac: string, slot: number): { success: boo
   return { success: true, name: preset.name };
 }
 
+export function clearAllSimulatedPresets(mac: string): boolean {
+  const state = getState(mac);
+  if (!state) return false;
+  state.presets = [];
+  state.currentPreset = null;
+  return true;
+}
+
+export function factoryResetSimulated(_mac: string): boolean {
+  // Simulated amps don't maintain persistent state beyond presets.
+  return true;
+}
+
 export function getSimulatedScanDevices(): SimulatedScanDevice[] {
   return SIMULATED_AMPS.map((definition) => {
     const runtimeMinutes = getRuntimeMinutesInternal(definition.mac) ?? 0;

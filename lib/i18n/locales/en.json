@@ -247,7 +247,27 @@
       "store": "Store",
       "storing": "Storing...",
       "presetName": "Preset Name",
-      "presetNamePlaceholder": "Enter preset name"
+      "presetNamePlaceholder": "Enter preset name",
+      "clearAllTitle": "Clear All Presets",
+      "clearAllDescription": "This will permanently delete all {count} stored preset(s) from the device. This cannot be undone.",
+      "clearAll": "Clear All",
+      "clearingAll": "Clearing...",
+      "factoryResetTitle": "Factory Reset",
+      "factoryResetDescription": "Reset the device to factory defaults. All settings and presets will be lost. This cannot be undone.",
+      "factoryReset": "Factory Reset",
+      "factoryResetting": "Resetting...",
+
+      "deviceActions": "Device Actions",
+      "exportSdTitle": "Export Preset",
+      "exportSdSelectSlot": "Select a preset",
+      "exportSdNoPresets": "No presets stored",
+      "exportSdConfirmDescription": "Preset {slot} \u201c{name}\u201d will be recalled on the device. The snapshot is then captured and saved as a .sd file.",
+      "exportSdMuteOutputs": "Set all output volumes to \u221280 dB before recall",
+      "exportSdButton": "Export .sd",
+      "exportSdExporting": "Exporting...",
+      "importSdTitle": "Restore from .sd File",
+      "importSdButton": "Open .sd File",
+      "importSdImporting": "Restoring..."
     },
     "heartbeat": {
       "powerMode": "Power Mode",

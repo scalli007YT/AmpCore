@@ -36,6 +36,7 @@ import {
   calcCheckCode,
   FRAGMENT_SIZE
 } from "@/lib/network/protocol";
+import { ampLog } from "@/lib/amp-logger";
 
 // ---------------------------------------------------------------------------
 // Constants — matching original C# values exactly
@@ -815,6 +816,12 @@ class AmpController extends EventEmitter {
         // Remember MAC→IP for cross-subnet unicast probing (survives offline)
         this.rememberedIps.set(event.mac, ip);
 
+        ampLog(event.mac, "DISCOVERY", {
+          ip,
+          name: event.name,
+          version: event.version,
+          ...event.basicInfo
+        });
         this.emit("discovery", event satisfies DiscoveryEvent);
         break;
       }
@@ -1027,6 +1034,7 @@ class AmpController extends EventEmitter {
           this.knownMacs.delete(mac);
           this.lastHeartbeatAt.delete(mac);
           this.bridgePairsByMac.delete(mac);
+          ampLog(mac, "OFFLINE", { reason: "discovery_window" });
           this.emit("offline", { mac } satisfies OfflineEvent);
         }
       });
@@ -1072,6 +1080,7 @@ class AmpController extends EventEmitter {
         this.lastHeartbeatAt.delete(mac);
         this.currentWindowMacs.delete(mac);
         this.bridgePairsByMac.delete(mac);
+        ampLog(mac, "OFFLINE", { reason: "heartbeat_timeout" });
         this.emit("offline", { mac } satisfies OfflineEvent);
       }
     });

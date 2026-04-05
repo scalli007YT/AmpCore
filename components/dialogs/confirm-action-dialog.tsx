@@ -19,6 +19,7 @@ export function ConfirmActionDialog({
   description,
   confirmLabel,
   confirmDisabled,
+  destructive,
   onConfirm,
   children
 }: {
@@ -28,6 +29,7 @@ export function ConfirmActionDialog({
   description: string;
   confirmLabel: string;
   confirmDisabled?: boolean;
+  destructive?: boolean;
   onConfirm?: () => void | Promise<void>;
   children?: React.ReactNode;
 }) {
@@ -48,7 +50,11 @@ export function ConfirmActionDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {dict.dialogs.common.cancel}
           </Button>
-          <Button disabled={confirmDisabled} onClick={() => void onConfirm?.()}>
+          <Button
+            variant={destructive ? "destructive" : "default"}
+            disabled={confirmDisabled}
+            onClick={() => void onConfirm?.()}
+          >
             {confirmLabel}
           </Button>
         </DialogFooter>

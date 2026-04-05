@@ -47,6 +47,7 @@ export class FuncCode {
   static GAIN = 13;
   static DELAY = 14;
   static STANDBY_DATA = 15;
+  static FACTORY_RESET = 16;
   static ROTARY_LOCK = 17;
   static PHASE = 18;
   static DYN_EQ = 25;
@@ -146,6 +147,30 @@ export class CvrAmpDevice {
     nameBytes.copy(body, 2);
 
     await this.sendControl(FuncCode.SAVE_RECALL, 0, body, 0 /* input/default */);
+  }
+
+  /**
+   * Clear all preset slots on the device.
+   *
+   * Confirmed from original C# source (Save_Recall_Window.xaml.cs):
+   *   Save_Recall_data { mode = 3, ch_x = 0, buffers = [32x0] }
+   *   UDP.SendStruct(Save_Recall_data_code, 0, data)
+   */
+  async clearAllPresets(): Promise<void> {
+    const body = Buffer.alloc(34, 0);
+    body.writeUInt8(3, 0); // mode = 3 (clear all presets)
+    await this.sendControl(FuncCode.SAVE_RECALL, 0, body, 0);
+  }
+
+  /**
+   * Perform a factory reset on the device.
+   *
+   * Confirmed from original C# source (PresetPage.xaml.cs → PreRestore_default):
+   *   UDP.SendStruct(Gongneng.RESET, 0, 1)  →  FC=16, ch=0, body=[0x01]
+   */
+  async factoryReset(): Promise<void> {
+    const body = Buffer.from([1]);
+    await this.sendControl(FuncCode.FACTORY_RESET, 0, body, 0);
   }
 
   /**

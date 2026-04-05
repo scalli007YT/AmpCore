@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Amp, AmpPreset, ChannelParam } from "@/stores/AmpStore";
 import type { AmpOptions } from "@/stores/AmpOptionStore";
 import { useAmpOptionStore } from "@/stores/AmpOptionStore";
@@ -10,9 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmActionDialog } from "@/components/dialogs/confirm-action-dialog";
 import { CopyJsonButton, JsonTree, type JsonValue } from "@/components/monitor/amp-tabs/json-viewer";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Download, Upload, Trash2, RotateCcw } from "lucide-react";
 import { formatRuntime } from "@/lib/generic";
 import { PRESET_SLOT_MAX } from "@/lib/constants";
 import { useI18n } from "@/components/layout/i18n-provider";
@@ -33,16 +34,30 @@ export function PreferencesPanel({ amp, ampOptions, effectiveChannels, getDispla
     refreshCurrentPreset,
     recallPreset,
     storePreset,
+    clearAllPresets,
+    factoryReset,
+    muteOutputsForExport,
+    exportSdFile,
+    importSdFile,
     fetching,
     recallingSlot,
     storingSlot,
+    resetting,
+    transferring,
     error: presetsError
   } = useAmpPresets();
+
+  const sdFileInputRef = useRef<HTMLInputElement>(null);
 
   const [activePreset, setActivePreset] = useState<AmpPreset | null>(null);
   const [recallDialogOpen, setRecallDialogOpen] = useState(false);
   const [storeDialogOpen, setStoreDialogOpen] = useState(false);
   const [storePresetName, setStorePresetName] = useState("");
+  const [clearAllDialogOpen, setClearAllDialogOpen] = useState(false);
+  const [factoryResetDialogOpen, setFactoryResetDialogOpen] = useState(false);
+  const [selectedExportSlot, setSelectedExportSlot] = useState<number | null>(null);
+  const [exportConfirmDialogOpen, setExportConfirmDialogOpen] = useState(false);
+  const [muteBeforeExport, setMuteBeforeExport] = useState(true);
   const [presetFilter, setPresetFilter] = useState<PresetFilter>("used");
 
   // Build preset slot list
@@ -100,6 +115,10 @@ export function PreferencesPanel({ amp, ampOptions, effectiveChannels, getDispla
     setRecallDialogOpen(false);
     setStoreDialogOpen(false);
     setStorePresetName("");
+    setClearAllDialogOpen(false);
+    setFactoryResetDialogOpen(false);
+    setSelectedExportSlot(null);
+    setExportConfirmDialogOpen(false);
   }, [amp.mac]);
 
   return (
@@ -264,6 +283,198 @@ export function PreferencesPanel({ amp, ampOptions, effectiveChannels, getDispla
             </ul>
           </div>
         )}
+      </section>
+
+      {/* Device Actions */}
+      <section>
+        {/* Hidden file input for .sd import */}
+        <input
+          ref={sdFileInputRef}
+          type="file"
+          accept=".sd,.sp"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            e.target.value = "";
+            await importSdFile(amp.mac, file);
+          }}
+        />
+
+        {/* Clear All / Factory Reset confirmation dialogs */}
+        <ConfirmActionDialog
+          open={exportConfirmDialogOpen}
+          onOpenChange={setExportConfirmDialogOpen}
+          title={dict.dialogs.presets.exportSdTitle}
+          description={(() => {
+            const preset = (amp.presets ?? []).find((p) => p.slot === selectedExportSlot);
+            return dict.dialogs.presets.exportSdConfirmDescription
+              .replace("{slot}", String(selectedExportSlot ?? ""))
+              .replace("{name}", preset?.name ?? "");
+          })()}
+          confirmLabel={transferring ? dict.dialogs.presets.exportSdExporting : dict.dialogs.presets.exportSdButton}
+          confirmDisabled={!amp.reachable || transferring || selectedExportSlot === null}
+          onConfirm={async () => {
+            if (selectedExportSlot === null) return;
+            const preset = (amp.presets ?? []).find((p) => p.slot === selectedExportSlot);
+            const channelIndices = effectiveChannels.map((c) => c.channel);
+            setExportConfirmDialogOpen(false);
+            if (muteBeforeExport) {
+              const muteOk = await muteOutputsForExport(amp.mac, channelIndices);
+              if (!muteOk) return;
+            }
+            await recallPreset(amp.mac, selectedExportSlot, preset?.name);
+            await new Promise((r) => setTimeout(r, 600));
+            await exportSdFile(amp.mac, preset?.name);
+          }}
+        >
+          <div className="flex items-center gap-2 pt-1">
+            <Checkbox
+              id="mute-before-export"
+              checked={muteBeforeExport}
+              onCheckedChange={(v) => setMuteBeforeExport(v === true)}
+            />
+            <label htmlFor="mute-before-export" className="text-xs text-muted-foreground cursor-pointer select-none">
+              {dict.dialogs.presets.exportSdMuteOutputs}
+            </label>
+          </div>
+        </ConfirmActionDialog>
+
+        <ConfirmActionDialog
+          open={clearAllDialogOpen}
+          onOpenChange={setClearAllDialogOpen}
+          title={dict.dialogs.presets.clearAllTitle}
+          description={dict.dialogs.presets.clearAllDescription.replace("{count}", String(usedPresetCount))}
+          confirmLabel={resetting ? dict.dialogs.presets.clearingAll : dict.dialogs.presets.clearAll}
+          confirmDisabled={!amp.reachable || resetting}
+          destructive
+          onConfirm={async () => {
+            const ok = await clearAllPresets(amp.mac);
+            if (ok) setClearAllDialogOpen(false);
+          }}
+        />
+
+        <ConfirmActionDialog
+          open={factoryResetDialogOpen}
+          onOpenChange={setFactoryResetDialogOpen}
+          title={dict.dialogs.presets.factoryResetTitle}
+          description={dict.dialogs.presets.factoryResetDescription}
+          confirmLabel={resetting ? dict.dialogs.presets.factoryResetting : dict.dialogs.presets.factoryReset}
+          confirmDisabled={!amp.reachable || resetting}
+          destructive
+          onConfirm={async () => {
+            const ok = await factoryReset(amp.mac);
+            if (ok) setFactoryResetDialogOpen(false);
+          }}
+        />
+
+        <h3 className="text-sm font-semibold mb-2.5">{dict.dialogs.presets.deviceActions}</h3>
+        <div className="overflow-hidden rounded-md border border-border/50 divide-y divide-border/40">
+          {/* Export .sd */}
+          <div
+            className={`flex items-center justify-between gap-2 px-3 py-2.5 ${!amp.reachable ? "opacity-50 pointer-events-none" : ""}`}
+          >
+            <div className="flex items-center gap-2 min-w-0 shrink-0">
+              <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="text-sm">{dict.dialogs.presets.exportSdTitle}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {(() => {
+                const usedPresets = (amp.presets ?? []).filter((p) => p.name.trim().length > 0);
+                return (
+                  <Select
+                    value={selectedExportSlot !== null ? String(selectedExportSlot) : ""}
+                    onValueChange={(v) => setSelectedExportSlot(Number(v))}
+                    disabled={!amp.reachable || transferring || usedPresets.length === 0}
+                  >
+                    <SelectTrigger className="h-7 text-xs w-40">
+                      <SelectValue
+                        placeholder={
+                          usedPresets.length === 0
+                            ? dict.dialogs.presets.exportSdNoPresets
+                            : dict.dialogs.presets.exportSdSelectSlot
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {usedPresets.map((p) => (
+                        <SelectItem key={p.slot} value={String(p.slot)}>
+                          {p.slot}. {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                );
+              })()}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2 shrink-0"
+                disabled={!amp.reachable || transferring || selectedExportSlot === null}
+                onClick={() => setExportConfirmDialogOpen(true)}
+              >
+                {transferring ? dict.dialogs.presets.exportSdExporting : dict.dialogs.presets.exportSdButton}
+              </Button>
+            </div>
+          </div>
+
+          {/* Import .sd */}
+          <div
+            className={`flex items-center justify-between px-3 py-2.5 ${!amp.reachable ? "opacity-50 pointer-events-none" : ""}`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Upload className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="text-sm truncate">{dict.dialogs.presets.importSdTitle}</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2 shrink-0 ml-2"
+              disabled={!amp.reachable || transferring}
+              onClick={() => sdFileInputRef.current?.click()}
+            >
+              {transferring ? dict.dialogs.presets.importSdImporting : dict.dialogs.presets.importSdButton}
+            </Button>
+          </div>
+
+          {/* Clear All Presets */}
+          <div
+            className={`flex items-center justify-between px-3 py-2.5 ${!amp.reachable ? "opacity-50 pointer-events-none" : ""}`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Trash2 className="h-3.5 w-3.5 text-destructive shrink-0" />
+              <span className="text-sm text-destructive truncate">{dict.dialogs.presets.clearAllTitle}</span>
+            </div>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-7 text-xs px-2 shrink-0 ml-2"
+              disabled={!amp.reachable || resetting || usedPresetCount === 0}
+              onClick={() => setClearAllDialogOpen(true)}
+            >
+              {dict.dialogs.presets.clearAll}
+            </Button>
+          </div>
+
+          {/* Factory Reset */}
+          <div
+            className={`flex items-center justify-between px-3 py-2.5 ${!amp.reachable ? "opacity-50 pointer-events-none" : ""}`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <RotateCcw className="h-3.5 w-3.5 text-destructive shrink-0" />
+              <span className="text-sm text-destructive truncate">{dict.dialogs.presets.factoryResetTitle}</span>
+            </div>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-7 text-xs px-2 shrink-0 ml-2"
+              disabled={!amp.reachable || resetting}
+              onClick={() => setFactoryResetDialogOpen(true)}
+            >
+              {dict.dialogs.presets.factoryReset}
+            </Button>
+          </div>
+        </div>
       </section>
 
       {/* Options */}

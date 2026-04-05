@@ -247,7 +247,27 @@
       "store": "Speichern",
       "storing": "Speichere...",
       "presetName": "Preset-Name",
-      "presetNamePlaceholder": "Preset-Namen eingeben"
+      "presetNamePlaceholder": "Preset-Namen eingeben",
+      "clearAllTitle": "Alle Presets löschen",
+      "clearAllDescription": "Alle {count} gespeicherten Presets werden dauerhaft vom Gerät gelöscht. Dies kann nicht rückgängig gemacht werden.",
+      "clearAll": "Alle löschen",
+      "clearingAll": "Lösche...",
+      "factoryResetTitle": "Werkseinstellungen",
+      "factoryResetDescription": "Das Gerät wird auf Werkseinstellungen zurückgesetzt. Alle Einstellungen und Presets gehen verloren. Dies kann nicht rückgängig gemacht werden.",
+      "factoryReset": "Zurücksetzen",
+      "factoryResetting": "Setze zurück...",
+
+      "deviceActions": "Geräteaktionen",
+      "exportSdTitle": "Preset exportieren",
+      "exportSdSelectSlot": "Preset auswählen",
+      "exportSdNoPresets": "Keine Presets gespeichert",
+      "exportSdConfirmDescription": "Preset {slot} \u201e{name}\u201c wird auf dem Gerät abgerufen. Der Zustand wird dann als .sd-Datei gespeichert.",
+      "exportSdMuteOutputs": "Alle Ausgangslautstärken vor dem Abruf auf \u221280 dB setzen",
+      "exportSdButton": ".sd exportieren",
+      "exportSdExporting": "Exportiere...",
+      "importSdTitle": "Aus .sd-Datei wiederherstellen",
+      "importSdButton": ".sd-Datei öffnen",
+      "importSdImporting": "Stelle wieder her..."
     },
     "heartbeat": {
       "powerMode": "Leistungsmodus",

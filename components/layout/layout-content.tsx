@@ -15,29 +15,15 @@ interface LayoutContentProps {
 }
 
 export function LayoutContent({ children, lang, dictionary }: LayoutContentProps) {
-  const { projects, loading, setProjects, setLoading } = useProjectStore();
+  const { projects, loading } = useProjectStore();
 
   // Start polling globally on layout mount — runs regardless of which page is active
   useAmpPoller();
   useAmpChannelData();
 
   useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const res = await fetch("/api/projects");
-        const data = await res.json();
-        if (data.success) {
-          setProjects(data.projects);
-        }
-      } catch (err) {
-        console.error("Failed to load projects:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProjects();
-  }, [setProjects, setLoading]);
+    useProjectStore.getState().load();
+  }, []);
 
   return (
     <div className="flex h-screen min-h-0 flex-col overflow-hidden">

@@ -46,8 +46,6 @@ interface PingEvent {
 
 type AmpSseEvent = DiscoverySseEvent | HeartbeatSseEvent | OfflineSseEvent | PingEvent;
 
-const runtimeFetchInFlight = new Set<string>();
-
 // ---------------------------------------------------------------------------
 
 interface UseAmpPollerReturn {
@@ -59,26 +57,6 @@ interface UseAmpPollerReturn {
 /** Find an amp by MAC (case-insensitive). */
 function findAmp(amps: ReturnType<typeof useAmpStore.getState>["amps"], mac: string) {
   return amps.find((a) => a.mac.toUpperCase() === mac.toUpperCase());
-}
-
-/** Fetch & store run-time minutes for an amp — non-critical, silent on failure. */
-function fetchRuntime(mac: string): void {
-  if (runtimeFetchInFlight.has(mac)) return;
-  runtimeFetchInFlight.add(mac);
-
-  fetch(`/api/amp-runtime/${encodeURIComponent(mac)}`)
-    .then((r) => r.json())
-    .then((data: { success: boolean; minutes: number }) => {
-      if (data.success && typeof data.minutes === "number") {
-        useAmpStore.getState().updateAmpStatus(mac, { run_time: data.minutes });
-      }
-    })
-    .catch(() => {
-      /* non-critical */
-    })
-    .finally(() => {
-      runtimeFetchInFlight.delete(mac);
-    });
 }
 
 /**
@@ -188,7 +166,7 @@ export function useAmpPoller(): UseAmpPollerReturn {
 
             // Runtime is independent from reachability transition; fetch once if missing.
             if (amp.run_time === undefined) {
-              fetchRuntime(amp.mac);
+              useAmpStore.getState().fetchRuntime(amp.mac);
             }
 
             usePollingStore.getState().setLastUpdated(amp.mac, Date.now());
@@ -221,13 +199,14 @@ export function useAmpPoller(): UseAmpPollerReturn {
               nextStatus.version = version;
               nextStatus.reachable = true;
             }
+
             if (Object.keys(nextStatus).length > 0) {
               useAmpStore.getState().updateAmpStatus(amp.mac, nextStatus);
             }
 
             // Fallback: if discovery path missed runtime fetch, try once on heartbeat.
             if (amp.run_time === undefined) {
-              fetchRuntime(amp.mac);
+              useAmpStore.getState().fetchRuntime(amp.mac);
             }
 
             useAmpStore.getState().updateHeartbeat(amp.mac, smoothHeartbeat(amp.mac, heartbeat, maxDb), bridgePairs);

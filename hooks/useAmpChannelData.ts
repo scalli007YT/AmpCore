@@ -10,31 +10,11 @@ import { parseFC27Channels, parseFC27RotaryLock } from "@/lib/parse-channel-data
 // With 10 amps this drops from ~40 req/sec to ~5 req/sec.
 const ACTIVE_POLL_MS = 250; // tick interval (drives active amp)
 const BACKGROUND_CHANNEL_MS = 2000; // background amps channel data interval
-const LOCK_POLL_ACTIVE_MS = 2000; // lock poll for active amp
-const LOCK_POLL_BACKGROUND_MS = 10_000; // lock poll for background amps
-const STANDBY_POLL_ACTIVE_MS = 2000; // standby poll for active amp
-const STANDBY_POLL_BACKGROUND_MS = 10_000; // standby poll for background amps
 
 let channelDataTimer: ReturnType<typeof setInterval> | null = null;
 let channelDataSubscribers = 0;
 const inFlightMacs = new Set<string>();
-const inFlightLockMacs = new Set<string>();
-const inFlightStandbyMacs = new Set<string>();
 const lastChannelPollAtByMac = new Map<string, number>();
-const lastLockPollAtByMac = new Map<string, number>();
-const lastStandbyPollAtByMac = new Map<string, number>();
-const forceLockPollMacs = new Set<string>();
-const forceStandbyPollMacs = new Set<string>();
-
-export function triggerImmediateLockPoll(mac: string): void {
-  if (!mac) return;
-  forceLockPollMacs.add(mac);
-}
-
-export function triggerImmediateStandbyPoll(mac: string): void {
-  if (!mac) return;
-  forceStandbyPollMacs.add(mac);
-}
 
 /**
  * useAmpChannelData — Tiered channel-data poller
@@ -42,6 +22,9 @@ export function triggerImmediateStandbyPoll(mac: string): void {
  * Polls FC=27 channel data at 250ms for the active amp (selected in TabStore)
  * and at 2000ms for all other reachable amps. This keeps the active amp
  * fully responsive while preventing network overload with 10+ amps.
+ *
+ * Lock state is derived from the FC=27 response (no separate poll needed).
+ * Standby state is derived from heartbeat machineMode via the SSE stream.
  */
 export function useAmpChannelData(): void {
   useEffect(() => {
@@ -93,57 +76,6 @@ export function useAmpChannelData(): void {
             .finally(() => {
               inFlightMacs.delete(amp.mac);
             });
-
-          // ── Lock polling: active gets 2s, background gets 10s ──
-          const lockInterval = isActive ? LOCK_POLL_ACTIVE_MS : LOCK_POLL_BACKGROUND_MS;
-          const lastLockPollAt = lastLockPollAtByMac.get(amp.mac) ?? 0;
-          const shouldForceLockPoll = forceLockPollMacs.has(amp.mac);
-          if (!inFlightLockMacs.has(amp.mac) && (shouldForceLockPoll || now - lastLockPollAt >= lockInterval)) {
-            inFlightLockMacs.add(amp.mac);
-            forceLockPollMacs.delete(amp.mac);
-            lastLockPollAtByMac.set(amp.mac, now);
-
-            fetch(`/api/amp-lock/${encodeURIComponent(amp.mac)}`)
-              .then((r) => r.json())
-              .then((response) => {
-                if (response.success && typeof response.locked === "boolean") {
-                  useAmpStore.getState().updateAmpStatus(amp.mac, { locked: response.locked });
-                }
-              })
-              .catch((err) => {
-                console.warn(`[useAmpChannelData] Error fetching lock state for ${amp.mac}:`, err);
-              })
-              .finally(() => {
-                inFlightLockMacs.delete(amp.mac);
-              });
-          }
-
-          // ── Standby polling: active gets 2s, background gets 10s ──
-          const standbyInterval = isActive ? STANDBY_POLL_ACTIVE_MS : STANDBY_POLL_BACKGROUND_MS;
-          const lastStandbyPollAt = lastStandbyPollAtByMac.get(amp.mac) ?? 0;
-          const shouldForceStandbyPoll = forceStandbyPollMacs.has(amp.mac);
-          if (
-            !inFlightStandbyMacs.has(amp.mac) &&
-            (shouldForceStandbyPoll || now - lastStandbyPollAt >= standbyInterval)
-          ) {
-            inFlightStandbyMacs.add(amp.mac);
-            forceStandbyPollMacs.delete(amp.mac);
-            lastStandbyPollAtByMac.set(amp.mac, now);
-
-            fetch(`/api/amp-standby/${encodeURIComponent(amp.mac)}`)
-              .then((r) => r.json())
-              .then((response) => {
-                if (response.success && typeof response.standby === "boolean") {
-                  useAmpStore.getState().updateAmpStatus(amp.mac, { standby: response.standby });
-                }
-              })
-              .catch((err) => {
-                console.warn(`[useAmpChannelData] Error fetching standby state for ${amp.mac}:`, err);
-              })
-              .finally(() => {
-                inFlightStandbyMacs.delete(amp.mac);
-              });
-          }
         });
       }, ACTIVE_POLL_MS);
     }
@@ -154,13 +86,7 @@ export function useAmpChannelData(): void {
         clearInterval(channelDataTimer);
         channelDataTimer = null;
         inFlightMacs.clear();
-        inFlightLockMacs.clear();
-        inFlightStandbyMacs.clear();
         lastChannelPollAtByMac.clear();
-        lastLockPollAtByMac.clear();
-        lastStandbyPollAtByMac.clear();
-        forceLockPollMacs.clear();
-        forceStandbyPollMacs.clear();
       }
     };
   }, []);

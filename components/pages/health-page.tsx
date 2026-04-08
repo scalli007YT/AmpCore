@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import { AssignAmpsDialog } from "@/components/dialogs/assign-amps-dialog";
 import { AssignDemoAmpsDialog } from "@/components/dialogs/assign-demo-amps-dialog";
-import { AmpRackSidebar } from "@/components/monitor/amp-rack-sidebar";
 import { NoProjectCard } from "@/components/monitor/no-project-card";
 import { useProjectStore } from "@/stores/ProjectStore";
 import { useTabStore } from "@/stores/TabStore";
@@ -13,7 +12,7 @@ interface HealthPageProps {
   dictionary: Dictionary["monitor"];
 }
 
-export function HealthPage({ dictionary }: HealthPageProps) {
+export function HealthPage({ dictionary: _dictionary }: HealthPageProps) {
   const { selectedProject } = useProjectStore();
   const setCurrentView = useTabStore((state) => state.setCurrentView);
 
@@ -39,13 +38,9 @@ export function HealthPage({ dictionary }: HealthPageProps) {
         {!selectedProject ? (
           <NoProjectCard />
         ) : (
-          <div className="grid min-h-0 w-full flex-1 gap-3 xl:grid-cols-[220px_minmax(0,1fr)]">
-            <AmpRackSidebar dictionary={dictionary} />
-
-            <section className="flex min-h-0 items-center justify-center rounded-lg border border-dashed border-border/50 bg-card/10 p-8">
-              <p className="text-sm text-muted-foreground">Health content coming soon.</p>
-            </section>
-          </div>
+          <section className="flex min-h-0 w-full flex-1 items-center justify-center rounded-lg border border-dashed border-border/50 bg-card/10 p-8">
+            <p className="text-sm text-muted-foreground">Health content coming soon.</p>
+          </section>
         )}
       </div>
     </div>

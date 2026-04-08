@@ -11,21 +11,17 @@ import {
 } from "@/lib/amp-action-linking";
 import { isSimulatedMac } from "@/lib/simulated-amp-identity";
 import { useAmpActionLinkStore } from "./AmpActionLinkStore";
-
-export type ProjectMode = "real" | "demo";
-
-export interface AmpChannelConstants {
-  ohms: number;
-}
-
-export interface AssignedAmpConstants {
-  channels: AmpChannelConstants[];
-  linking: AmpLinkConfig;
-}
+import {
+  DEFAULT_CHANNEL_OHMS,
+  DEFAULT_PROJECT_CHANNEL_COUNT,
+  type ProjectMode,
+  type AmpChannelConstants,
+  type AssignedAmpConstants,
+  type Project
+} from "@/lib/types/project";
+export type { ProjectMode, AmpChannelConstants, AssignedAmpConstants, Project };
 
 const defaultAmpLinking: AmpLinkConfig = createDefaultAmpLinkConfig();
-const DEFAULT_CHANNEL_OHMS = 8;
-const DEFAULT_PROJECT_CHANNEL_COUNT = 4;
 const assignedAmpNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 function createDefaultChannels(count: number, ohms = DEFAULT_CHANNEL_OHMS): AmpChannelConstants[] {
@@ -38,26 +34,12 @@ export const DEFAULT_AMP_CONSTANTS: AssignedAmpConstants = {
   linking: defaultAmpLinking
 };
 
-export interface Project {
-  id: string;
-  name: string;
-  description: string;
-  projectMode: ProjectMode;
-  updatedAt: string;
-  assigned_amps: Array<{
-    id: string;
-    mac: string;
-    lastKnownName?: string;
-    lastKnownIp?: string;
-    constants: AssignedAmpConstants;
-  }>;
-}
-
 interface ProjectStore {
   projects: Project[];
   selectedProject: Project | null;
   selectedProjectId: string | null;
   loading: boolean;
+  load: () => Promise<void>;
   setProjects: (projects: Project[]) => void;
   setSelectedProject: (project: Project | null) => void;
   setLoading: (loading: boolean) => void;
@@ -138,6 +120,20 @@ export const useProjectStore = create<ProjectStore>()(
       selectedProject: null,
       selectedProjectId: null,
       loading: true,
+
+      load: async () => {
+        try {
+          const res = await fetch("/api/projects");
+          const data = await res.json();
+          if (data.success) {
+            get().setProjects(data.projects);
+          }
+        } catch (err) {
+          console.error("Failed to load projects:", err);
+        } finally {
+          set({ loading: false });
+        }
+      },
 
       setProjects: (projects) => {
         const { selectedProjectId } = get();

@@ -3,17 +3,8 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { limiterPowerFromLoad } from "@/lib/generic";
 import type { SourceCapabilities } from "@/lib/source-capabilities";
 import type { AmpLinkConfig } from "@/lib/amp-action-linking";
-
-export interface AmpChannelConstants {
-  ohms: number;
-}
-
-export interface AssignedAmpConstants {
-  channels: AmpChannelConstants[];
-  linking: AmpLinkConfig;
-}
-
-const DEFAULT_CHANNEL_OHMS = 8;
+import { DEFAULT_CHANNEL_OHMS, type AmpChannelConstants, type AssignedAmpConstants } from "@/lib/types/project";
+export type { AmpChannelConstants, AssignedAmpConstants };
 
 // ---------------------------------------------------------------------------
 // Types — three clearly separated concerns
@@ -251,6 +242,13 @@ export interface AmpPresets {
   slots?: AmpPreset[];
 }
 
+/** Cached FIR state for a single amp+channel, keyed as "MAC:channel". */
+export interface FirCacheEntry {
+  coefficients: number[];
+  name: string;
+  loading: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Composed view — what components read
 // ---------------------------------------------------------------------------
@@ -266,6 +264,8 @@ export interface Amp extends AmpConfig, AmpStatus {
 
 interface AmpStore {
   amps: Amp[];
+  /** Cached FIR data keyed as "MAC_UPPER:channel" */
+  firCache: Record<string, FirCacheEntry>;
 
   // — Seeding (from ProjectStore) —
   /** Replace the full list with project-config amps (status reset to unreachable). */
@@ -295,9 +295,24 @@ interface AmpStore {
   /** Resize the amp's constants.channels array to match discovered channel count. */
   updateAmpChannelCount: (mac: string, channelCount: number) => void;
 
+  // — Runtime —
+  /** Fetch runtime minutes from the device (non-critical, silent on failure). */
+  fetchRuntime: (mac: string) => void;
+
+  // — FIR data —
+  /** Fetch FIR data for a specific amp + channel. Caches result. */
+  fetchFirData: (mac: string, channel: number) => Promise<void>;
+  /** Get cached FIR entry (or undefined). */
+  getFirCacheKey: (mac: string, channel: number) => string;
+  /** Invalidate FIR cache for a specific amp + channel. */
+  invalidateFirCache: (mac: string, channel: number) => void;
+
   // — Selectors —
   getDisplayName: (amp: Amp) => string;
 }
+
+// Module-level in-flight guard for fetchRuntime (prevents duplicate requests)
+const _runtimeFetchInFlight = new Set<string>();
 
 function makeAmp(config: AmpConfig): Amp {
   return { ...config, reachable: false };
@@ -410,8 +425,9 @@ function deriveChannelFlags(
 
 export const useAmpStore = create<AmpStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       amps: [],
+      firCache: {},
 
       seedAmps: (configs) =>
         set((state) => ({
@@ -563,6 +579,83 @@ export const useAmpStore = create<AmpStore>()(
             };
           })
         })),
+
+      fetchRuntime: (mac) => {
+        const key = mac.toUpperCase();
+        // Prevent concurrent fetches for the same amp
+        if (_runtimeFetchInFlight.has(key)) return;
+        _runtimeFetchInFlight.add(key);
+
+        fetch(`/api/amp-runtime/${encodeURIComponent(mac)}`)
+          .then((r) => r.json())
+          .then((data: { success: boolean; minutes: number }) => {
+            if (data.success && typeof data.minutes === "number") {
+              set((state) => ({
+                amps: state.amps.map((amp) =>
+                  amp.mac.toUpperCase() === key ? { ...amp, run_time: data.minutes } : amp
+                )
+              }));
+            }
+          })
+          .catch(() => {
+            /* non-critical */
+          })
+          .finally(() => {
+            _runtimeFetchInFlight.delete(key);
+          });
+      },
+
+      getFirCacheKey: (mac, channel) => `${mac.toUpperCase()}:${channel}`,
+
+      fetchFirData: async (mac, channel) => {
+        const cacheKey = get().getFirCacheKey(mac, channel);
+        const existing = get().firCache[cacheKey];
+        if (existing?.loading) return;
+
+        set((state) => ({
+          firCache: {
+            ...state.firCache,
+            [cacheKey]: { coefficients: existing?.coefficients ?? [], name: existing?.name ?? "", loading: true }
+          }
+        }));
+
+        try {
+          const res = await fetch(`/api/amp-fir-data?mac=${encodeURIComponent(mac)}&channel=${channel}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.success && Array.isArray(data.coefficients)) {
+            set((state) => ({
+              firCache: {
+                ...state.firCache,
+                [cacheKey]: { coefficients: data.coefficients, name: data.name ?? "", loading: false }
+              }
+            }));
+          } else {
+            set((state) => ({
+              firCache: {
+                ...state.firCache,
+                [cacheKey]: { ...state.firCache[cacheKey], loading: false }
+              }
+            }));
+          }
+        } catch {
+          set((state) => ({
+            firCache: {
+              ...state.firCache,
+              [cacheKey]: { ...state.firCache[cacheKey], loading: false }
+            }
+          }));
+        }
+      },
+
+      invalidateFirCache: (mac, channel) => {
+        const cacheKey = get().getFirCacheKey(mac, channel);
+        set((state) => {
+          const next = { ...state.firCache };
+          delete next[cacheKey];
+          return { firCache: next };
+        });
+      },
 
       getDisplayName: (amp) => amp.name ?? amp.lastKnownName ?? amp.customName ?? "Unknown Amp"
     }),

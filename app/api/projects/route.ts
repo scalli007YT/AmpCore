@@ -8,18 +8,13 @@ import {
   serializeAmpLinkConfig,
   type AmpLinkConfig
 } from "@/lib/amp-action-linking";
-
-interface AmpChannelConstants {
-  ohms: number;
-}
-
-interface AssignedAmpConstants {
-  channels: AmpChannelConstants[];
-  linking: AmpLinkConfig;
-}
-
-const DEFAULT_CHANNEL_OHMS = 8;
-const DEFAULT_PROJECT_CHANNEL_COUNT = 4;
+import {
+  DEFAULT_CHANNEL_OHMS,
+  DEFAULT_PROJECT_CHANNEL_COUNT,
+  type AmpChannelConstants,
+  type AssignedAmpConstants,
+  type Project
+} from "@/lib/types/project";
 
 function inferLinkedChannelCount(linking: AmpLinkConfig): number {
   let maxLinkedChannel = -1;
@@ -64,22 +59,6 @@ function createNormalizedChannels(
 function getProjectsDir() {
   const base = process.env.APP_USER_DATA ?? process.cwd();
   return path.join(base, "storage", "projects");
-}
-
-interface Project {
-  id: string;
-  name: string;
-  description: string;
-  projectMode: "real" | "demo";
-  updatedAt: string;
-  assigned_amps: Array<{
-    id: string;
-    mac: string;
-    lastKnownName?: string;
-    lastKnownIp?: string;
-    constants: AssignedAmpConstants;
-    loadOhm?: number;
-  }>;
 }
 
 function normalizeProject(project: Project): Project {

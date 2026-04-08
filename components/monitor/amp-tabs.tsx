@@ -27,7 +27,6 @@ import { InputWithCheck } from "@/components/custom/input-with-check";
 import { AmpRackSidebar } from "@/components/monitor/amp-rack-sidebar";
 import { useTabStore, type AmpSection } from "@/stores/TabStore";
 import { useAmpActions } from "@/hooks/useAmpActions";
-import { triggerImmediateLockPoll, triggerImmediateStandbyPoll } from "@/hooks/useAmpChannelData";
 import { DEFAULT_AMP_OPTIONS, useAmpOptionStore } from "@/stores/AmpOptionStore";
 import { useLibraryStore } from "@/stores/LibraryStore";
 import { useAmpPresets } from "@/hooks/useAmpPresets";
@@ -160,7 +159,6 @@ export function AmpTabs() {
     try {
       await setAmpLock(selectedAmp.mac, nextLocked);
       updateAmpStatus(selectedAmp.mac, { locked: nextLocked });
-      triggerImmediateLockPoll(selectedAmp.mac);
       toast.success(nextLocked ? "Amp locked" : "Amp unlocked");
     } catch {
       // Error toast handled in useAmpActions
@@ -176,7 +174,6 @@ export function AmpTabs() {
     setStandbyUpdating(true);
     try {
       await setAmpStandby(mac, nextStandby);
-      triggerImmediateStandbyPoll(mac);
       const confirmed = await new Promise<boolean>((resolve) => {
         const deadline = Date.now() + 5000;
         const check = () => {

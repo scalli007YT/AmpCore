@@ -348,7 +348,6 @@ export function FirFilterDialog({ mac, channel, title, triggerClassName, channel
   const [open, setOpen] = useState(false);
   const [firState, setFirState] = useState<FirState>(defaultFirState);
   const [sending, setSending] = useState(false);
-  const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Channel switching state
@@ -361,44 +360,35 @@ export function FirFilterDialog({ mac, channel, title, triggerClassName, channel
     (s) => s.amps.find((a) => a.mac === mac)?.channelParams?.channels[effectiveChannel]?.firBypassed
   );
 
+  // FIR data from AmpStore cache
+  const firCacheKey = useAmpStore.getState().getFirCacheKey(mac, effectiveChannel);
+  const firCacheEntry = useAmpStore((s) => s.firCache[firCacheKey]);
+  const loading = firCacheEntry?.loading ?? false;
+
   useEffect(() => {
     if (deviceFirBypassed !== undefined) {
       setFirState((prev) => ({ ...prev, bypassed: deviceFirBypassed }));
     }
   }, [deviceFirBypassed]);
 
-  // Fetch FIR coefficients from device when dialog opens or channel changes
+  // Fetch FIR data from store when dialog opens or channel changes
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
-
-    async function fetchFirData() {
-      setLoading(true);
-      setFirState(defaultFirState()); // Reset state when loading new channel
-      try {
-        const res = await fetch(`/api/amp-fir-data?mac=${encodeURIComponent(mac)}&channel=${effectiveChannel}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        if (data.success && Array.isArray(data.coefficients)) {
-          setFirState((prev) => ({
-            ...prev,
-            coefficients: data.coefficients,
-            name: data.name ?? prev.name
-          }));
-        }
-      } catch {
-        // silent — keep default state
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    fetchFirData();
-    return () => {
-      cancelled = true;
-    };
+    // Invalidate so we always get fresh data when dialog opens
+    useAmpStore.getState().invalidateFirCache(mac, effectiveChannel);
+    useAmpStore.getState().fetchFirData(mac, effectiveChannel);
   }, [open, mac, effectiveChannel]);
+
+  // Sync FIR cache into local state when cache updates
+  useEffect(() => {
+    if (firCacheEntry && !firCacheEntry.loading && firCacheEntry.coefficients.length > 0) {
+      setFirState((prev) => ({
+        ...prev,
+        coefficients: firCacheEntry.coefficients,
+        name: firCacheEntry.name || prev.name
+      }));
+    }
+  }, [firCacheEntry]);
 
   const coefficients = firState.coefficients;
   const order = getFirOrder(coefficients);

@@ -40,6 +40,10 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   let closed = false;
+  // Hoisted so both start() and cancel() can reach the same function.
+  // (In ReadableStream, `this` inside cancel() is the UnderlyingSource literal,
+  // not the ReadableStreamDefaultController — so storing on controller doesn't work.)
+  let cleanupFn: (() => void) | undefined;
 
   const stream = new ReadableStream({
     start(controller) {
@@ -94,7 +98,7 @@ export async function GET(request: Request): Promise<Response> {
       // -----------------------------------------------------------------------
       // Cleanup on client disconnect
       // -----------------------------------------------------------------------
-      const cleanup = () => {
+      cleanupFn = () => {
         if (closed) return;
         closed = true;
         clearInterval(pingTimer);
@@ -112,16 +116,13 @@ export async function GET(request: Request): Promise<Response> {
         }
       };
 
-      // ReadableStream cancel() is called when the client disconnects
-      // We store cleanup on the controller object keyed by a Symbol so
-      // the cancel callback below can reach it.
-      (controller as unknown as { _cleanup: () => void })._cleanup = cleanup;
+      // AbortSignal fires when the HTTP connection drops (most reliable path).
+      request.signal.addEventListener("abort", cleanupFn, { once: true });
     },
 
     cancel() {
-      // Called by the runtime when the client disconnects
-      const ctrl = this as unknown as { _cleanup?: () => void };
-      ctrl._cleanup?.();
+      // Called by the ReadableStream runtime when the consumer cancels.
+      cleanupFn?.();
     }
   });
 
